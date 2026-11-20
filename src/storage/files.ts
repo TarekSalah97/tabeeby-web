@@ -1,0 +1,48 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+/**
+ * Private file storage for verification documents. Local disk today; the
+ * interface lets you move to object storage (with server-side encryption)
+ * without touching callers. Files are never served from a public URL.
+ */
+export interface FileStorage {
+  put(data: Buffer, extension: string): Promise<string>;
+  get(key: string): Promise<Buffer>;
+  remove(key: string): Promise<void>;
+}
+
+const KEY_RE = /^[0-9a-f]{32}\.(pdf|jpg|png)$/;
+
+export class LocalFileStorage implements FileStorage {
+  constructor(private readonly dir: string) {}
+
+  private resolve(key: string): string {
+    if (!KEY_RE.test(key)) throw new Error('invalid storage key');
+    return path.join(this.dir, key);
+  }
+
+  async put(data: Buffer, extension: string): Promise<string> {
+    await fs.mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const key = `${crypto.randomBytes(16).toString('hex')}.${extension}`;
+    await fs.writeFile(this.resolve(key), data, { mode: 0o600, flag: 'wx' });
+    return key;
+  }
+
+  get(key: string): Promise<Buffer> {
+    return fs.readFile(this.resolve(key));
+  }
+
+  async remove(key: string): Promise<void> {
+    await fs.rm(this.resolve(key), { force: true });
+  }
+}
+
+/** Detect type from content, never from the filename or the browser's claim. */
+export function sniffDocumentType(data: Buffer): { mime: 'application/pdf' | 'image/jpeg' | 'image/png'; ext: 'pdf' | 'jpg' | 'png' } | null {
+  if (data.subarray(0, 5).toString('latin1') === '%PDF-') return { mime: 'application/pdf', ext: 'pdf' };
+  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg' };
+  if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: 'image/png', ext: 'png' };
+  return null;
+}

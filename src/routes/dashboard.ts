@@ -1,0 +1,229 @@
+import type { Router } from '../http/router.js';
+import type { Ctx } from '../http/context.js';
+import { href, requireUser } from '../http/context.js';
+import { sendHtml, redirect } from '../http/respond.js';
+import { fieldAll } from '../http/body.js';
+import type { SessionUser } from '../auth/sessions.js';
+import { getReference } from '../services/reference.js';
+import {
+  getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRule, deleteRule, listOwnBlocks, addBlock, deleteBlock,
+  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput,
+} from '../services/doctors.js';
+import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
+import { changeStatus } from '../services/booking.js';
+import { todayPage, clinicsPage, hoursPage, profileEditPage } from '../views/pages/dashboard.js';
+import { experienceYears } from '../domain/experience.js';
+import { isValidDate, todayIn } from '../domain/time.js';
+import { DomainError, notFound } from '../http/errors.js';
+import { isUuid } from '../http/router.js';
+import { isMessageKey, type MessageKey } from '../i18n/index.js';
+import type { AppointmentStatus } from '../domain/appointmentStatus.js';
+import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
+
+/** Doctors must have verified their phone before using the dashboard. */
+function requireDoctor(ctx: Ctx): SessionUser | null {
+  const user = requireUser(ctx, 'doctor');
+  if (!user.phoneVerified) {
+    redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));
+    return null;
+  }
+  return user;
+}
+
+const ok = (ctx: Ctx): { kind: 'success'; key: MessageKey } | { kind: 'error'; key: MessageKey } | undefined => {
+  const n = noticeFrom(ctx);
+  if (n) return { kind: 'success', key: n };
+  const e = errorFrom(ctx);
+  return e ? { kind: 'error', key: e } : undefined;
+};
+
+const STATUSES: AppointmentStatus[] = ['arrived', 'in_consultation', 'completed', 'no_show', 'cancelled'];
+
+function clinicInput(ctx: Ctx): ClinicInput {
+  return {
+    name: formValue(ctx, 'name'),
+    districtId: Number(formValue(ctx, 'district')),
+    address: formValue(ctx, 'address'),
+    phone: formValue(ctx, 'phone'),
+    fee: formValue(ctx, 'fee'),
+    isActive: formValue(ctx, 'active') === 'yes',
+  };
+}
+
+function rawClinicValues(ctx: Ctx): Record<string, string> {
+  return Object.fromEntries(['name', 'district', 'address', 'phone', 'fee', 'active'].map((k) => [k, formValue(ctx, k)]));
+}
+
+async function renderClinics(ctx: Ctx, user: SessionUser, extra: Parameters<typeof clinicsPage>[4] = {}, status = 200): Promise<void> {
+  const [doctor, ref, clinics] = await Promise.all([getOwnDoctor(ctx.deps.db, user.id), getReference(ctx.deps.db), listOwnClinics(ctx.deps.db, user.id)]);
+  sendHtml(ctx, status, clinicsPage(ctx, doctor, ref, clinics, { notice: ok(ctx), ...extra }));
+}
+
+async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: MessageKey; blockError?: MessageKey } = {}, status = 200): Promise<void> {
+  const db = ctx.deps.db;
+  const [doctor, clinics, rules, blocks] = await Promise.all([getOwnDoctor(db, user.id), listOwnClinics(db, user.id), listOwnRules(db, user.id), listOwnBlocks(db, user.id)]);
+  sendHtml(ctx, status, hoursPage(ctx, doctor, clinics, rules, blocks, { notice: ok(ctx), ...extra }));
+}
+
+async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Record<string, MessageKey>; positionError?: MessageKey } = {}, status = 200): Promise<void> {
+  const db = ctx.deps.db;
+  const [doctor, ref, sel, positions] = await Promise.all([getOwnDoctor(db, user.id), getReference(db), getOwnSelections(db, user.id), listPositions(db, [user.id])]);
+  const own = positions.get(user.id) ?? [];
+  sendHtml(
+    ctx,
+    status,
+    profileEditPage(ctx, doctor, ref, { ...sel, positions: own, years: experienceYears(toRanges(own), ctx.deps.now()), notice: ok(ctx), ...extra }),
+  );
+}
+
+export function dashboardRoutes(r: Router): void {
+  r.get('/dashboard', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const db = ctx.deps.db;
+    const tz = ctx.deps.cfg.TIME_ZONE;
+    const requested = ctx.query.get('date') ?? '';
+    const date = isValidDate(requested) ? requested : todayIn(tz, ctx.deps.now());
+    const [doctor, appointments, weekCount, clinics, rules] = await Promise.all([
+      getOwnDoctor(db, user.id),
+      doctorDay(db, user.id, date, tz),
+      upcomingWeekCount(db, user.id),
+      listOwnClinics(db, user.id),
+      listOwnRules(db, user.id),
+    ]);
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, notice: ok(ctx) }));
+  });
+
+  r.post('/dashboard/appointments/:id/status', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const id = uuidParam(ctx, 'id');
+    const to = formValue(ctx, 'to') as AppointmentStatus;
+    const date = formValue(ctx, 'date');
+    const back = (q: Record<string, string>) => href(ctx, '/dashboard', { ...(isValidDate(date) ? { date } : {}), ...q });
+    if (!STATUSES.includes(to)) return redirect(ctx, back({ error: 'appt.notAllowed' }));
+    try {
+      await changeStatus(ctx.deps, user, id, to, ctx.ip);
+      redirect(ctx, back({}));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, back({ error: isMessageKey(e.messageKey) ? e.messageKey : 'appt.notAllowed' }));
+    }
+  });
+
+  r.get('/dashboard/clinics', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (user) await renderClinics(ctx, user);
+  });
+
+  r.post('/dashboard/clinics', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const input = clinicInput(ctx);
+    const errors = await saveClinic(ctx.deps, user.id, null, input);
+    if (Object.keys(errors).length) {
+      return renderClinics(ctx, user, { errors, editing: null, values: rawClinicValues(ctx) }, 422);
+    }
+    redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/clinics/:id', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const id = uuidParam(ctx, 'id');
+    const input = clinicInput(ctx);
+    const errors = await saveClinic(ctx.deps, user.id, id, input);
+    if (Object.keys(errors).length) {
+      return renderClinics(ctx, user, { errors, editing: id, values: rawClinicValues(ctx) }, 422);
+    }
+    redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'saved' }));
+  });
+
+  r.get('/dashboard/hours', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (user) await renderHours(ctx, user);
+  });
+
+  r.post('/dashboard/hours/rules', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const problem = await addRule(ctx.deps, user.id, {
+      clinicId: uuidFromForm(ctx, 'clinic'),
+      weekday: Number(formValue(ctx, 'weekday')),
+      start: formValue(ctx, 'start'),
+      end: formValue(ctx, 'end'),
+      slotMinutes: Number(formValue(ctx, 'slot')),
+    });
+    if (problem) return renderHours(ctx, user, { ruleError: problem }, 422);
+    redirect(ctx, href(ctx, '/dashboard/hours', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/hours/rules/:id/delete', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    await deleteRule(ctx.deps.db, user.id, uuidParam(ctx, 'id'));
+    redirect(ctx, href(ctx, '/dashboard/hours', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/hours/blocks', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const problem = await addBlock(ctx.deps, user.id, { fromDate: formValue(ctx, 'fromDate'), toDate: formValue(ctx, 'toDate'), note: formValue(ctx, 'note') });
+    if (problem) return renderHours(ctx, user, { blockError: problem }, 422);
+    redirect(ctx, href(ctx, '/dashboard/hours', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/hours/blocks/:id/delete', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    await deleteBlock(ctx.deps.db, user.id, uuidParam(ctx, 'id'));
+    redirect(ctx, href(ctx, '/dashboard/hours', { ok: 'saved' }));
+  });
+
+  r.get('/dashboard/profile', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (user) await renderProfile(ctx, user);
+  });
+
+  r.post('/dashboard/profile', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const errors = await updateProfile(ctx.deps, user.id, {
+      titleEn: formValue(ctx, 'titleEn'),
+      titleAr: formValue(ctx, 'titleAr'),
+      bio: ctx.form['bio']?.[0] ?? '',
+      gender: formValue(ctx, 'gender'),
+      languages: fieldAll(ctx.form, 'languages'),
+      subspecialtyIds: fieldAll(ctx.form, 'subspecialties').map(Number).filter(Number.isInteger),
+      insurerIds: fieldAll(ctx.form, 'insurers').map(Number).filter(Number.isInteger),
+    });
+    if (Object.keys(errors).length) return renderProfile(ctx, user, { errors: errors as Record<string, MessageKey> }, 422);
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/profile/positions', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const problem = await addPosition(ctx.deps, user.id, {
+      title: formValue(ctx, 'posTitle'),
+      workplace: formValue(ctx, 'posWorkplace'),
+      start: formValue(ctx, 'posStart'),
+      end: formValue(ctx, 'posEnd'),
+    });
+    if (problem) return renderProfile(ctx, user, { positionError: problem }, 422);
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));
+  });
+
+  r.post('/dashboard/profile/positions/:id/delete', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    await deletePosition(ctx.deps.db, user.id, uuidParam(ctx, 'id'));
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));
+  });
+}
+
+function uuidFromForm(ctx: Ctx, name: string): string {
+  const v = formValue(ctx, name);
+  if (!isUuid(v)) throw notFound();
+  return v;
+}

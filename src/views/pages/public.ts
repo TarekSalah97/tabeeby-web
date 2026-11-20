@@ -1,0 +1,359 @@
+import { html, type SafeHtml } from '../html.js';
+import type { Ctx } from '../../http/context.js';
+import { href } from '../../http/context.js';
+import { layout } from '../layout.js';
+import { alert, icon, initials, select } from '../components.js';
+import { pick, formatShortDate, formatTime, formatNumber, type MessageKey } from '../../i18n/index.js';
+import type { ReferenceData } from '../../services/reference.js';
+import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
+import type { Slot } from '../../domain/availability.js';
+import { todayIn, addDays } from '../../domain/time.js';
+
+const listSep = (ctx: Ctx) => (ctx.locale === 'ar' ? '، ' : ', ');
+export const money = (ctx: Ctx, n: number) => ctx.t('common.egp', { amount: formatNumber(n, ctx.locale) });
+
+function searchForm(ctx: Ctx, ref: ReferenceData, f: Partial<SearchFilters>, compact = false): SafeHtml {
+  return html`<form class="search-form${compact ? ' compact' : ''}" method="get" action="${href(ctx, '/search')}" role="search">
+    <label class="search-field wide">
+      <span class="search-label">${ctx.t('search.whatLabel')}</span>
+      <input type="search" name="q" value="${f.q ?? ''}" placeholder="${ctx.t('search.whatPlaceholder')}" maxlength="80">
+    </label>
+    <label class="search-field">
+      <span class="search-label">${ctx.t('search.district')}</span>
+      <select name="district">
+        <option value="">${ctx.t('search.anyDistrict')}</option>
+        ${ref.districts.map((d) => html`<option value="${d.slug}"${f.districtId === d.id ? html` selected` : ''}>${pick(ctx.locale, d)}</option>`)}
+      </select>
+    </label>
+    ${ref.insurers.length
+      ? html`<label class="search-field">
+          <span class="search-label">${ctx.t('search.insurance')}</span>
+          <select name="insurer"><option value="">${ctx.t('search.anyInsurance')}</option>
+          ${ref.insurers.map((i) => html`<option value="${i.slug}"${f.insurerId === i.id ? html` selected` : ''}>${pick(ctx.locale, i)}</option>`)}</select>
+        </label>`
+      : ''}
+    <button type="submit" class="btn btn-primary btn-search">${icon.search}${ctx.t('common.search')}</button>
+  </form>`;
+}
+
+export function homePage(ctx: Ctx, ref: ReferenceData): SafeHtml {
+  const conditions = ref.conditions.slice(0, 6);
+  const examples = ref.conditions.filter((c) => c.subspecialty_id !== null).slice(0, 4);
+  const body = html`
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <span class="pill">${ctx.t('home.badge')}</span>
+        <h1>${ctx.t('home.h1')}</h1>
+        <p class="lead">${ctx.t('home.lead')}</p>
+        ${searchForm(ctx, ref, {})}
+        <div class="chips-row">
+          <span class="muted">${ctx.t('home.popular')}</span>
+          ${conditions.map((c) => html`<a class="chip-link" href="${href(ctx, '/search', { q: ctx.locale === 'ar' ? c.term_ar : c.term_en })}">${ctx.locale === 'ar' ? c.term_ar : c.term_en}</a>`)}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container trust-grid" aria-label="${ctx.t('brand')}">
+    <div class="trust-item">${icon.shieldOutline}<div><strong>${ctx.t('home.trust1Title')}</strong><p>${ctx.t('home.trust1Body')}</p></div></div>
+    <div class="trust-item">${icon.calendar}<div><strong>${ctx.t('home.trust2Title')}</strong><p>${ctx.t('home.trust2Body')}</p></div></div>
+    <div class="trust-item">${icon.wallet}<div><strong>${ctx.t('home.trust3Title')}</strong><p>${ctx.t('home.trust3Body')}</p></div></div>
+  </section>
+
+  <section class="container section" id="specialties">
+    <div class="section-head"><div><h2>${ctx.t('home.specialtiesTitle')}</h2><p class="lead-sm">${ctx.t('home.specialtiesLead')}</p></div></div>
+    <div class="card-grid">
+      ${ref.specialties.map(
+        (s) => html`<a class="spec-card" href="${href(ctx, '/search', { specialty: s.slug })}">
+          <span class="spec-name">${pick(ctx.locale, s)}</span>
+          <span class="spec-subs">${s.subspecialties.slice(0, 4).map((x) => pick(ctx.locale, x)).join(' · ')}</span>
+        </a>`,
+      )}
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="panel split">
+      <div class="stack">
+        <span class="kicker accent">${ctx.t('home.conditionsKicker')}</span>
+        <h2>${ctx.t('home.conditionsTitle')}</h2>
+        <p class="lead-sm">${ctx.t('home.conditionsLead')}</p>
+        <p class="disclaimer">${ctx.t('home.conditionsDisclaimer')}</p>
+      </div>
+      <div class="stack">
+        ${examples.map((c) => {
+          const spec = ref.specialtyById.get(c.specialty_id);
+          const sub = c.subspecialty_id ? ref.subspecialtyById.get(c.subspecialty_id) : undefined;
+          return html`<a class="mapping" href="${href(ctx, '/search', { q: ctx.locale === 'ar' ? c.term_ar : c.term_en })}">
+            <strong>${ctx.locale === 'ar' ? `«${c.term_ar}»` : `“${c.term_en}”`}</strong>
+            <span class="mapping-target">${icon.arrow}${spec ? pick(ctx.locale, spec) : ''}${sub ? html` › ${pick(ctx.locale, sub)}` : ''}</span>
+          </a>`;
+        })}
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <h2>${ctx.t('home.stepsTitle')}</h2>
+    <ol class="steps">
+      ${(['1', '2', '3'] as const).map(
+        (n) => html`<li><span class="step-num">0${n}</span><strong>${ctx.t(`home.step${n}Title` as MessageKey)}</strong><p>${ctx.t(`home.step${n}Body` as MessageKey)}</p></li>`,
+      )}
+    </ol>
+  </section>
+
+  <section class="container section">
+    <div class="section-head"><h2>${ctx.t('home.districtsTitle')}</h2><span class="muted">${ctx.t('home.comingNext')}</span></div>
+    <div class="chips-row">
+      ${ref.districts.map((d) => html`<a class="chip-link lg" href="${href(ctx, '/search', { district: d.slug })}">${icon.pin}${pick(ctx.locale, d)}</a>`)}
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="panel dark split">
+      <div class="stack">
+        <span class="kicker light">${ctx.t('home.doctorsKicker')}</span>
+        <h2>${ctx.t('home.doctorsTitle')}</h2>
+        <p class="lead-sm">${ctx.t('home.doctorsLead')}</p>
+        <div class="row-wrap"><a class="btn btn-light btn-lg" href="${href(ctx, '/for-doctors')}">${ctx.t('home.doctorsCta')}</a></div>
+      </div>
+    </div>
+  </section>`;
+  return layout(ctx, { title: ctx.t('home.title'), description: ctx.t('home.description'), body });
+}
+
+function slotLabel(ctx: Ctx, s: Slot): string {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const today = todayIn(tz, ctx.deps.now());
+  const day = s.date === today ? ctx.t('common.today') : s.date === addDays(today, 1) ? ctx.t('common.tomorrow') : formatShortDate(s.startsAt, ctx.locale, tz);
+  return `${day} · ${formatTime(s.startsAt, ctx.locale, tz)}`;
+}
+
+export function bookHref(ctx: Ctx, slug: string, s: Slot): string {
+  return href(ctx, '/book', { doctor: slug, clinic: s.clinicId, start: s.startsAt.toISOString() });
+}
+
+function doctorCard(ctx: Ctx, ref: ReferenceData, d: DoctorCard): SafeHtml {
+  const spec = ref.specialtyById.get(d.specialtyId);
+  const title = (ctx.locale === 'ar' ? d.titleAr : d.titleEn) || d.titleEn || d.titleAr || (spec ? pick(ctx.locale, spec) : '');
+  const districts = [...new Set(d.clinics.map((c) => ref.districtById.get(c.districtId)).filter((x) => !!x).map((x) => pick(ctx.locale, x!)))];
+  return html`<article class="doctor-card">
+    <div class="doctor-main">
+      <div class="avatar" aria-hidden="true">${initials(d.fullName)}</div>
+      <div class="stack-sm">
+        <h2 class="doctor-name"><a href="${href(ctx, `/doctors/${d.slug}`)}">${d.fullName}</a>
+          <span class="verified" title="${ctx.t('search.verified')}">${icon.shield}<span class="sr-only">${ctx.t('search.verified')}</span></span></h2>
+        <p class="muted">${title}</p>
+        <div class="tags">${d.subspecialtyIds.slice(0, 3).map((id) => {
+          const s = ref.subspecialtyById.get(id);
+          return s ? html`<span class="tag">${pick(ctx.locale, s)}</span>` : '';
+        })}</div>
+        <p class="meta">${d.years > 0 ? html`<span>${ctx.t('search.experience', { n: formatNumber(d.years, ctx.locale) })}</span>` : ''}
+          ${districts.length ? html`<span>${icon.pin}${districts.join(listSep(ctx))}</span>` : ''}</p>
+      </div>
+    </div>
+    <div class="doctor-side">
+      ${d.minFee !== null ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, d.minFee)}</strong></div>` : ''}
+      ${d.nextSlots.length
+        ? html`<span class="avail">${ctx.t('search.nextAvailable')}</span>
+           <div class="slot-grid">${d.nextSlots.map((s) => html`<a class="slot" href="${bookHref(ctx, d.slug, s)}">${slotLabel(ctx, s)}</a>`)}</div>`
+        : html`<span class="muted">${ctx.t('search.noSlots')}</span>`}
+      <a class="btn btn-primary btn-block" href="${href(ctx, `/doctors/${d.slug}`)}">${ctx.t('search.viewProfile')}</a>
+    </div>
+  </article>`;
+}
+
+export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, result: { cards: DoctorCard[]; total: number; pages: number }): SafeHtml {
+  const spec = f.specialtyId ? ref.specialtyById.get(f.specialtyId) : undefined;
+  const district = f.districtId ? ref.districtById.get(f.districtId) : undefined;
+  const heading = [spec ? pick(ctx.locale, spec) : f.q || ctx.t('search.title'), district ? pick(ctx.locale, district) : ''].filter(Boolean).join(' · ');
+  const slugOf = (id: number | null, list: { id: number; slug: string }[]) => list.find((x) => x.id === id)?.slug;
+  const subs = spec?.subspecialties ?? [];
+  const pageLink = (p: number) =>
+    href(ctx, '/search', {
+      q: f.q,
+      specialty: slugOf(f.specialtyId, ref.specialties),
+      sub: slugOf(f.subspecialtyId, subs),
+      district: slugOf(f.districtId, ref.districts),
+      insurer: slugOf(f.insurerId, ref.insurers),
+      page: p,
+    });
+
+  const body = html`
+  <div class="subheader"><div class="container">${searchForm(ctx, ref, f, true)}</div></div>
+  <div class="container page">
+    <div class="results-head">
+      <div><h1>${heading}</h1>
+        <p class="muted">${result.total === 1 ? ctx.t('search.countOne') : ctx.t('search.count', { n: formatNumber(result.total, ctx.locale) })}</p></div>
+    </div>
+    <div class="results-layout">
+      <aside class="filters" aria-label="${ctx.t('search.filters')}">
+        <form method="get" action="${href(ctx, '/search')}" class="stack">
+          <input type="hidden" name="q" value="${f.q}">
+          ${select(ctx, {
+            name: 'specialty',
+            label: ctx.t('search.specialty'),
+            value: spec?.slug ?? '',
+            options: [{ value: '', label: ctx.t('search.anySpecialty') }, ...ref.specialties.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
+          })}
+          ${subs.length
+            ? select(ctx, {
+                name: 'sub',
+                label: ctx.t('search.subspecialty'),
+                value: slugOf(f.subspecialtyId, subs) ?? '',
+                options: [{ value: '', label: ctx.t('search.anySubspecialty') }, ...subs.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
+              })
+            : ''}
+          ${select(ctx, {
+            name: 'district',
+            label: ctx.t('search.district'),
+            value: district?.slug ?? '',
+            options: [{ value: '', label: ctx.t('search.anyDistrict') }, ...ref.districts.map((d) => ({ value: d.slug, label: pick(ctx.locale, d) }))],
+          })}
+          ${ref.insurers.length
+            ? select(ctx, {
+                name: 'insurer',
+                label: ctx.t('search.insurance'),
+                value: slugOf(f.insurerId, ref.insurers) ?? '',
+                options: [{ value: '', label: ctx.t('search.anyInsurance') }, ...ref.insurers.map((i) => ({ value: i.slug, label: pick(ctx.locale, i) }))],
+              })
+            : ''}
+          <button class="btn btn-primary btn-block" type="submit">${ctx.t('search.apply')}</button>
+          <a class="btn btn-ghost btn-block" href="${href(ctx, '/search')}">${ctx.t('search.clear')}</a>
+        </form>
+      </aside>
+      <div class="results">
+        ${result.cards.length
+          ? result.cards.map((c) => doctorCard(ctx, ref, c))
+          : html`<div class="empty"><h2>${ctx.t('search.noResultsTitle')}</h2><p>${ctx.t('search.noResultsBody')}</p></div>`}
+        ${result.pages > 1
+          ? html`<nav class="pagination" aria-label="Pagination">
+              ${f.page > 1 ? html`<a class="btn btn-outline" href="${pageLink(f.page - 1)}">${icon.chevronStart}${ctx.t('common.previous')}</a>` : ''}
+              <span>${ctx.t('common.pageOf', { page: formatNumber(f.page, ctx.locale), pages: formatNumber(result.pages, ctx.locale) })}</span>
+              ${f.page < result.pages ? html`<a class="btn btn-outline" href="${pageLink(f.page + 1)}">${ctx.t('common.next')}${icon.chevronEnd}</a>` : ''}
+            </nav>`
+          : ''}
+      </div>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${heading} — ${ctx.t('brand')}`, description: ctx.t('home.description'), body });
+}
+
+export function profilePage(
+  ctx: Ctx,
+  ref: ReferenceData,
+  d: PublicProfile,
+  booking: { clinicId: string; date: string; slots: Slot[]; days: { date: string; first: Date }[]; error?: MessageKey | undefined },
+): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const spec = ref.specialtyById.get(d.specialtyId);
+  const title = (ctx.locale === 'ar' ? d.titleAr : d.titleEn) || d.titleEn || d.titleAr || (spec ? pick(ctx.locale, spec) : '');
+  const clinic = d.clinics.find((c) => c.id === booking.clinicId);
+  const daySlots = booking.slots.filter((s) => s.date === booking.date);
+  const langName = (l: string) => ctx.t.dynamic(`lang.${l}`);
+
+  const body = html`
+  <div class="container page profile-layout">
+    <div class="stack-lg profile-main">
+      <section class="panel profile-head">
+        <div class="avatar xl" aria-hidden="true">${initials(d.fullName)}</div>
+        <div class="stack-sm">
+          <div class="row-wrap"><h1 dir="auto">${d.fullName}</h1><span class="badge-verified">${icon.shield}${ctx.t('doctor.verifiedBadge')}</span></div>
+          <p class="lead-sm">${title}</p>
+          <div class="tags">${d.subspecialtyIds.map((id) => {
+            const s = ref.subspecialtyById.get(id);
+            return s ? html`<span class="tag">${pick(ctx.locale, s)}</span>` : '';
+          })}</div>
+          <dl class="facts">
+            <div><dt>${ctx.t('doctor.experience')}</dt><dd>${ctx.t('common.years', { n: formatNumber(d.years, ctx.locale) })}</dd></div>
+            <div><dt>${ctx.t('doctor.languages')}</dt><dd>${d.languages.map(langName).join(listSep(ctx))}</dd></div>
+            <div><dt>${ctx.t('doctor.graduated')}</dt><dd>${formatNumber(d.graduationYear, ctx.locale).replace(/[٬,]/g, '')}</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel stack">
+        <h2>${ctx.t('doctor.about')}</h2>
+        <p class="prose" dir="auto">${d.bio || ctx.t('doctor.noBio')}</p>
+        <h3>${ctx.t('doctor.insurance')}</h3>
+        <div class="tags">${d.insurerIds.map((id) => {
+          const i = ref.insurers.find((x) => x.id === id);
+          return i ? html`<span class="tag outline">${pick(ctx.locale, i)}</span>` : '';
+        })}<span class="tag outline">${ctx.t('doctor.selfPay')}</span></div>
+      </section>
+
+      <section class="panel stack">
+        <h2>${ctx.t('doctor.clinics')}</h2>
+        <div class="card-grid two">
+          ${d.clinics.map((c) => {
+            const dist = ref.districtById.get(c.districtId);
+            const rules = d.rules.filter((r) => r.clinicId === c.id);
+            return html`<div class="clinic-card">
+              <strong dir="auto">${c.name}</strong>
+              <span class="muted" dir="auto">${c.address}${dist ? html` · ${pick(ctx.locale, dist)}` : ''}</span>
+              <span class="fee">${money(ctx, c.fee)}</span>
+              <ul class="hours">${rules.map((r) => html`<li><span>${ctx.t.dynamic(`weekday.${r.weekday}`)}</span><span dir="ltr">${r.start}–${r.end}</span></li>`)}</ul>
+            </div>`;
+          })}
+        </div>
+      </section>
+
+      ${d.positions.length
+        ? html`<section class="panel stack">
+            <h2>${ctx.t('doctor.experienceSection')}</h2>
+            <ol class="timeline">${d.positions.map(
+              (p) => html`<li><span class="muted" dir="ltr">${p.start} – ${p.end ?? ctx.t('common.present')}</span><span dir="auto"><strong>${p.title}</strong><span class="muted">${p.workplace}</span></span></li>`,
+            )}</ol>
+          </section>`
+        : ''}
+    </div>
+
+    <aside class="booking-panel" aria-labelledby="book-title">
+      <h2 id="book-title">${ctx.t('doctor.book')}</h2>
+      ${booking.error ? alert('error', ctx.t(booking.error)) : ''}
+      ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
+      ${d.clinics.length > 1
+        ? html`<div class="stack-sm"><span class="label">${ctx.t('doctor.chooseClinic')}</span>
+            <div class="stack-sm">${d.clinics.map(
+              (c) => html`<a class="choice${c.id === booking.clinicId ? ' selected' : ''}" aria-current="${c.id === booking.clinicId ? 'true' : 'false'}"
+                href="${href(ctx, `/doctors/${d.slug}`, { clinic: c.id })}#book-title"><strong>${c.name}</strong><span class="muted">${c.address}</span></a>`,
+            )}</div></div>`
+        : ''}
+      ${booking.days.length
+        ? html`<div class="stack-sm"><span class="label">${ctx.t('doctor.chooseDay')}</span>
+            <div class="day-strip">${booking.days.map(
+              (day) => html`<a class="day${day.date === booking.date ? ' selected' : ''}" aria-current="${day.date === booking.date ? 'date' : 'false'}"
+                href="${href(ctx, `/doctors/${d.slug}`, { clinic: booking.clinicId, date: day.date })}#book-title">${formatShortDate(day.first, ctx.locale, tz)}</a>`,
+            )}</div></div>
+          <div class="stack-sm"><span class="label">${ctx.t('doctor.chooseTime')}</span>
+            <div class="slot-grid">${daySlots.map((s) => html`<a class="slot" href="${bookHref(ctx, d.slug, s)}">${formatTime(s.startsAt, ctx.locale, tz)}</a>`)}</div>
+            <p class="hint">${ctx.t('doctor.slotHint')}</p></div>`
+        : html`<p class="muted">${ctx.t('doctor.noTimes')}</p>`}
+      <p class="hint center">${ctx.t('doctor.payAtClinic')}</p>
+    </aside>
+  </div>`;
+  return layout(ctx, { title: `${d.fullName} — ${title} — ${ctx.t('brand')}`, description: `${d.fullName}: ${title}`, body });
+}
+
+export function legalPage(ctx: Ctx, kind: 'privacy' | 'terms'): SafeHtml {
+  const title = ctx.t(kind === 'privacy' ? 'legal.privacyTitle' : 'legal.termsTitle');
+  return layout(ctx, { title: `${title} — ${ctx.t('brand')}`, body: html`<div class="container page narrow stack"><h1>${title}</h1><p class="lead-sm">${ctx.t('legal.placeholder')}</p></div>` });
+}
+
+export function errorPage(ctx: Ctx, status: number, messageKey: string): SafeHtml {
+  return layout(ctx, {
+    title: `${ctx.t('error.title')} — ${ctx.t('brand')}`,
+    noindex: true,
+    body: html`<div class="container page narrow stack center">
+      <p class="error-code">${status}</p><h1>${ctx.t('error.title')}</h1><p class="lead-sm">${ctx.t.dynamic(messageKey)}</p>
+      <a class="btn btn-primary" href="${href(ctx, '/')}">${ctx.t('error.home')}</a></div>`,
+  });
+}
+
+/** Compute the per-day summary for the booking strip. */
+export function groupDays(slots: Slot[]): { date: string; first: Date }[] {
+  const days: { date: string; first: Date }[] = [];
+  for (const s of slots) if (!days.find((d) => d.date === s.date)) days.push({ date: s.date, first: s.startsAt });
+  return days;
+}

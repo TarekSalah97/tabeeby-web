@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2023"], "sourceMap": true },
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+var/
+scratch/
+backups/
+.env
+.env.production
+*.log

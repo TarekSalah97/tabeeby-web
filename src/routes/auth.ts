@@ -1,0 +1,151 @@
+import type { Router } from '../http/router.js';
+import type { Ctx } from '../http/context.js';
+import { href, requireUser, safeNext, setCookie } from '../http/context.js';
+import { sendHtml, redirect } from '../http/respond.js';
+import { field, fieldAll } from '../http/body.js';
+import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPreferredLocale } from '../services/accounts.js';
+import { registerDoctor, type PositionInput } from '../services/doctors.js';
+import { getReference } from '../services/reference.js';
+import { destroySession, SESSION_COOKIE } from '../auth/sessions.js';
+import { loginPage, signupPage, verifyPage } from '../views/pages/auth.js';
+import { joinPage } from '../views/pages/forDoctors.js';
+import { HttpError } from '../http/errors.js';
+import { startSession, homeFor, localized, formValue } from './helpers.js';
+
+const nextParam = (ctx: Ctx) => safeNext(ctx.method === 'GET' ? ctx.query.get('next') : field(ctx.form, 'next'));
+
+/** Where to go after a successful sign-in or verification. */
+function afterAuth(ctx: Ctx, role: 'patient' | 'doctor' | 'admin', next: string | null): string {
+  if (next) return localized(ctx, next);
+  return homeFor(ctx, role);
+}
+
+async function sendOtpQuietly(ctx: Ctx, user: { id: string; phone: string }): Promise<void> {
+  try {
+    await issuePhoneOtp(ctx.deps, { ...user, locale: ctx.locale });
+  } catch (e) {
+    // Rate-limited resend after sign-up: the earlier code is still valid.
+    if (!(e instanceof HttpError && e.status === 429)) throw e;
+  }
+}
+
+export function authRoutes(r: Router): void {
+  r.get('/login', async (ctx) => {
+    if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
+    sendHtml(ctx, 200, loginPage(ctx, { next: nextParam(ctx) }));
+  });
+
+  r.post('/login', async (ctx) => {
+    const next = nextParam(ctx);
+    const phone = formValue(ctx, 'phone');
+    const user = await authenticate(ctx.deps, phone, ctx.form['password']?.[0] ?? '', ctx.ip);
+    if (!user) return sendHtml(ctx, 401, loginPage(ctx, { phone, error: 'auth.invalidCredentials', next }));
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, user.id, user.role);
+    await setPreferredLocale(ctx.deps, user.id, ctx.locale);
+    if (!user.phoneVerified && user.role !== 'admin') {
+      return redirect(ctx, href(ctx, '/verify-phone', { next: next ?? undefined }));
+    }
+    redirect(ctx, afterAuth(ctx, user.role, next));
+  });
+
+  r.post('/logout', async (ctx) => {
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    setCookie(ctx, SESSION_COOKIE, '', { httpOnly: true, sameSite: 'Lax', maxAgeSeconds: 0 });
+    redirect(ctx, href(ctx, '/'));
+  });
+
+  r.get('/signup', async (ctx) => {
+    if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
+    sendHtml(ctx, 200, signupPage(ctx, { next: nextParam(ctx) }));
+  });
+
+  r.post('/signup', async (ctx) => {
+    const next = nextParam(ctx);
+    const values = { fullName: formValue(ctx, 'fullName'), phone: formValue(ctx, 'phone') };
+    const result = await registerPatient(ctx.deps, {
+      ...values,
+      password: ctx.form['password']?.[0] ?? '',
+      consent: formValue(ctx, 'consent') === 'yes',
+      locale: ctx.locale,
+      ip: ctx.ip,
+    });
+    if ('errors' in result) return sendHtml(ctx, 422, signupPage(ctx, { values, errors: result.errors, next }));
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, result.userId, 'patient');
+    const { rows } = await ctx.deps.db.query<{ phone_e164: string }>('select phone_e164 from users where id = $1', [result.userId]);
+    await sendOtpQuietly(ctx, { id: result.userId, phone: rows[0]!.phone_e164 });
+    redirect(ctx, href(ctx, '/verify-phone', { next: next ?? undefined }));
+  });
+
+  r.get('/verify-phone', async (ctx) => {
+    const user = requireUser(ctx);
+    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, nextParam(ctx)));
+    sendHtml(ctx, 200, verifyPage(ctx, { next: nextParam(ctx) }));
+  });
+
+  r.post('/verify-phone', async (ctx) => {
+    const user = requireUser(ctx);
+    const next = nextParam(ctx);
+    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
+    const problem = await verifyPhoneOtp(ctx.deps, user.id, formValue(ctx, 'code'));
+    if (problem) return sendHtml(ctx, 422, verifyPage(ctx, { error: problem, next }));
+    redirect(ctx, afterAuth(ctx, user.role, next));
+  });
+
+  r.post('/verify-phone/resend', async (ctx) => {
+    const user = requireUser(ctx);
+    const next = nextParam(ctx);
+    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
+    await issuePhoneOtp(ctx.deps, { id: user.id, phone: user.phone, locale: ctx.locale });
+    sendHtml(ctx, 200, verifyPage(ctx, { notice: 'verify.resent', next }));
+  });
+
+  r.get('/for-doctors/join', async (ctx) => {
+    if (ctx.user?.role === 'doctor') return redirect(ctx, href(ctx, '/dashboard'));
+    sendHtml(ctx, 200, joinPage(ctx, await getReference(ctx.deps.db), {}));
+  });
+
+  r.post('/for-doctors/join', async (ctx) => {
+    const f = ctx.form;
+    const titles = f['posTitle'] ?? [];
+    const positions: PositionInput[] = titles.slice(0, 10).map((_, i) => ({
+      title: (f['posTitle']?.[i] ?? '').trim(),
+      workplace: (f['posWorkplace']?.[i] ?? '').trim(),
+      start: (f['posStart']?.[i] ?? '').trim(),
+      end: (f['posEnd']?.[i] ?? '').trim(),
+    }));
+    const values = {
+      fullName: field(f, 'fullName'),
+      email: field(f, 'email'),
+      phone: field(f, 'phone'),
+      kind: field(f, 'kind'),
+      specialty: field(f, 'specialty'),
+      graduationYear: field(f, 'graduationYear'),
+      subspecialties: fieldAll(f, 'subspecialties'),
+    };
+    const result = await registerDoctor(ctx.deps, {
+      fullName: values.fullName,
+      email: values.email,
+      phone: values.phone,
+      password: f['password']?.[0] ?? '',
+      kind: values.kind,
+      specialtyId: Number(values.specialty),
+      subspecialtyIds: values.subspecialties.map(Number).filter(Number.isInteger),
+      graduationYear: Number(values.graduationYear),
+      positions,
+      card: ctx.files.find((x) => x.field === 'card'),
+      consent: field(f, 'consent') === 'yes',
+      locale: ctx.locale,
+      ip: ctx.ip,
+    });
+    if ('errors' in result) {
+      return sendHtml(ctx, 422, joinPage(ctx, await getReference(ctx.deps.db), { values, positions, errors: result.errors }));
+    }
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, result.userId, 'doctor');
+    const { rows } = await ctx.deps.db.query<{ phone_e164: string }>('select phone_e164 from users where id = $1', [result.userId]);
+    await sendOtpQuietly(ctx, { id: result.userId, phone: rows[0]!.phone_e164 });
+    redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));
+  });
+}

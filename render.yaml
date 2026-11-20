@@ -16,8 +16,7 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     autoDeploy: true
-    # Apply migrations, create/refresh the admin from ADMIN_* if set, then start.
-    dockerCommand: sh -c "node dist/scripts/migrate.js && (node dist/scripts/create-admin.js || true) && exec node dist/src/server.js"
+    # The image's start script applies migrations, creates the admin from ADMIN_* if set, then starts.
     envVars:
       - key: NODE_ENV
         value: production

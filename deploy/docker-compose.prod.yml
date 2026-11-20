@@ -38,6 +38,7 @@ services:
 
   app:
     image: tabeeby-app:latest
+    command: ["node", "dist/src/server.js"]   # migrations run in the 'migrate' service
     restart: unless-stopped
     env_file: ../.env.production
     environment:

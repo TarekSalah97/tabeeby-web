@@ -55,6 +55,12 @@ export function homePage(ctx: Ctx, ref: ReferenceData): SafeHtml {
     </div>
   </section>
 
+  ${ctx.deps.ai ? html`<section class="container">
+    <div class="sc-promo">
+      <div class="stack-sm"><span class="pill small">${ctx.t('sc.badge')}</span><h2>${ctx.t('sc.promoTitle')}</h2><p class="lead-sm">${ctx.t('sc.promoBody')}</p></div>
+      <a class="btn btn-primary btn-lg" href="${href(ctx, '/symptom-checker')}">${ctx.t('sc.promoCta')}</a>
+    </div>
+  </section>` : ''}
   <section class="container trust-grid" aria-label="${ctx.t('brand')}">
     <div class="trust-item">${icon.shieldOutline}<div><strong>${ctx.t('home.trust1Title')}</strong><p>${ctx.t('home.trust1Body')}</p></div></div>
     <div class="trust-item">${icon.calendar}<div><strong>${ctx.t('home.trust2Title')}</strong><p>${ctx.t('home.trust2Body')}</p></div></div>

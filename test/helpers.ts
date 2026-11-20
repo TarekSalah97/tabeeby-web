@@ -79,6 +79,9 @@ export class Client {
   csrf = '';
   constructor(readonly base: string) {}
 
+  /** Extra request headers, e.g. x-forwarded-for to look like a different visitor. */
+  extraHeaders: Record<string, string> = {};
+
   private cookieHeader(): string {
     return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
   }
@@ -95,7 +98,7 @@ export class Client {
   }
 
   async get(path: string): Promise<{ status: number; body: string; location: string | null; headers: Headers }> {
-    const res = await fetch(this.base + path, { redirect: 'manual', headers: { cookie: this.cookieHeader() } });
+    const res = await fetch(this.base + path, { redirect: 'manual', headers: { ...this.extraHeaders, cookie: this.cookieHeader() } });
     this.absorb(res);
     const body = await res.text();
     const m = /name="_csrf" value="([^"]+)"/.exec(body);
@@ -108,7 +111,7 @@ export class Client {
     for (const [k, v] of Object.entries(fields)) for (const x of Array.isArray(v) ? v : [v]) params.append(k, x);
     const token = opts.csrf === undefined ? this.csrf : opts.csrf;
     if (token !== null) params.set('_csrf', token);
-    const headers: Record<string, string> = { cookie: this.cookieHeader(), 'content-type': 'application/x-www-form-urlencoded' };
+    const headers: Record<string, string> = { ...this.extraHeaders, cookie: this.cookieHeader(), 'content-type': 'application/x-www-form-urlencoded' };
     const origin = opts.origin === undefined ? this.base : opts.origin;
     if (origin !== null) headers['origin'] = origin;
     const res = await fetch(this.base + path, { method: 'POST', redirect: 'manual', headers, body: params.toString() });

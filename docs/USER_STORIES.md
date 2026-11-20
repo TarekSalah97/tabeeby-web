@@ -55,6 +55,15 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - Prescriptions and lab orders are never edited, only cancelled with a reason; the database refuses changes (I).
 - Printable A4 page in Arabic or English (I).
 
+## Patients — symptom checker
+
+**P-SC — Which specialist do I need?** As a patient who doesn't know which doctor to see, I want to describe my symptoms and get a suggested specialty, so that I book the right doctor.
+- Only shown when an AI provider key is configured (I). Consent required before anything is sent (I).
+- Suggestions only from Tabeeby's specialties, best first, max 3, each linking to matching doctors (I).
+- Emergency warning signs (Arabic and English, many wordings) always show "call 123", whatever the AI says (U, I).
+- If the AI fails or the daily cap is reached, keyword matching is used and labelled (I). 8 requests per hour per visitor (I).
+- The description is never stored (I). It is guidance, never a diagnosis.
+
 ## Patients — prescriptions
 
 **P-RX — My prescriptions.** As a patient, I want to see the prescriptions and lab orders my doctors issued, so that I can show them at the pharmacy or lab.

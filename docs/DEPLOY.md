@@ -65,6 +65,10 @@ SMS_PROVIDER=http
 SMS_HTTP_URL=<gateway endpoint>
 SMS_HTTP_TOKEN=<gateway token>
 SMS_SENDER_ID=Tabeeby
+# Optional: "Which specialist do I need?" (AI symptom checker). Hidden unless the key is set.
+ANTHROPIC_API_KEY=<key from console.anthropic.com>   # secret
+AI_MODEL=claude-haiku-5-5                            # default
+AI_DAILY_LIMIT=500                                   # AI calls per day site-wide; keyword matching after that
 ```
 
 `DATABASE_URL`, `UPLOAD_DIR` and `TRUST_PROXY` are set by the compose file. If your gateway's API is not `POST {to, sender, body}` with a bearer token, adapt `HttpSmsProvider` in `src/services/sms.ts` (one class) and add a test.

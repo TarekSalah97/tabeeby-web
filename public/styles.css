@@ -355,6 +355,17 @@ details[open] > summary { margin-block-end: 12px; }
 .segmented span { display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 9px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .segmented input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .segmented input:focus-visible + span { outline: 3px solid #2f7de1; }
+.segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.segmented span { text-align: center; padding-inline: 6px; }
+/* Symptom checker */
+.sc-promo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; margin-block-start: 40px; padding: 28px; border-radius: 22px; background: var(--primary-tint); border: 1px solid var(--primary-line); }
+.sc-promo h2 { font-size: clamp(1.25rem, 1.05rem + .8vw, 1.6rem); }
+.sc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.sc-card { display: flex; flex-direction: column; gap: 8px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; }
+.sc-card.best { border: 2px solid var(--primary); }
+.sc-card h3 { font-size: 1.25rem; }
+.sc-emergency { font-size: 1.05rem; gap: 10px; }
+.sc-emergency .alert-title { font-size: 1.2rem; }
 .summary { display: grid; gap: 12px; margin: 0; }
 .summary > div { display: grid; grid-template-columns: minmax(110px, 180px) minmax(0, 1fr); gap: 12px; padding-block: 10px; border-block-end: 1px solid #eef1ef; }
 .summary dt { color: var(--muted); }

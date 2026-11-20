@@ -23,7 +23,9 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 | record_revisions | patients | **Yes — health data** | Earlier versions of edited files and visit notes | Nobody in the UI (database operators) | As above |
 | doctor_medicines (medicine names a doctor has prescribed) | doctors | No | Type-ahead suggestions | That doctor | While the doctor's account exists |
 
-**Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), backup storage provider.
+| Symptom checker description, age group, sex | visitors and patients | **Yes — health data** | Suggest a specialty | Sent to the AI provider (Anthropic, USA) only after the visitor ticks a consent box; **not stored by Tabeeby** (not in the database or logs). Only a per-IP request counter is kept (rate_limits). | Not stored |
+
+**Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), backup storage provider, AI provider for the symptom checker (Anthropic; receives the symptom description).
 
 **Not collected:** lab results (only the requests), payment cards, national ID numbers, location tracking, analytics cookies.
 
@@ -34,4 +36,5 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 4. Data-subject request process (access, correction, deletion) — v1 has no self-service deletion; requests are handled by admins in the database.
 5. Whether a Data Protection Officer must be appointed.
 6. Clinical records (patient files, visit notes, prescriptions, lab orders) are sensitive health data stored outside Egypt. The feature is off by default and switched on per doctor by an admin; confirm the PDPC licence, cross-border transfer, consent wording ("The patient agreed that I keep a medical file for them on Tabeeby", recorded with a timestamp) and retention before turning it on for real patients.
+8. Symptom checker: confirm the consent wording and cross-border transfer of symptom descriptions to Anthropic (USA), and Anthropic's data-retention terms for API inputs.
 7. Confirm what an Egyptian prescription must show (e.g. syndicate number, signature) — the printout currently shows the doctor's name, specialty, title, clinic, patient, date, medicines and a signature line.

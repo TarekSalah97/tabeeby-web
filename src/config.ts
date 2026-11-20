@@ -46,6 +46,12 @@ const schema = z
 
     TIME_ZONE: z.string().default('Africa/Cairo'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    // "Which specialist do I need?" — off unless an Anthropic API key is set.
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    AI_MODEL: z.string().default('claude-haiku-5-5'),
+    AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(20000),
+    // Site-wide cap on AI calls per day, to bound cost; past it, keyword matching is used.
+    AI_DAILY_LIMIT: z.coerce.number().int().min(0).max(100000).default(500),
     /** Run the notifications worker inside the web process. */
     /**
      * Public demo: fictional data only. Shows a banner, hides the site from search

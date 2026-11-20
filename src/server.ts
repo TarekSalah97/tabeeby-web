@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { createDb } from './db/db.js';
 import { createApp } from './app.js';
 import { createSmsProvider } from './services/sms.js';
+import { createAdvisor } from './services/symptomChecker.js';
 import { LocalFileStorage, DbFileStorage } from './storage/files.js';
 import { startWorker } from './jobs/worker.js';
 import { log, setLogLevel, errorFields } from './log.js';
@@ -17,6 +18,7 @@ const deps: Deps = {
   sms: createSmsProvider(cfg),
   storage: cfg.STORAGE_DRIVER === 'db' ? new DbFileStorage(db) : new LocalFileStorage(cfg.UPLOAD_DIR),
   now: () => new Date(),
+  ai: createAdvisor(cfg),
 };
 if (cfg.SMS_PROVIDER === 'none') log.warn('running without SMS: phone numbers are not verified and no confirmations or reminders are sent');
 

@@ -58,6 +58,7 @@ ${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('de
     </a>
     <nav aria-label="${ctx.t('nav.main')}" class="main-nav">
       <a href="${href(ctx, '/search')}">${ctx.t('nav.findDoctor')}</a>
+      ${ctx.deps.ai && ctx.user?.role !== 'doctor' && ctx.user?.role !== 'admin' ? html`<a href="${href(ctx, '/symptom-checker')}">${ctx.t('nav.symptomChecker')}</a>` : ''}
       <a href="${href(ctx, '/for-doctors')}">${ctx.t('nav.forDoctors')}</a>
     </nav>
     <div class="header-actions">

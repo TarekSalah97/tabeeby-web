@@ -6,6 +6,7 @@ import type { FormFields, UploadedFile } from './body.js';
 import type { Locale, Translator } from '../i18n/index.js';
 import type { SmsProvider } from '../services/sms.js';
 import type { FileStorage } from '../storage/files.js';
+import type { SpecialtyAdvisor } from '../services/symptomChecker.js';
 import { serializeCookie, type CookieOptions } from './cookies.js';
 import { forbidden } from './errors.js';
 
@@ -15,6 +16,8 @@ export interface Deps {
   sms: SmsProvider;
   storage: FileStorage;
   now: () => Date;
+  /** Symptom checker AI; null/undefined when no API key is configured. */
+  ai?: SpecialtyAdvisor | null;
 }
 
 export interface Ctx {

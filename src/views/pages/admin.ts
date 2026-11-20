@@ -2,7 +2,8 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField } from '../components.js';
+import { alert, csrfField, starRow } from '../components.js';
+import type { AdminReview } from '../../services/reviews.js';
 import { pick, formatDateTime, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { ReviewDetail, ReviewListItem } from '../../services/admin.js';
@@ -21,7 +22,7 @@ export function adminListPage(ctx: Ctx, ref: ReferenceData, data: { pending: Rev
         <td>${vstatus(ctx, r.verification_status)}</td><td><a class="btn btn-outline btn-sm" href="${href(ctx, `/admin/doctors/${r.user_id}`)}">${ctx.t('admin.review')}</a></td></tr>`;
     })}</tbody></table></div>`;
   const body = html`<div class="container page stack-lg">
-    <h1>${ctx.t('admin.title')}</h1>
+    <div class="row-between"><h1>${ctx.t('admin.title')}</h1><a class="btn btn-outline" href="${href(ctx, '/admin/reviews')}">${ctx.t('admin.reviewsLink')}</a></div>
     ${notice ? alert('success', ctx.t(notice)) : ''}
     <section class="panel stack"><h2>${ctx.t('admin.pending')}</h2>${data.pending.length ? table(data.pending) : html`<p class="muted">${ctx.t('admin.none')}</p>`}</section>
     ${data.recent.length ? html`<section class="panel stack"><h2>${ctx.t('admin.recent')}</h2>${table(data.recent)}</section>` : ''}
@@ -78,4 +79,35 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
     </section>
   </div>`;
   return layout(ctx, { title: `${d.full_name} — ${ctx.t('admin.title')}`, body, variant: 'app', noindex: true });
+}
+
+export function adminReviewsPage(ctx: Ctx, reviews: AdminReview[], o: { notice?: MessageKey; error?: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const body = html`<div class="container page stack-lg">
+    <a href="${href(ctx, '/admin')}">← ${ctx.t('common.back')}</a>
+    <div><h1>${ctx.t('admin.reviewsTitle')}</h1><p class="muted">${ctx.t('admin.reviewsLead')}</p></div>
+    ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
+    ${o.error ? alert('error', ctx.t(o.error)) : ''}
+    ${reviews.length
+      ? html`<ul class="appt-list">${reviews.map(
+          (r) => html`<li class="appt-row${r.status === 'hidden' ? ' muted-row' : ''}">
+            <div class="stack-sm">
+              <div class="row-wrap">${starRow(ctx, r.rating)}<span class="chip ${r.status === 'hidden' ? 'status-cancelled' : 'status-confirmed'}">${ctx.t(r.status === 'hidden' ? 'admin.reviewHidden' : 'admin.reviewVisible')}</span></div>
+              ${r.comment ? html`<p class="prose" dir="auto">${r.comment}</p>` : ''}
+              <span class="muted small" dir="auto"><a href="${href(ctx, `/doctors/${r.doctor_slug}`)}">${r.doctor_name}</a> · ${r.patient_name} · ${formatDateTime(r.created_at, ctx.locale, tz)}</span>
+              ${r.hidden_reason ? html`<span class="muted small">${ctx.t('admin.hideReason')}: ${r.hidden_reason}</span>` : ''}
+            </div>
+            <form method="post" action="${href(ctx, `/admin/reviews/${r.id}/${r.status === 'hidden' ? 'show' : 'hide'}`)}" class="stack-sm">
+              ${csrfField(ctx)}
+              ${r.status === 'visible'
+                ? html`<label class="sr-only" for="reason-${r.id}">${ctx.t('admin.hideReason')}</label>
+                   <input id="reason-${r.id}" name="reason" maxlength="200" required placeholder="${ctx.t('admin.hideReason')}">`
+                : ''}
+              <button type="submit" class="btn btn-outline btn-sm">${ctx.t(r.status === 'hidden' ? 'admin.reviewShow' : 'admin.reviewHide')}</button>
+            </form>
+          </li>`,
+        )}</ul>`
+      : html`<p class="muted">${ctx.t('admin.reviewsNone')}</p>`}
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('admin.reviewsTitle')} — ${ctx.t('brand')}`, body, variant: 'app', noindex: true });
 }

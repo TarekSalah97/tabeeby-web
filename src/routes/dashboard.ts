@@ -12,6 +12,7 @@ import {
 } from '../services/doctors.js';
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
+import { ratingsFor } from '../services/reviews.js';
 import { todayPage, clinicsPage, hoursPage, profileEditPage, type HoursFormValues } from '../views/pages/dashboard.js';
 import { experienceYears } from '../domain/experience.js';
 import { isValidDate, todayIn } from '../domain/time.js';
@@ -92,7 +93,8 @@ export function dashboardRoutes(r: Router): void {
       listOwnClinics(db, user.id),
       listOwnRules(db, user.id),
     ]);
-    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, notice: ok(ctx) }));
+    const rating = (await ratingsFor(db, [user.id])).get(user.id) ?? null;
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, notice: ok(ctx) }));
   });
 
   r.post('/dashboard/appointments/:id/status', async (ctx) => {

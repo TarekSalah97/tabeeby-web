@@ -5,10 +5,11 @@ import { applyDocumentHeaders } from '../http/security.js';
 import { getReference } from '../services/reference.js';
 import { listForReview, getForReview, decide, readDocument, type Decision } from '../services/admin.js';
 import { setRecordsEnabled } from '../services/records.js';
-import { adminListPage, adminDoctorPage } from '../views/pages/admin.js';
+import { adminListPage, adminDoctorPage, adminReviewsPage } from '../views/pages/admin.js';
+import { listReviewsForAdmin, setReviewVisibility } from '../services/reviews.js';
 import { DomainError, notFound } from '../http/errors.js';
 import { isMessageKey } from '../i18n/index.js';
-import { formValue, noticeFrom, uuidParam } from './helpers.js';
+import { errorFrom, formValue, noticeFrom, uuidParam } from './helpers.js';
 
 const DECISIONS: Decision[] = ['approve', 'reject', 'suspend', 'reinstate'];
 
@@ -17,6 +18,25 @@ export function adminRoutes(r: Router): void {
     requireUser(ctx, 'admin');
     const [ref, data] = await Promise.all([getReference(ctx.deps.db), listForReview(ctx.deps.db)]);
     sendHtml(ctx, 200, adminListPage(ctx, ref, data, noticeFrom(ctx)));
+  });
+
+  r.get('/admin/reviews', async (ctx) => {
+    requireUser(ctx, 'admin');
+    sendHtml(ctx, 200, adminReviewsPage(ctx, await listReviewsForAdmin(ctx.deps.db), { notice: noticeFrom(ctx), error: errorFrom(ctx) }));
+  });
+
+  r.post('/admin/reviews/:id/:action', async (ctx) => {
+    const admin = requireUser(ctx, 'admin');
+    const id = uuidParam(ctx, 'id');
+    const action = ctx.params['action'];
+    if (action !== 'hide' && action !== 'show') throw notFound();
+    try {
+      await setReviewVisibility(ctx.deps, admin, id, action === 'show', formValue(ctx, 'reason'), ctx.ip);
+      redirect(ctx, href(ctx, '/admin/reviews', { ok: 'done' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/admin/reviews', { error: e.messageKey }));
+    }
   });
 
   r.get('/admin/doctors/:id', async (ctx) => {

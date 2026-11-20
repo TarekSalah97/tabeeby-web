@@ -11,7 +11,7 @@ export async function slotsForDoctors(
   db: Queryable,
   cfg: Pick<Config, 'TIME_ZONE' | 'BOOKING_MIN_LEAD_MINUTES'>,
   doctorIds: string[],
-  opts: { fromDate?: string; days: number; now: Date; clinicId?: string },
+  opts: { fromDate?: string; days: number; now: Date; clinicId?: string; ignoreAppointments?: boolean },
 ): Promise<Map<string, Slot[]>> {
   const result = new Map<string, Slot[]>();
   if (!doctorIds.length) return result;
@@ -41,7 +41,8 @@ export async function slotsForDoctors(
   ]);
 
   const busyBy = new Map<string, Interval[]>();
-  for (const b of [...appts.rows, ...blocks.rows]) {
+  // ignoreAppointments: the slots the doctor would offer if nobody had booked (used to find fully booked days).
+  for (const b of [...(opts.ignoreAppointments ? [] : appts.rows), ...blocks.rows]) {
     const list = busyBy.get(b.doctor_id) ?? [];
     list.push({ start: b.starts_at, end: b.ends_at });
     busyBy.set(b.doctor_id, list);

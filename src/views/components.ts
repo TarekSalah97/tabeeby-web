@@ -6,6 +6,24 @@ import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
 
 export const icon = {
+  logoSmall: trusted(
+    '<svg width="22" height="22" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"></rect><path d="M18 9v18M9 18h18" stroke="#fff" stroke-width="4" stroke-linecap="round"></path></svg>',
+  ),
+  star: trusted(
+    '<svg class="star" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8L12 2.8Z" fill="currentColor"></path></svg>',
+  ),
+  phone: trusted(
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"></path></svg>',
+  ),
+  directions: trusted(
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>',
+  ),
+  repeat: trusted(
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path></svg>',
+  ),
+  bell: trusted(
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>',
+  ),
   logo: trusted(
     '<svg class="logo-mark" width="34" height="34" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"></rect><path d="M18 9v18M9 18h18" stroke="#fff" stroke-width="4" stroke-linecap="round"></path></svg>',
   ),
@@ -155,4 +173,26 @@ export function statusChip(ctx: Ctx, status: string): SafeHtml {
 
 export function t(ctx: Ctx, key: MessageKey, vars?: Record<string, string | number>): string {
   return ctx.t(key, vars);
+}
+
+/** "★ 4.6 (12 reviews)" — the stars are decorative; the text carries the meaning for screen readers. */
+export function ratingBadge(ctx: Ctx, r: { avg: number; count: number } | null, opts: { compact?: boolean } = {}): SafeHtml {
+  if (!r || r.count === 0) return html``;
+  const avg = new Intl.NumberFormat(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(r.avg);
+  const count = new Intl.NumberFormat(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB').format(r.count);
+  const label = r.count === 1 ? ctx.t('reviews.countOne', { avg }) : ctx.t('reviews.count', { avg, n: count });
+  return html`<span class="rating${opts.compact ? ' compact' : ''}" title="${label}">${icon.star}<strong>${avg}</strong><span class="muted">(${count})</span><span class="sr-only">${label}</span></span>`;
+}
+
+/** Five stars filled up to `rating`, for a single review. */
+export function starRow(ctx: Ctx, rating: number): SafeHtml {
+  return html`<span class="star-row" role="img" aria-label="${ctx.t('reviews.stars', { n: rating })}">${[1, 2, 3, 4, 5].map(
+    (n) => html`<span class="${n <= rating ? 'on' : 'off'}">${icon.star}</span>`,
+  )}</span>`;
+}
+
+/** Opens the clinic in Google Maps (the patient's own app on phones). No data is sent from our side. */
+export function directionsHref(address: string, district: string): string {
+  const q = [address, district, 'Egypt'].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }

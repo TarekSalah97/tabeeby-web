@@ -7,11 +7,20 @@ import { homePage, searchPage, profilePage, legalPage, groupDays } from '../view
 import { forDoctorsPage } from '../views/pages/forDoctors.js';
 import { notFound } from '../http/errors.js';
 import { isValidDate } from '../domain/time.js';
-import { errorFrom } from './helpers.js';
+import { errorFrom, noticeFrom } from './helpers.js';
+import { listDoctorReviews } from '../services/reviews.js';
+import { fullDays, waitingDates } from '../services/waitlist.js';
+import { recentDoctors, nextVisit } from '../services/patientHome.js';
 
 export function publicRoutes(r: Router): void {
   r.get('/', async (ctx) => {
-    sendHtml(ctx, 200, homePage(ctx, await getReference(ctx.deps.db)));
+    const ref = await getReference(ctx.deps.db);
+    const user = ctx.user;
+    const patient =
+      user?.role === 'patient'
+        ? await Promise.all([recentDoctors(ctx.deps.db, user.id), nextVisit(ctx.deps.db, user.id)]).then(([recent, next]) => ({ recent, next }))
+        : undefined;
+    sendHtml(ctx, 200, homePage(ctx, ref, patient));
   });
 
   r.get('/search', async (ctx) => {
@@ -53,7 +62,16 @@ export function publicRoutes(r: Router): void {
     const days = groupDays(slots);
     const requestedDate = ctx.query.get('date') ?? '';
     const date = isValidDate(requestedDate) && days.some((d) => d.date === requestedDate) ? requestedDate : (days[0]?.date ?? '');
-    sendHtml(ctx, 200, profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx) }));
+    const [reviews, full, waiting] = await Promise.all([
+      listDoctorReviews(ctx.deps.db, doctor.id),
+      clinicId ? fullDays(ctx.deps, ctx.deps.db, doctor.id, clinicId) : Promise.resolve([]),
+      clinicId && ctx.user?.role === 'patient' ? waitingDates(ctx.deps, ctx.user.id, clinicId) : Promise.resolve([]),
+    ]);
+    sendHtml(
+      ctx,
+      200,
+      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: full, waiting }, reviews),
+    );
   });
 
   r.get('/for-doctors', async (ctx) => {

@@ -2,12 +2,14 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, icon, initials, select } from '../components.js';
-import { pick, formatShortDate, formatTime, formatNumber, type MessageKey } from '../../i18n/index.js';
+import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow } from '../components.js';
+import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
 import type { Slot } from '../../domain/availability.js';
-import { todayIn, addDays } from '../../domain/time.js';
+import { todayIn, addDays, zonedToUtc } from '../../domain/time.js';
+import type { PublicReview } from '../../services/reviews.js';
+import type { RecentDoctor } from '../../services/patientHome.js';
 
 const listSep = (ctx: Ctx) => (ctx.locale === 'ar' ? '، ' : ', ');
 export const money = (ctx: Ctx, n: number) => ctx.t('common.egp', { amount: formatNumber(n, ctx.locale) });
@@ -36,10 +38,46 @@ function searchForm(ctx: Ctx, ref: ReferenceData, f: Partial<SearchFilters>, com
   </form>`;
 }
 
-export function homePage(ctx: Ctx, ref: ReferenceData): SafeHtml {
+export interface PatientHome {
+  recent: RecentDoctor[];
+  next: { starts_at: Date; doctor_name: string; clinic_name: string } | null;
+}
+
+/** For a signed-in patient: their next visit and the doctors they can rebook in one tap. */
+function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const first = (ctx.user?.fullName ?? '').split(/\s+/)[0] ?? '';
+  return html`<section class="container quick-start" aria-labelledby="qs-title">
+    <div class="panel stack">
+      <h2 id="qs-title">${ctx.t('home.welcomeBack', { name: first })}</h2>
+      <div class="quick-grid">
+        <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/prescriptions')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
+        ${ctx.deps.ai ? html`<a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>` : ''}
+      </div>
+      ${p.next
+        ? html`<a class="next-visit" href="${href(ctx, '/appointments')}"><span class="label">${ctx.t('home.nextVisit')}</span>
+            <strong>${formatShortDate(p.next.starts_at, ctx.locale, tz)} · ${formatTime(p.next.starts_at, ctx.locale, tz)}</strong>
+            <span class="muted" dir="auto">${p.next.doctor_name} · ${p.next.clinic_name}</span></a>`
+        : ''}
+      ${p.recent.length
+        ? html`<div class="stack-sm"><span class="label">${ctx.t('home.yourDoctors')}</span>
+            <ul class="rebook-list">${p.recent.map((r) => {
+              const spec = ref.specialtyById.get(r.specialty_id);
+              return html`<li><span class="stack-sm"><strong dir="auto">${r.doctor_name}</strong><span class="muted">${spec ? pick(ctx.locale, spec) : ''}</span></span>
+                <a class="btn btn-primary" href="${href(ctx, `/doctors/${r.doctor_slug}`, { clinic: r.clinic_id })}#book-title">${icon.repeat}${ctx.t('appts.bookAgain')}</a></li>`;
+            })}</ul></div>`
+        : ''}
+    </div>
+  </section>`;
+}
+
+export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): SafeHtml {
   const conditions = ref.conditions.slice(0, 6);
   const examples = ref.conditions.filter((c) => c.subspecialty_id !== null).slice(0, 4);
   const body = html`
+  ${patient ? patientQuickStart(ctx, ref, patient) : ''}
   <section class="hero">
     <div class="container hero-grid">
       <div class="hero-copy">
@@ -155,7 +193,7 @@ function doctorCard(ctx: Ctx, ref: ReferenceData, d: DoctorCard): SafeHtml {
           const s = ref.subspecialtyById.get(id);
           return s ? html`<span class="tag">${pick(ctx.locale, s)}</span>` : '';
         })}</div>
-        <p class="meta">${d.years > 0 ? html`<span>${ctx.t('search.experience', { n: formatNumber(d.years, ctx.locale) })}</span>` : ''}
+        <p class="meta">${ratingBadge(ctx, d.rating, { compact: true })}${d.years > 0 ? html`<span>${ctx.t('search.experience', { n: formatNumber(d.years, ctx.locale) })}</span>` : ''}
           ${districts.length ? html`<span>${icon.pin}${districts.join(listSep(ctx))}</span>` : ''}</p>
       </div>
     </div>
@@ -246,12 +284,68 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
   return layout(ctx, { title: `${heading} — ${ctx.t('brand')}`, description: ctx.t('home.description'), body });
 }
 
-export function profilePage(
-  ctx: Ctx,
-  ref: ReferenceData,
-  d: PublicProfile,
-  booking: { clinicId: string; date: string; slots: Slot[]; days: { date: string; first: Date }[]; error?: MessageKey | undefined },
-): SafeHtml {
+export interface ProfileBooking {
+  clinicId: string;
+  date: string;
+  slots: Slot[];
+  days: { date: string; first: Date }[];
+  error?: MessageKey | undefined;
+  notice?: MessageKey | undefined;
+  /** Working days in the booking window with every slot taken (the waitlist is offered for these). */
+  fullDays: string[];
+  /** Of those, the days the signed-in patient is already waiting for. */
+  waiting: string[];
+}
+
+function waitlistBlock(ctx: Ctx, d: PublicProfile, booking: ProfileBooking): SafeHtml {
+  if (!booking.fullDays.length || ctx.user?.role === 'doctor' || ctx.user?.role === 'admin') return html``;
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const back = href(ctx, `/doctors/${d.slug}`, { clinic: booking.clinicId });
+  return html`<div class="waitlist-box stack-sm">
+    <span class="label">${icon.bell} ${ctx.t('waitlist.title')}</span>
+    <p class="hint">${ctx.t('waitlist.lead')}</p>
+    <ul class="waitlist-days">${booking.fullDays.slice(0, 6).map((day) => {
+      const label = formatShortDate(zonedToUtc(day, '12:00', tz), ctx.locale, tz);
+      if (booking.waiting.includes(day)) return html`<li><span>${label}</span><span class="chip status-confirmed">${icon.check}${ctx.t('waitlist.onIt')}</span></li>`;
+      return html`<li><span>${label}</span>${ctx.user
+        ? html`<form method="post" action="${href(ctx, '/waitlist')}" class="inline-form">${csrfField(ctx)}
+            <input type="hidden" name="clinic" value="${booking.clinicId}"><input type="hidden" name="date" value="${day}">
+            <button type="submit" class="btn btn-outline btn-sm">${ctx.t('waitlist.join')}</button></form>`
+        : html`<a class="btn btn-outline btn-sm" href="${href(ctx, '/login', { next: back })}">${ctx.t('waitlist.join')}</a>`}</li>`;
+    })}</ul>
+  </div>`;
+}
+
+function reviewsSection(ctx: Ctx, d: PublicProfile, reviews: PublicReview[]): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  return html`<section class="panel stack" id="reviews">
+    <div class="row-between"><h2>${ctx.t('reviews.title')}</h2>${ratingBadge(ctx, d.rating)}</div>
+    <p class="hint">${ctx.t('reviews.verifiedNote')}</p>
+    ${reviews.length
+      ? html`<ul class="review-list">${reviews.map(
+          (r) => html`<li class="review">
+            <div class="row-between">${starRow(ctx, r.rating)}<span class="muted small">${formatFullDate(r.created_at, ctx.locale, tz)}</span></div>
+            ${r.comment ? html`<p class="prose" dir="auto">${r.comment}</p>` : ''}
+            <span class="muted small" dir="auto">${r.author} · ${ctx.t('reviews.verifiedVisit')}</span>
+          </li>`,
+        )}</ul>`
+      : html`<p class="muted">${ctx.t('reviews.none')}</p>`}
+  </section>`;
+}
+
+/** Big, thumb-reachable actions pinned to the bottom of the screen on phones. */
+function stickyActions(ctx: Ctx, d: PublicProfile, clinicId: string, ref: ReferenceData): SafeHtml {
+  const clinic = d.clinics.find((c) => c.id === clinicId) ?? d.clinics[0];
+  if (!clinic) return html``;
+  const dist = ref.districtById.get(clinic.districtId);
+  return html`<nav class="sticky-actions" aria-label="${ctx.t('doctor.quickActions')}">
+    <a class="btn btn-primary btn-lg" href="#book-title">${icon.calendar}${ctx.t('doctor.bookShort')}</a>
+    ${clinic.phone ? html`<a class="btn btn-outline btn-lg" href="tel:${clinic.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+    <a class="btn btn-outline btn-lg" href="${directionsHref(clinic.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
+  </nav>`;
+}
+
+export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, booking: ProfileBooking, reviews: PublicReview[]): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const spec = ref.specialtyById.get(d.specialtyId);
   const title = (ctx.locale === 'ar' ? d.titleAr : d.titleEn) || d.titleEn || d.titleAr || (spec ? pick(ctx.locale, spec) : '');
@@ -260,13 +354,14 @@ export function profilePage(
   const langName = (l: string) => ctx.t.dynamic(`lang.${l}`);
 
   const body = html`
-  <div class="container page profile-layout">
+  <div class="container page profile-layout has-sticky">
     <div class="stack-lg profile-main">
       <section class="panel profile-head">
         <div class="avatar xl" aria-hidden="true">${initials(d.fullName)}</div>
         <div class="stack-sm">
           <div class="row-wrap"><h1 dir="auto">${d.fullName}</h1><span class="badge-verified">${icon.shield}${ctx.t('doctor.verifiedBadge')}</span></div>
           <p class="lead-sm">${title}</p>
+          ${d.rating ? html`<a class="rating-link" href="#reviews">${ratingBadge(ctx, d.rating)}</a>` : ''}
           <div class="tags">${d.subspecialtyIds.map((id) => {
             const s = ref.subspecialtyById.get(id);
             return s ? html`<span class="tag">${pick(ctx.locale, s)}</span>` : '';
@@ -300,10 +395,16 @@ export function profilePage(
               <span class="muted" dir="auto">${c.address}${dist ? html` · ${pick(ctx.locale, dist)}` : ''}</span>
               <span class="fee">${money(ctx, c.fee)}</span>
               <ul class="hours">${rules.map((r) => html`<li><span>${ctx.t.dynamic(`weekday.${r.weekday}`)}</span><span dir="ltr">${r.start}–${r.end}</span></li>`)}</ul>
+              <div class="row-wrap">
+                ${c.phone ? html`<a class="btn btn-outline btn-sm" href="tel:${c.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+                <a class="btn btn-outline btn-sm" href="${directionsHref(c.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
+              </div>
             </div>`;
           })}
         </div>
       </section>
+
+      ${reviewsSection(ctx, d, reviews)}
 
       ${d.positions.length
         ? html`<section class="panel stack">
@@ -316,8 +417,9 @@ export function profilePage(
     </div>
 
     <aside class="booking-panel" aria-labelledby="book-title">
-      <h2 id="book-title">${ctx.t('doctor.book')}</h2>
+      <h2 id="book-title" tabindex="-1">${ctx.t('doctor.book')}</h2>
       ${booking.error ? alert('error', ctx.t(booking.error)) : ''}
+      ${booking.notice ? alert('success', ctx.t(booking.notice)) : ''}
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
       ${d.clinics.length > 1
         ? html`<div class="stack-sm"><span class="label">${ctx.t('doctor.chooseClinic')}</span>
@@ -336,9 +438,11 @@ export function profilePage(
             <div class="slot-grid">${daySlots.map((s) => html`<a class="slot" href="${bookHref(ctx, d.slug, s)}">${formatTime(s.startsAt, ctx.locale, tz)}</a>`)}</div>
             <p class="hint">${ctx.t('doctor.slotHint')}</p></div>`
         : html`<p class="muted">${ctx.t('doctor.noTimes')}</p>`}
+      ${waitlistBlock(ctx, d, booking)}
       <p class="hint center">${ctx.t('doctor.payAtClinic')}</p>
     </aside>
-  </div>`;
+  </div>
+  ${stickyActions(ctx, d, booking.clinicId, ref)}`;
   return layout(ctx, { title: `${d.fullName} — ${title} — ${ctx.t('brand')}`, description: `${d.fullName}: ${title}`, body });
 }
 

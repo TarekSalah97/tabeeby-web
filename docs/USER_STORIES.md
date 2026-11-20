@@ -73,3 +73,27 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 
 **A1 — Verify doctors.** See pending doctors, open the syndicate card (every opening audited) (I), approve (doctor gets an SMS and becomes visible) (I), reject or suspend with a required reason (I). Suspension signs the doctor out and hides them (I).
 - Only admins can reach admin pages and documents (I).
+
+## Batch 1 — trust & easy booking
+
+**P-RV — Verified reviews.** As a patient, I want to rate a visit I actually had, so that other patients can choose with confidence.
+- Only the patient of a **completed** appointment can rate it, 1–5 stars plus an optional comment (≤500 chars); one review per visit, editable (I).
+- Another patient's visit returns "not found"; doctors and visitors cannot post reviews (I).
+- Profile and search show the average and count of visible reviews; reviews show first name + last initial only, never the full name (I).
+- Admins can hide a review with a required reason and show it again; an author editing a hidden review does not unhide it (I).
+- The doctor's dashboard shows their rating (I).
+
+**P-WL — Waitlist for fully booked days.** As a patient, I want to be told when a place opens on a full day, so that I can still see the doctor I want.
+- A day is "full" when the clinic works that day but every slot is booked; days off and days with free times are refused (I).
+- Up to 3 active waitlist days per patient; joining the same day twice is refused (I).
+- When any booking that day is cancelled (by patient or doctor), everyone waiting is notified by SMS (when SMS is on) and on My appointments; the first to book gets the place — the database still prevents double booking (I).
+- Booking that day closes the patient's entry; only the owner can leave an entry; past days expire (I).
+
+**P-RB — Rebook and quick actions.** As a returning patient, I want my doctors and my next visit one tap away.
+- Signed-in patients see their next visit, quick tiles and "Book again" for previous doctors on the home page (I).
+- Every past visit has "Book again"; completed visits have "Rate visit"; upcoming visits have Directions and Call (I, E).
+- On phones, patients get a bottom tab bar (Home, Search, Visits, Prescriptions) and doctor profiles pin Book / Call / Directions to the bottom of the screen (E).
+
+**D-EZ — Doctor's day on a phone.** As a doctor, I want to run my clinic day from my phone.
+- The day's visits show as cards on phones with the next-step button full width and at least 44px tall; no sideways scrolling (E).
+- Dashboard sections are tabs across the top on phones.

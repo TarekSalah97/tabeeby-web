@@ -23,6 +23,9 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 | record_revisions | patients | **Yes — health data** | Earlier versions of edited files and visit notes | Nobody in the UI (database operators) | As above |
 | doctor_medicines (medicine names a doctor has prescribed) | doctors | No | Type-ahead suggestions | That doctor | While the doctor's account exists |
 
+| reviews (rating 1–5, optional comment ≤500 chars, linked to one completed appointment) | patients | **Health-adjacent** (shows that the person visited that doctor; comments may contain health details despite the on-form warning) | Verified public reviews | Public: rating, comment, first name + last initial, date. Admins: full name. The doctor sees only what the public sees | While the doctor is listed; hidden reviews are kept so they can be restored — lawyer to confirm |
+| waitlist_entries (patient, clinic, wanted date, status) | patients | **Health-adjacent** | Tell waiting patients when a place opens | Patient; operators with DB access | Marked expired after the day passes; proposed deletion after 90 days |
+
 | Symptom checker description, age group, sex | visitors and patients | **Yes — health data** | Suggest a specialty | Sent to the AI provider (Anthropic, USA) only after the visitor ticks a consent box; **not stored by Tabeeby** (not in the database or logs). Only a per-IP request counter is kept (rate_limits). | Not stored |
 
 **Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), backup storage provider, AI provider for the symptom checker (Anthropic; receives the symptom description).
@@ -37,4 +40,5 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 5. Whether a Data Protection Officer must be appointed.
 6. Clinical records (patient files, visit notes, prescriptions, lab orders) are sensitive health data stored outside Egypt. The feature is off by default and switched on per doctor by an admin; confirm the PDPC licence, cross-border transfer, consent wording ("The patient agreed that I keep a medical file for them on Tabeeby", recorded with a timestamp) and retention before turning it on for real patients.
 8. Symptom checker: confirm the consent wording and cross-border transfer of symptom descriptions to Anthropic (USA), and Anthropic's data-retention terms for API inputs.
+9. Reviews are published with first name + last initial. Confirm consent wording for publishing, and the policy for removing reviews that contain health details (admins can hide them; they are kept, not deleted).
 7. Confirm what an Egyptian prescription must show (e.g. syndicate number, signature) — the printout currently shows the doctor's name, specialty, title, clinic, patient, date, medicines and a signature line.

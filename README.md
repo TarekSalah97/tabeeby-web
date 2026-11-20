@@ -4,7 +4,9 @@ Find, verify and book doctors and dentists in Egypt. Arabic-first, English under
 
 **v1 scope:** patient website (search by specialty / subspecialty / condition / district / insurance, doctor profiles, real availability, booking, my appointments), doctors landing page with pricing and sign-up (syndicate card upload, experience calculated from positions), doctor dashboard (daily schedule, clinics, working hours, time off, profile), admin verification panel, SMS confirmations and reminders.
 
-**Not in v1 (planned v2+):** medical records, prescriptions, follow-ups, messaging, reviews, online payments, receptionist accounts, mobile apps.
+**Since v1:** patient files with visits, prescriptions and lab orders (per-doctor switch), the AI symptom checker, verified reviews, a waitlist for fully booked days, one-tap rebooking, and phone-first quick actions for patients and doctors.
+
+**Not built yet:** follow-up scheduling by type, messaging, online payments, receptionist accounts, lab/pharmacy accounts, mobile apps.
 
 ---
 

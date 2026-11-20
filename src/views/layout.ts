@@ -29,6 +29,21 @@ function userMenu(ctx: Ctx): SafeHtml {
       <button type="submit" class="btn btn-outline">${ctx.t('nav.signOut')}</button></form>`;
 }
 
+/** Phone-only bottom bar for signed-in patients: the four things they do most, always one tap away. */
+function patientTabBar(ctx: Ctx): SafeHtml {
+  const here = ctx.path;
+  const item = (path: string, label: string, ic: SafeHtml) => {
+    const current = path === '/' ? here === '/' : here === path || here.startsWith(path + '/');
+    return html`<a href="${href(ctx, path)}"${current ? html` aria-current="page"` : ''}>${ic}<span>${label}</span></a>`;
+  };
+  return html`<nav class="tabbar" aria-label="${ctx.t('nav.quick')}">
+    ${item('/', ctx.t('nav.home'), icon.logoSmall)}
+    ${item('/search', ctx.t('nav.findShort'), icon.search)}
+    ${item('/appointments', ctx.t('nav.appointmentsShort'), icon.calendar)}
+    ${item('/prescriptions', ctx.t('nav.docsShort'), icon.check)}
+  </nav>`;
+}
+
 export function layout(ctx: Ctx, o: PageOpts): SafeHtml {
   const variant = o.variant ?? 'site';
   const dir = ctx.locale === 'ar' ? 'rtl' : 'ltr';
@@ -48,7 +63,7 @@ ${ctx.locale === 'ar' ? html`<link rel="preload" href="/static/fonts/cairo.woff"
 <link rel="stylesheet" href="/static/styles.css">
 <script src="/static/app.js" defer></script>
 </head>
-<body class="variant-${variant}">
+<body class="variant-${variant}${ctx.user?.role === 'patient' ? ' has-tabbar' : ''}">
 <a class="skip-link" href="#main">${ctx.t('nav.skip')}</a>
 ${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('demo.banner')}</div>` : ''}
 <header class="site-header${variant === 'doctors' ? ' dark' : ''}">
@@ -68,6 +83,7 @@ ${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('de
   </div>
 </header>
 <main id="main" tabindex="-1">${o.body}</main>
+${ctx.user?.role === 'patient' ? patientTabBar(ctx) : ''}
 <footer class="site-footer">
   <div class="container footer-row">
     <div class="footer-brand"><strong>${ctx.t('brand')}</strong><span>${ctx.t('footer.tagline')}</span></div>

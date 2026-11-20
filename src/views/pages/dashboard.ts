@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, select, statusChip } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -52,7 +52,15 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
 export function todayPage(
   ctx: Ctx,
   doctor: OwnDoctor,
-  o: { date: string; appointments: DoctorDayAppointment[]; weekCount: number; clinics: ClinicRow[]; rules: RuleRow[]; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: {
+    date: string;
+    appointments: DoctorDayAppointment[];
+    weekCount: number;
+    clinics: ClinicRow[];
+    rules: RuleRow[];
+    rating?: { avg: number; count: number } | null;
+    notice?: { kind: 'success' | 'error'; key: MessageKey };
+  },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const live = o.appointments.filter((a) => a.status !== 'cancelled');
@@ -73,7 +81,7 @@ export function todayPage(
   const actionForm = (a: DoctorDayAppointment, to: string, label: MessageKey, primary: boolean) =>
     html`<form method="post" action="${href(ctx, `/dashboard/appointments/${a.id}/status`)}" class="inline-form">
       ${csrfField(ctx)}<input type="hidden" name="to" value="${to}"><input type="hidden" name="date" value="${o.date}">
-      <button type="submit" class="btn ${primary ? 'btn-primary' : 'btn-outline'} btn-sm">${ctx.t(label)}</button></form>`;
+      <button type="submit" class="btn ${primary ? 'btn-primary action-main' : 'btn-outline btn-sm'}">${ctx.t(label)}</button></form>`;
 
   const content = html`
     <div class="row-between">
@@ -85,6 +93,7 @@ export function todayPage(
       <div class="kpi"><span>${ctx.t('dash.kpiCompleted')}</span><strong>${n(done)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiWaiting')}</span><strong>${n(waiting)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiWeek')}</span><strong>${n(o.weekCount)}</strong></div>
+      <div class="kpi"><span>${ctx.t('dash.kpiRating')}</span>${o.rating ? html`<strong>${ratingBadge(ctx, o.rating)}</strong>` : html`<span class="muted">${ctx.t('dash.noRatingYet')}</span>`}</div>
     </div>
     <section class="panel flush">
       <div class="panel-head row-between">
@@ -96,20 +105,20 @@ export function todayPage(
         </nav>
       </div>
       ${o.appointments.length
-        ? html`<div class="table-scroll"><table class="table">
+        ? html`<div class="table-scroll"><table class="table cards-on-phone">
             <thead><tr><th scope="col">${ctx.t('dash.time')}</th><th scope="col">${ctx.t('dash.patient')}</th><th scope="col">${ctx.t('dash.clinic')}</th>
               <th scope="col">${ctx.t('dash.type')}</th><th scope="col">${ctx.t('dash.reason')}</th><th scope="col">${ctx.t('dash.status')}</th><th scope="col">${ctx.t('dash.action')}</th></tr></thead>
             <tbody>${o.appointments.map((a) => {
               const next = nextDoctorAction(a.status);
               const started = ctx.deps.now().getTime() >= a.starts_at.getTime();
               return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : ''}">
-                <td class="nowrap"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
-                <td><span class="stack-sm"><strong>${a.patient_name}</strong><a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a></span></td>
-                <td>${a.clinic_name}</td>
-                <td>${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')}</td>
-                <td class="muted">${a.reason ?? '—'}</td>
-                <td>${statusChip(ctx, a.status)}</td>
-                <td><div class="row-wrap">
+                <td class="nowrap cell-time" data-label="${ctx.t('dash.time')}"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
+                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong><a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a></span></td>
+                <td data-label="${ctx.t('dash.clinic')}">${a.clinic_name}</td>
+                <td data-label="${ctx.t('dash.type')}">${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')}</td>
+                <td class="muted" data-label="${ctx.t('dash.reason')}">${a.reason ?? '—'}</td>
+                <td data-label="${ctx.t('dash.status')}">${statusChip(ctx, a.status)}</td>
+                <td class="cell-actions"><div class="row-wrap">
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
                   ${a.status === 'confirmed' || a.status === 'arrived' ? actionForm(a, 'cancelled', 'action.cancel', false) : ''}

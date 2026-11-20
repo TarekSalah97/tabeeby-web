@@ -22,4 +22,6 @@ export const LIMITS = {
   otpSendPerUser: { limit: 3, window: 10 * 60 },
   otpSendPerUserDaily: { limit: 10, window: 24 * 60 * 60 },
   bookingPerUser: { limit: 10, window: 60 * 60 },
+  reviewPerUser: { limit: 20, window: 60 * 60 },
+  waitlistPerUser: { limit: 20, window: 60 * 60 },
 } as const;

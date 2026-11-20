@@ -5,6 +5,7 @@ import { experienceYears } from '../domain/experience.js';
 import { getReference } from './reference.js';
 import { slotsForDoctors } from './availability.js';
 import { listPositions, toRanges } from './doctors.js';
+import { ratingsFor, type RatingSummary } from './reviews.js';
 
 export interface SearchFilters {
   q: string;
@@ -25,8 +26,10 @@ export interface DoctorCard {
   subspecialtyIds: number[];
   years: number;
   minFee: number | null;
-  clinics: { id: string; name: string; districtId: number; address: string; fee: number }[];
+  clinics: { id: string; name: string; districtId: number; address: string; fee: number; phone: string | null }[];
   nextSlots: Slot[];
+  /** Average of verified reviews; null until the doctor has one. */
+  rating: RatingSummary | null;
 }
 
 export const PAGE_SIZE = 10;
@@ -102,18 +105,19 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
 
 export async function loadCards(db: Queryable, ids: string[], now: Date): Promise<DoctorCard[]> {
   if (!ids.length) return [];
-  const [docs, clinics, subs, positions] = await Promise.all([
+  const [docs, clinics, subs, positions, ratings] = await Promise.all([
     db.query<{ user_id: string; slug: string; full_name: string; title_en: string; title_ar: string; specialty_id: number }>(
       `select d.user_id, d.slug, u.full_name, d.title_en, d.title_ar, d.specialty_id
          from doctors d join users u on u.id = d.user_id where d.user_id = any($1::uuid[])`,
       [ids],
     ),
-    db.query<{ id: string; doctor_id: string; name: string; district_id: number; address: string; fee_egp: number }>(
-      `select id, doctor_id, name, district_id, address, fee_egp from clinics where doctor_id = any($1::uuid[]) and is_active order by created_at`,
+    db.query<{ id: string; doctor_id: string; name: string; district_id: number; address: string; fee_egp: number; phone_e164: string | null }>(
+      `select id, doctor_id, name, district_id, address, fee_egp, phone_e164 from clinics where doctor_id = any($1::uuid[]) and is_active order by created_at`,
       [ids],
     ),
     db.query<{ doctor_id: string; subspecialty_id: number }>('select doctor_id, subspecialty_id from doctor_subspecialties where doctor_id = any($1::uuid[])', [ids]),
     listPositions(db, ids),
+    ratingsFor(db, ids),
   ]);
   const byId = new Map(docs.rows.map((d) => [d.user_id, d]));
   return ids
@@ -131,8 +135,9 @@ export async function loadCards(db: Queryable, ids: string[], now: Date): Promis
         subspecialtyIds: subs.rows.filter((s) => s.doctor_id === d.user_id).map((s) => s.subspecialty_id),
         years: experienceYears(toRanges(positions.get(d.user_id) ?? []), now),
         minFee: own.length ? Math.min(...own.map((c) => c.fee_egp)) : null,
-        clinics: own.map((c) => ({ id: c.id, name: c.name, districtId: c.district_id, address: c.address, fee: c.fee_egp })),
+        clinics: own.map((c) => ({ id: c.id, name: c.name, districtId: c.district_id, address: c.address, fee: c.fee_egp, phone: c.phone_e164 })),
         nextSlots: [],
+        rating: ratings.get(d.user_id) ?? null,
       };
     });
 }

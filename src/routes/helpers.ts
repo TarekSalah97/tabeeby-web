@@ -21,6 +21,9 @@ const NOTICES: Record<string, MessageKey> = {
   rxIssued: 'rx.issued',
   labIssued: 'lab.issued',
   voided: 'rx.voidedNotice',
+  reviewSaved: 'review.saved',
+  waitlistJoined: 'waitlist.joined',
+  waitlistLeft: 'waitlist.left',
 };
 
 export function noticeFrom(ctx: Ctx): MessageKey | undefined {

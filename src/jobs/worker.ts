@@ -2,6 +2,7 @@ import type { Deps } from '../http/context.js';
 import { deliverPending } from '../services/outbox.js';
 import { translator, formatTime, type Locale } from '../i18n/index.js';
 import { log, errorFields } from '../log.js';
+import { expireOldEntries } from '../services/waitlist.js';
 
 /**
  * Queues reminders exactly once: the UPDATE … RETURNING claims each
@@ -43,6 +44,7 @@ export async function cleanup(deps: Deps): Promise<void> {
   await deps.db.query("delete from otp_codes where created_at < now() - interval '2 days'");
   // SMS bodies mention doctors and times: keep them only as long as needed for support.
   await deps.db.query("delete from notification_outbox where status <> 'pending' and created_at < now() - interval '30 days'");
+  await expireOldEntries(deps.db, deps.cfg.TIME_ZONE, deps.now());
 }
 
 export function startWorker(deps: Deps): () => void {

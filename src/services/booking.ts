@@ -9,6 +9,7 @@ import { toZoned } from '../domain/time.js';
 import { slotsForDoctors } from './availability.js';
 import { enqueueSms } from './outbox.js';
 import { audit } from './audit.js';
+import { closeOnBooking, notifyWaitlist } from './waitlist.js';
 import { translator, formatDateTime, type Locale } from '../i18n/index.js';
 import { DomainError, notFound, tooManyRequests } from '../http/errors.js';
 
@@ -87,6 +88,7 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
         [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, req.visitType, reason || null, target.fee],
       );
       const id = rows[0]!.id;
+      await closeOnBooking(tx, deps.cfg.TIME_ZONE, patient.id, target.clinicId, target.startsAt);
       const t = translator(patient.locale);
       await enqueueSms(
         tx,
@@ -114,19 +116,27 @@ export interface PatientAppointment {
   status: AppointmentStatus;
   visit_type: 'new' | 'follow_up';
   fee_egp: number;
+  clinic_id: string;
   clinic_name: string;
   clinic_address: string;
+  clinic_phone: string | null;
+  district_en: string;
+  district_ar: string;
   doctor_name: string;
   doctor_slug: string;
+  /** The patient's own rating of this visit, if they left one. */
+  my_rating: number | null;
 }
 
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
   return (
     await db.query<PatientAppointment>(
-      `select a.id, a.starts_at, a.status, a.visit_type, a.fee_egp, c.name as clinic_name, c.address as clinic_address,
-              u.full_name as doctor_name, d.slug as doctor_slug
-         from appointments a join clinics c on c.id = a.clinic_id
+      `select a.id, a.starts_at, a.status, a.visit_type, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
+              c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
+              u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating
+         from appointments a join clinics c on c.id = a.clinic_id join districts dist on dist.id = c.district_id
          join doctors d on d.user_id = a.doctor_id join users u on u.id = a.doctor_id
+         left join reviews r on r.appointment_id = a.id
         where a.patient_id = $1 order by a.starts_at desc limit 100`,
       [patientId],
     )
@@ -146,6 +156,7 @@ export async function changeStatus(
   await deps.db.transaction(async (tx) => {
     const { rows } = await tx.query<{
       id: string;
+      clinic_id: string;
       status: AppointmentStatus;
       starts_at: Date;
       patient_phone: string;
@@ -153,7 +164,7 @@ export async function changeStatus(
       doctor_name: string;
       doctor_slug: string;
     }>(
-      `select a.id, a.status, a.starts_at, p.phone_e164 as patient_phone, p.preferred_locale as patient_locale,
+      `select a.id, a.clinic_id, a.status, a.starts_at, p.phone_e164 as patient_phone, p.preferred_locale as patient_locale,
               du.full_name as doctor_name, d.slug as doctor_slug
          from appointments a join users p on p.id = a.patient_id
          join doctors d on d.user_id = a.doctor_id join users du on du.id = a.doctor_id
@@ -179,6 +190,8 @@ export async function changeStatus(
         where id = $1`,
       [appt.id, to, actorKind],
     );
+    // A freed place goes to the people waiting for that day (patient or doctor cancellation alike).
+    if (to === 'cancelled') await notifyWaitlist(deps, tx, appt);
     if (to === 'cancelled' && actorKind === 'doctor') {
       const t = translator(appt.patient_locale);
       await enqueueSms(

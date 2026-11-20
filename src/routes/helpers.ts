@@ -11,6 +11,7 @@ import { notFound } from '../http/errors.js';
 /** Short, whitelisted success codes in the URL instead of a server-side flash store. */
 const NOTICES: Record<string, MessageKey> = {
   booked: 'appts.booked',
+  bookedNoSms: 'appts.bookedNoSms',
   cancelled: 'appts.cancelled',
   saved: 'common.saved',
   done: 'admin.done',

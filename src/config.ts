@@ -25,9 +25,12 @@ const schema = z
 
     /** Directory for private uploads (syndicate cards). Must NOT be web-served. */
     UPLOAD_DIR: z.string().default('./var/uploads'),
+    /** 'db' stores uploads in PostgreSQL — for hosts whose disk is wiped on restart. */
+    STORAGE_DRIVER: z.enum(['disk', 'db']).default('disk'),
     MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 
-    SMS_PROVIDER: z.enum(['console', 'http']).default('console'),
+    /** 'none' = run without SMS: no phone verification, no confirmations or reminders. */
+    SMS_PROVIDER: z.enum(['console', 'http', 'none']).default('console'),
     SMS_HTTP_URL: z.string().url().optional(),
     SMS_HTTP_TOKEN: z.string().optional(),
     SMS_SENDER_ID: z.string().default('Tabeeby'),
@@ -89,3 +92,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 export const isProduction = (cfg: Config): boolean => cfg.NODE_ENV === 'production';
+
+/** Phone verification is only possible (and required) when SMS can be sent. */
+export const smsEnabled = (cfg: Pick<Config, 'SMS_PROVIDER'>): boolean => cfg.SMS_PROVIDER !== 'none';

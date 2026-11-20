@@ -1,6 +1,7 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser } from '../http/context.js';
+import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { fieldAll } from '../http/body.js';
 import type { SessionUser } from '../auth/sessions.js';
@@ -23,7 +24,7 @@ import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
 /** Doctors must have verified their phone before using the dashboard. */
 function requireDoctor(ctx: Ctx): SessionUser | null {
   const user = requireUser(ctx, 'doctor');
-  if (!user.phoneVerified) {
+  if (smsEnabled(ctx.deps.cfg) && !user.phoneVerified) {
     redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));
     return null;
   }

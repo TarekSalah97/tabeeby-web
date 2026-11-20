@@ -3,6 +3,16 @@ import { log } from '../log.js';
 
 export interface SmsProvider {
   send(toE164: string, body: string): Promise<void>;
+  /** When true, queued messages are marked 'skipped' instead of being sent. */
+  readonly disabled?: boolean;
+}
+
+/** No SMS provider configured: nothing is sent. */
+export class NoSmsProvider implements SmsProvider {
+  readonly disabled = true;
+  async send(): Promise<void> {
+    /* intentionally empty */
+  }
 }
 
 /** Development/test only: keeps messages in memory and logs that one was sent. */
@@ -40,5 +50,6 @@ export class HttpSmsProvider implements SmsProvider {
 
 export function createSmsProvider(cfg: Config): SmsProvider {
   if (cfg.SMS_PROVIDER === 'http') return new HttpSmsProvider(cfg.SMS_HTTP_URL!, cfg.SMS_HTTP_TOKEN!, cfg.SMS_SENDER_ID);
+  if (cfg.SMS_PROVIDER === 'none') return new NoSmsProvider();
   return new ConsoleSmsProvider();
 }

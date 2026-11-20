@@ -65,7 +65,7 @@ export function appointmentsPage(ctx: Ctx, list: PatientAppointment[], o: { noti
     <h1>${ctx.t('appts.title')}</h1>
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
-    ${ctx.user && !ctx.user.phoneVerified ? alert('warning', html`<a href="${href(ctx, '/verify-phone')}">${ctx.t('book.verifyFirst')}</a>`) : ''}
+    ${ctx.user && !ctx.user.phoneVerified && ctx.deps.cfg.SMS_PROVIDER !== 'none' ? alert('warning', html`<a href="${href(ctx, '/verify-phone')}">${ctx.t('book.verifyFirst')}</a>`) : ''}
     <section class="stack"><h2>${ctx.t('appts.upcoming')}</h2>
       ${upcoming.length ? html`<ul class="appt-list">${upcoming.map((a) => row(a, a.status === 'confirmed'))}</ul>`
         : html`<div class="empty"><p>${ctx.t('appts.none')}</p><a class="btn btn-primary" href="${href(ctx, '/search')}">${ctx.t('appts.findDoctor')}</a></div>`}

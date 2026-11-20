@@ -2,7 +2,7 @@ import { loadConfig } from './config.js';
 import { createDb } from './db/db.js';
 import { createApp } from './app.js';
 import { createSmsProvider } from './services/sms.js';
-import { LocalFileStorage } from './storage/files.js';
+import { LocalFileStorage, DbFileStorage } from './storage/files.js';
 import { startWorker } from './jobs/worker.js';
 import { log, setLogLevel, errorFields } from './log.js';
 import type { Deps } from './http/context.js';
@@ -10,13 +10,15 @@ import type { Deps } from './http/context.js';
 const cfg = loadConfig();
 setLogLevel(cfg.LOG_LEVEL);
 
+const db = createDb(cfg);
 const deps: Deps = {
   cfg,
-  db: createDb(cfg),
+  db,
   sms: createSmsProvider(cfg),
-  storage: new LocalFileStorage(cfg.UPLOAD_DIR),
+  storage: cfg.STORAGE_DRIVER === 'db' ? new DbFileStorage(db) : new LocalFileStorage(cfg.UPLOAD_DIR),
   now: () => new Date(),
 };
+if (cfg.SMS_PROVIDER === 'none') log.warn('running without SMS: phone numbers are not verified and no confirmations or reminders are sent');
 
 const server = createApp(deps);
 server.requestTimeout = 60_000;

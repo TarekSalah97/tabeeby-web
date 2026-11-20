@@ -1,4 +1,5 @@
 import type { Deps } from '../http/context.js';
+import { smsEnabled } from '../config.js';
 import type { Queryable } from '../db/db.js';
 import { isExclusionViolation } from '../db/db.js';
 import type { SessionUser } from '../auth/sessions.js';
@@ -65,7 +66,7 @@ export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, s
 
 export async function book(deps: Deps, patient: SessionUser, req: BookingRequest, ip: string): Promise<string> {
   if (patient.role !== 'patient') throw new DomainError('booking.notPatient');
-  if (!patient.phoneVerified) throw new DomainError('booking.verifyPhoneFirst');
+  if (smsEnabled(deps.cfg) && !patient.phoneVerified) throw new DomainError('booking.verifyPhoneFirst');
   if (!(await hitRateLimit(deps.db, `book:${patient.id}`, LIMITS.bookingPerUser.limit, LIMITS.bookingPerUser.window))) throw tooManyRequests();
   const reason = req.reason.trim().slice(0, 200);
 

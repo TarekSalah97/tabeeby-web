@@ -161,3 +161,39 @@ test('demo mode: banner, hidden from search engines, code shown on the verify pa
   }
   assert.ok(!(await new Client(h.baseUrl).get('/en')).body.includes('Demo site'));
 });
+
+test('without an SMS provider: sign-up goes straight in, booking works, messages are skipped', async () => {
+  const { NoSmsProvider } = await import('../../src/services/sms.js');
+  const { deliverPending } = await import('../../src/services/outbox.js');
+  const original = { provider: h.deps.cfg.SMS_PROVIDER, sms: h.deps.sms };
+  h.deps.cfg.SMS_PROVIDER = 'none';
+  h.deps.sms = new NoSmsProvider() as unknown as typeof h.deps.sms;
+  try {
+    const doctor = await createApprovedDoctor(h.db, { name: 'Dr. No SMS' });
+    const c = new Client(h.baseUrl);
+    const phone = testPhone();
+    await c.get('/en/signup');
+    const res = await c.post('/en/signup', { fullName: 'Nada NoSms', phone: '0' + phone.slice(3), password: 'green-tea-garden', consent: 'yes' });
+    assert.equal(res.location, '/en');
+    const slot = await firstSlotStart(c, doctor.slug);
+    assert.equal((await c.get(`/en/book?doctor=${doctor.slug}&clinic=${slot.clinic}&start=${encodeURIComponent(slot.start)}`)).status, 200);
+    const booked = await c.post('/en/book', { clinic: slot.clinic, start: slot.start, visitType: 'new' });
+    assert.equal(booked.location, '/en/appointments?ok=bookedNoSms');
+    await deliverPending(h.db, h.deps.sms);
+    const { rows } = await h.db.query<{ status: string }>('select distinct status from notification_outbox where to_phone = $1', [phone]);
+    assert.deepEqual(rows.map((r) => r.status), ['skipped']);
+  } finally {
+    h.deps.cfg.SMS_PROVIDER = original.provider;
+    h.deps.sms = original.sms;
+  }
+});
+
+test('database file storage round-trips binary files', async () => {
+  const { DbFileStorage } = await import('../../src/storage/files.js');
+  const store = new DbFileStorage(h.db);
+  const data = Buffer.concat([Buffer.from('%PDF-1.4 '), Buffer.from([0, 1, 2, 255, 92, 120])]);
+  const key = await store.put(data, 'pdf');
+  assert.deepEqual(await store.get(key), data);
+  await store.remove(key);
+  await assert.rejects(store.get(key));
+});

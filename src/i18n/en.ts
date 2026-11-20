@@ -158,6 +158,7 @@ export const en = {
   'appts.cancel': 'Cancel appointment',
   'appts.cancelled': 'Your appointment was cancelled.',
   'appts.booked': 'You’re booked. We sent a confirmation by SMS.',
+  'appts.bookedNoSms': 'You’re booked. Your appointment is listed below.',
 
   'status.confirmed': 'Confirmed',
   'status.arrived': 'Waiting',

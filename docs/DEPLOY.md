@@ -2,17 +2,19 @@
 
 This runbook takes the app from this repository to a live HTTPS site on one server. It is sized for the Alexandria launch (hundreds of doctors, thousands of patients); see "Scaling later" for the next step.
 
-## Public demo (Render) — fictional data only
+## Free hosting: Render (app) + Neon (database)
 
-For showing Tabeeby to doctors and investors before launch. `render.yaml` defines a demo web service and database in Render's Frankfurt region with `DEMO_MODE=true`, which:
+`render.yaml` runs the app on Render's free plan in Frankfurt with:
 
-- shows a "demo site — fictional doctors" banner on every page and hides the site from search engines;
-- shows sign-in codes on the verification page instead of sending SMS;
-- loads the fictional doctors on every deploy and lists the demo logins on the sign-in page.
+- `SMS_PROVIDER=none` — no SMS provider yet: sign-up skips phone verification and no confirmations or reminders are sent. Switch to `http` with a gateway when you have one (verification then turns on automatically).
+- `STORAGE_DRIVER=db` — syndicate cards are stored in PostgreSQL, because Render's free disk is wiped on every restart.
+- The database is an external free Neon PostgreSQL project (choose the Frankfurt region). Use its **direct** (not pooled) connection string with `?sslmode=require`.
 
-Steps: Render dashboard → **New → Blueprint** → choose the `tabeeby-web` repository → enter `ADMIN_NAME`, `ADMIN_PHONE` and `ADMIN_PASSWORD` (14+ characters) → **Apply**. The site appears at `https://tabeeby-demo.onrender.com` (or similar). Free plans sleep after idle time and the free database expires after 30 days; switch both plans to paid ones in `render.yaml` for a permanent demo.
+Steps: create a Neon project → copy the connection string → Render → **New → Blueprint** → choose this repository → paste `DATABASE_URL`, `ADMIN_NAME`, `ADMIN_PHONE`, `ADMIN_PASSWORD` (14+ characters) → **Apply**. The site appears at `https://tabeeby.onrender.com` (or similar). Every push to `main` redeploys.
 
-**Never** let real patients use the demo: its data is hosted outside Egypt, SMS codes are shown on screen, and uploads are not kept.
+Limits of the free setup: the app sleeps after ~15 idle minutes (first visit then takes about a minute); data is hosted outside Egypt; free tiers have no uptime guarantee. Move to the server setup below before real scale.
+
+A public **demo** with fictional data is the same setup with `DEMO_MODE=true` (demo banner, hidden from search engines, sign-in codes on screen) and `node dist/scripts/seed-demo.js` added to the start command.
 
 ## 0. Decisions you must make first (blocking)
 

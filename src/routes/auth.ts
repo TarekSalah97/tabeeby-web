@@ -1,6 +1,7 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser, safeNext, setCookie } from '../http/context.js';
+import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { field, fieldAll } from '../http/body.js';
 import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPreferredLocale } from '../services/accounts.js';
@@ -57,7 +58,7 @@ export function authRoutes(r: Router): void {
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
     await startSession(ctx, user.id, user.role);
     await setPreferredLocale(ctx.deps, user.id, ctx.locale);
-    if (!user.phoneVerified && user.role !== 'admin') {
+    if (smsEnabled(ctx.deps.cfg) && !user.phoneVerified && user.role !== 'admin') {
       return redirect(ctx, href(ctx, '/verify-phone', { next: next ?? undefined }));
     }
     redirect(ctx, afterAuth(ctx, user.role, next));
@@ -88,20 +89,21 @@ export function authRoutes(r: Router): void {
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
     await startSession(ctx, result.userId, 'patient');
     const { rows } = await ctx.deps.db.query<{ phone_e164: string }>('select phone_e164 from users where id = $1', [result.userId]);
+    if (!smsEnabled(ctx.deps.cfg)) return redirect(ctx, afterAuth(ctx, 'patient', next));
     await sendOtpQuietly(ctx, { id: result.userId, phone: rows[0]!.phone_e164 });
     redirect(ctx, href(ctx, '/verify-phone', { next: next ?? undefined }));
   });
 
   r.get('/verify-phone', async (ctx) => {
     const user = requireUser(ctx);
-    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, nextParam(ctx)));
+    if (user.phoneVerified || !smsEnabled(ctx.deps.cfg)) return redirect(ctx, afterAuth(ctx, user.role, nextParam(ctx)));
     sendHtml(ctx, 200, verifyPage(ctx, { next: nextParam(ctx), demoCode: await demoCode(ctx) }));
   });
 
   r.post('/verify-phone', async (ctx) => {
     const user = requireUser(ctx);
     const next = nextParam(ctx);
-    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
+    if (user.phoneVerified || !smsEnabled(ctx.deps.cfg)) return redirect(ctx, afterAuth(ctx, user.role, next));
     const problem = await verifyPhoneOtp(ctx.deps, user.id, formValue(ctx, 'code'));
     if (problem) return sendHtml(ctx, 422, verifyPage(ctx, { error: problem, next, demoCode: await demoCode(ctx) }));
     redirect(ctx, afterAuth(ctx, user.role, next));
@@ -110,7 +112,7 @@ export function authRoutes(r: Router): void {
   r.post('/verify-phone/resend', async (ctx) => {
     const user = requireUser(ctx);
     const next = nextParam(ctx);
-    if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
+    if (user.phoneVerified || !smsEnabled(ctx.deps.cfg)) return redirect(ctx, afterAuth(ctx, user.role, next));
     await issuePhoneOtp(ctx.deps, { id: user.id, phone: user.phone, locale: ctx.locale });
     sendHtml(ctx, 200, verifyPage(ctx, { notice: 'verify.resent', next, demoCode: await demoCode(ctx) }));
   });
@@ -159,6 +161,7 @@ export function authRoutes(r: Router): void {
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
     await startSession(ctx, result.userId, 'doctor');
     const { rows } = await ctx.deps.db.query<{ phone_e164: string }>('select phone_e164 from users where id = $1', [result.userId]);
+    if (!smsEnabled(ctx.deps.cfg)) return redirect(ctx, href(ctx, '/dashboard'));
     await sendOtpQuietly(ctx, { id: result.userId, phone: rows[0]!.phone_e164 });
     redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));
   });

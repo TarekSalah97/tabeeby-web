@@ -1,6 +1,7 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser } from '../http/context.js';
+import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { book, resolveSlot, changeStatus, listPatientAppointments } from '../services/booking.js';
 import { confirmPage, appointmentsPage } from '../views/pages/booking.js';
@@ -21,7 +22,7 @@ export function patientRoutes(r: Router): void {
     // Patients must be signed in with a verified phone before they see the confirm step.
     const user = requireUser(ctx);
     if (user.role !== 'patient') throw new DomainError('booking.notPatient');
-    if (!user.phoneVerified) return redirect(ctx, href(ctx, '/verify-phone', { next: ctx.path + ctx.url.search }));
+    if (smsEnabled(ctx.deps.cfg) && !user.phoneVerified) return redirect(ctx, href(ctx, '/verify-phone', { next: ctx.path + ctx.url.search }));
     const clinicId = ctx.query.get('clinic');
     const start = new Date(ctx.query.get('start') ?? '');
     if (!isUuid(clinicId) || Number.isNaN(start.getTime())) throw badRequest();
@@ -45,7 +46,7 @@ export function patientRoutes(r: Router): void {
     const reason = formValue(ctx, 'reason');
     try {
       await book(ctx.deps, user, { clinicId, startsAt: start, visitType, reason }, ctx.ip);
-      redirect(ctx, href(ctx, '/appointments', { ok: 'booked' }));
+      redirect(ctx, href(ctx, '/appointments', { ok: smsEnabled(ctx.deps.cfg) ? 'booked' : 'bookedNoSms' }));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
       const key = domainKey(e);

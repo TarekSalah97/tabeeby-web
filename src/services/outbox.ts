@@ -15,6 +15,10 @@ const MAX_ATTEMPTS = 6;
 
 /** Sends due messages. Safe to run in several processes (SKIP LOCKED). */
 export async function deliverPending(db: Db, sms: SmsProvider, batch = 20): Promise<number> {
+  if (sms.disabled) {
+    await db.query(`update notification_outbox set status = 'skipped' where status = 'pending'`);
+    return 0;
+  }
   let delivered = 0;
   await db.transaction(async (tx) => {
     const { rows } = await tx.query<{ id: number; to_phone: string; body: string; attempts: number }>(

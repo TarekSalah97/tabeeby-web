@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import type { Queryable } from '../db/db.js';
 
 /**
  * Private file storage for verification documents. Local disk today; the
@@ -36,6 +37,32 @@ export class LocalFileStorage implements FileStorage {
 
   async remove(key: string): Promise<void> {
     await fs.rm(this.resolve(key), { force: true });
+  }
+}
+
+/**
+ * Files kept in PostgreSQL. Used on hosts without a persistent disk (free tiers),
+ * so verification documents survive restarts and are covered by database backups.
+ */
+export class DbFileStorage implements FileStorage {
+  constructor(private readonly db: Queryable) {}
+
+  async put(data: Buffer, extension: string): Promise<string> {
+    const key = `${crypto.randomBytes(16).toString('hex')}.${extension}`;
+    await this.db.query('insert into stored_files (key, data) values ($1, $2)', [key, data]);
+    return key;
+  }
+
+  async get(key: string): Promise<Buffer> {
+    if (!KEY_RE.test(key)) throw new Error('invalid storage key');
+    const { rows } = await this.db.query<{ data: string }>('select data from stored_files where key = $1', [key]);
+    if (!rows[0]) throw new Error('file not found');
+    // bytea arrives in hex text form ('\x…') from the driver.
+    return Buffer.from(String(rows[0].data).replace(/^\\x/, ''), 'hex');
+  }
+
+  async remove(key: string): Promise<void> {
+    await this.db.query('delete from stored_files where key = $1', [key]);
   }
 }
 

@@ -161,6 +161,7 @@ export const ar: Record<keyof typeof en, string> = {
   'appts.cancel': 'إلغاء الموعد',
   'appts.cancelled': 'تم إلغاء موعدك.',
   'appts.booked': 'تم الحجز. أرسلنا لك تأكيدًا برسالة نصية.',
+  'appts.bookedNoSms': 'تم الحجز. موعدك موجود في القائمة بالأسفل.',
 
   'status.confirmed': 'مؤكد',
   'status.arrived': 'في الانتظار',

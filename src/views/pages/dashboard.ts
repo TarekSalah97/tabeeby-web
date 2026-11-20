@@ -6,7 +6,7 @@ import { alert, csrfField, icon, input, select, statusChip } from '../components
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
-import type { OwnDoctor, ClinicRow, RuleRow, BlockRow, PositionRow } from '../../services/doctors.js';
+import type { OwnDoctor, ClinicRow, RuleRow, BlockRow, PositionRow, RuleProblem } from '../../services/doctors.js';
 import { LANGUAGES, SLOT_LENGTHS } from '../../services/doctors.js';
 import type { DoctorDayAppointment } from '../../services/dashboard.js';
 import { nextDoctorAction } from '../../domain/appointmentStatus.js';
@@ -147,14 +147,42 @@ export function clinicsPage(ctx: Ctx, doctor: OwnDoctor, ref: ReferenceData, cli
   return shell(ctx, doctor, 'clinics', content, o.notice);
 }
 
+/** What the doctor typed into the working-hours form, kept when it is shown again with an error. */
+export interface HoursFormValues {
+  clinic: string;
+  slot: string;
+  days: number[];
+  times: Partial<Record<number, { start: string; end: string }>>;
+}
+
+/** Egyptian working week order: Saturday first. Values are JS weekdays (0 = Sunday). */
+const WEEK_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
+
+function dayRow(ctx: Ctx, d: number, checked: boolean, times: { start: string; end: string }): SafeHtml {
+  const day = ctx.t.dynamic(`weekday.${d}`);
+  return html`<div class="day-row" data-day-row>
+    <label class="check day-pick"><input type="checkbox" name="days" value="${String(d)}" id="day-${String(d)}"${attrIf(checked, 'checked')}><span>${day}</span></label>
+    <div class="day-times">
+      <div class="field"><label for="start_${String(d)}">${ctx.t('hours.start')}<span class="sr-only"> (${day})</span></label>
+        <input id="start_${String(d)}" name="start_${String(d)}" type="time" value="${times.start}" data-time="start"></div>
+      <div class="field"><label for="end_${String(d)}">${ctx.t('hours.end')}<span class="sr-only"> (${day})</span></label>
+        <input id="end_${String(d)}" name="end_${String(d)}" type="time" value="${times.end}" data-time="end"></div>
+    </div>
+  </div>`;
+}
+
 export function hoursPage(
   ctx: Ctx,
   doctor: OwnDoctor,
   clinics: ClinicRow[],
   rules: RuleRow[],
   blocks: BlockRow[],
-  o: { ruleError?: MessageKey; blockError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { ruleError?: RuleProblem; ruleValues?: HoursFormValues; blockError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey } },
 ): SafeHtml {
+  const v = o.ruleValues;
+  const ruleErrorText = o.ruleError
+    ? ctx.t(o.ruleError.key, o.ruleError.weekday !== undefined ? { day: ctx.t.dynamic(`weekday.${o.ruleError.weekday}`) } : undefined)
+    : '';
   const tz = ctx.deps.cfg.TIME_ZONE;
   const clinicName = (id: string) => clinics.find((c) => c.id === id)?.name ?? '';
   const today = todayIn(tz, ctx.deps.now());
@@ -173,14 +201,19 @@ export function hoursPage(
       ${clinics.length
         ? html`<form method="post" action="${href(ctx, '/dashboard/hours/rules')}" class="stack">
             ${csrfField(ctx)}
-            ${o.ruleError ? alert('error', ctx.t(o.ruleError)) : ''}
-            <div class="form-grid five">
-              ${select(ctx, { name: 'clinic', label: ctx.t('hours.clinic'), options: clinics.map((c) => ({ value: c.id, label: c.name })) })}
-              ${select(ctx, { name: 'weekday', label: ctx.t('hours.weekday'), options: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ value: String(d), label: ctx.t.dynamic(`weekday.${d}`) })) })}
-              ${input(ctx, { name: 'start', label: ctx.t('hours.start'), type: 'time', value: '17:00', required: true })}
-              ${input(ctx, { name: 'end', label: ctx.t('hours.end'), type: 'time', value: '21:00', required: true })}
-              ${select(ctx, { name: 'slot', label: ctx.t('hours.slot'), value: '30', options: SLOT_LENGTHS.map((m) => ({ value: String(m), label: ctx.t('common.minutes', { n: formatNumber(m, ctx.locale) }) })) })}
+            ${o.ruleError ? alert('error', ruleErrorText) : ''}
+            <div class="form-grid">
+              ${select(ctx, { name: 'clinic', label: ctx.t('hours.clinic'), value: v?.clinic, options: clinics.map((c) => ({ value: c.id, label: c.name })) })}
+              ${select(ctx, { name: 'slot', label: ctx.t('hours.slot'), value: v?.slot || '30', options: SLOT_LENGTHS.map((m) => ({ value: String(m), label: ctx.t('common.minutes', { n: formatNumber(m, ctx.locale) }) })) })}
             </div>
+            <fieldset class="stack-sm">
+              <legend>${ctx.t('hours.days')}</legend>
+              <p class="hint">${ctx.t('hours.daysHint')}</p>
+              <div class="day-list">
+                ${WEEK_ORDER.map((d) => dayRow(ctx, d, v ? v.days.includes(d) : false, v?.times[d] ?? { start: '17:00', end: '21:00' }))}
+              </div>
+              <div><button type="button" class="btn btn-outline btn-sm" data-copy-hours hidden>${ctx.t('hours.copyTimes')}</button></div>
+            </fieldset>
             <div><button type="submit" class="btn btn-primary">${ctx.t('hours.add')}</button></div>
           </form>`
         : html`<p><a class="btn btn-primary" href="${href(ctx, '/dashboard/clinics')}">${ctx.t('hours.needClinic')}</a></p>`}

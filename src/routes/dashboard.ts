@@ -7,12 +7,12 @@ import { fieldAll } from '../http/body.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
-  getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRule, deleteRule, listOwnBlocks, addBlock, deleteBlock,
-  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput,
+  getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
+  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem,
 } from '../services/doctors.js';
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
-import { todayPage, clinicsPage, hoursPage, profileEditPage } from '../views/pages/dashboard.js';
+import { todayPage, clinicsPage, hoursPage, profileEditPage, type HoursFormValues } from '../views/pages/dashboard.js';
 import { experienceYears } from '../domain/experience.js';
 import { isValidDate, todayIn } from '../domain/time.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -60,7 +60,7 @@ async function renderClinics(ctx: Ctx, user: SessionUser, extra: Parameters<type
   sendHtml(ctx, status, clinicsPage(ctx, doctor, ref, clinics, { notice: ok(ctx), ...extra }));
 }
 
-async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: MessageKey; blockError?: MessageKey } = {}, status = 200): Promise<void> {
+async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: RuleProblem; ruleValues?: HoursFormValues; blockError?: MessageKey } = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const [doctor, clinics, rules, blocks] = await Promise.all([getOwnDoctor(db, user.id), listOwnClinics(db, user.id), listOwnRules(db, user.id), listOwnBlocks(db, user.id)]);
   sendHtml(ctx, status, hoursPage(ctx, doctor, clinics, rules, blocks, { notice: ok(ctx), ...extra }));
@@ -148,14 +148,13 @@ export function dashboardRoutes(r: Router): void {
   r.post('/dashboard/hours/rules', async (ctx) => {
     const user = requireDoctor(ctx);
     if (!user) return;
-    const problem = await addRule(ctx.deps, user.id, {
+    const values = hoursFormValues(ctx);
+    const problem = await addRules(ctx.deps, user.id, {
       clinicId: uuidFromForm(ctx, 'clinic'),
-      weekday: Number(formValue(ctx, 'weekday')),
-      start: formValue(ctx, 'start'),
-      end: formValue(ctx, 'end'),
-      slotMinutes: Number(formValue(ctx, 'slot')),
+      slotMinutes: Number(values.slot),
+      days: values.days.map((weekday): DayHours => ({ weekday, ...values.times[weekday]! })),
     });
-    if (problem) return renderHours(ctx, user, { ruleError: problem }, 422);
+    if (problem) return renderHours(ctx, user, { ruleError: problem, ruleValues: values }, 422);
     redirect(ctx, href(ctx, '/dashboard/hours', { ok: 'saved' }));
   });
 
@@ -221,6 +220,27 @@ export function dashboardRoutes(r: Router): void {
     await deletePosition(ctx.deps.db, user.id, uuidParam(ctx, 'id'));
     redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));
   });
+}
+
+/**
+ * Reads the working-hours form: ticked days in `days`, each day's times in
+ * `start_N` / `end_N`. A single `weekday` + `start` / `end` (the previous form,
+ * possibly still open in a browser during a deploy) is accepted too.
+ */
+function hoursFormValues(ctx: Ctx): HoursFormValues {
+  const times: HoursFormValues['times'] = {};
+  for (let d = 0; d < 7; d++) times[d] = { start: formValue(ctx, `start_${d}`), end: formValue(ctx, `end_${d}`) };
+  let days = [...new Set(fieldAll(ctx.form, 'days').map(Number))];
+  const legacy = formValue(ctx, 'weekday');
+  if (days.length === 0 && legacy !== '') {
+    const d = Number(legacy);
+    days = [d];
+    times[d] = { start: formValue(ctx, 'start'), end: formValue(ctx, 'end') };
+  }
+  // Unknown day numbers are kept so the service rejects them rather than silently dropping them.
+  days = days.map((d) => (Number.isInteger(d) && d >= 0 && d <= 6 ? d : -1)).sort((a, b) => a - b);
+  for (const d of days) times[d] ??= { start: '', end: '' };
+  return { clinic: formValue(ctx, 'clinic'), slot: formValue(ctx, 'slot'), days, times };
 }
 
 function uuidFromForm(ctx: Ctx, name: string): string {

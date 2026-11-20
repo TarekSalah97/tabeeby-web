@@ -273,26 +273,52 @@ export async function listOwnRules(db: Queryable, doctorId: string): Promise<Rul
   ).rows;
 }
 
-export async function addRule(
+export interface DayHours {
+  weekday: number;
+  start: string;
+  end: string;
+}
+
+/** A problem with a schedule submission; `weekday` names the day it concerns, when there is one. */
+export interface RuleProblem {
+  key: MessageKey;
+  weekday?: number;
+}
+
+/**
+ * Adds working hours for one clinic on several days at once. All or nothing:
+ * if any day is invalid or overlaps hours the doctor already has (at any of
+ * their clinics) or another day in the same submission, nothing is saved.
+ */
+export async function addRules(
   deps: Deps,
   doctorId: string,
-  input: { clinicId: string; weekday: number; start: string; end: string; slotMinutes: number },
-): Promise<MessageKey | null> {
-  if (!isValidTime(input.start) || !isValidTime(input.end) || input.end <= input.start) return 'hours.invalidTimes';
-  if (!Number.isInteger(input.weekday) || input.weekday < 0 || input.weekday > 6) return 'hours.invalidTimes';
-  if (!(SLOT_LENGTHS as readonly number[]).includes(input.slotMinutes)) return 'hours.invalidTimes';
+  input: { clinicId: string; slotMinutes: number; days: DayHours[] },
+): Promise<RuleProblem | null> {
+  if (input.days.length === 0) return { key: 'hours.noDays' };
+  if (!(SLOT_LENGTHS as readonly number[]).includes(input.slotMinutes)) return { key: 'hours.invalidTimes' };
+  const seen = new Set<number>();
+  for (const d of input.days) {
+    if (!Number.isInteger(d.weekday) || d.weekday < 0 || d.weekday > 6 || seen.has(d.weekday)) return { key: 'hours.invalidTimes' };
+    seen.add(d.weekday);
+    if (!isValidTime(d.start) || !isValidTime(d.end) || d.end <= d.start) return { key: 'hours.invalidTimesDay', weekday: d.weekday };
+  }
   return deps.db.transaction(async (tx) => {
     // Lock the doctor row so two concurrent additions cannot both pass the overlap check.
     await tx.query('select 1 from doctors where user_id = $1 for update', [doctorId]);
     const clinic = await tx.query('select 1 from clinics where id = $1 and doctor_id = $2', [input.clinicId, doctorId]);
     if (!clinic.rows[0]) throw notFound();
-    const existing = await listOwnRules(tx, doctorId);
-    const candidate = { weekday: input.weekday, startTime: input.start, endTime: input.end };
-    if (existing.some((r) => rulesOverlap(candidate, { weekday: r.weekday, startTime: r.start_time, endTime: r.end_time }))) return 'hours.overlap';
-    await tx.query(
-      `insert into schedule_rules (clinic_id, weekday, start_time, end_time, slot_minutes) values ($1, $2, $3::time, $4::time, $5)`,
-      [input.clinicId, input.weekday, input.start, input.end, input.slotMinutes],
-    );
+    const existing = (await listOwnRules(tx, doctorId)).map((r) => ({ weekday: r.weekday, startTime: r.start_time, endTime: r.end_time }));
+    for (const d of input.days) {
+      const candidate = { weekday: d.weekday, startTime: d.start, endTime: d.end };
+      if (existing.some((r) => rulesOverlap(candidate, r))) return { key: 'hours.overlapDay', weekday: d.weekday };
+    }
+    for (const d of input.days) {
+      await tx.query(
+        `insert into schedule_rules (clinic_id, weekday, start_time, end_time, slot_minutes) values ($1, $2, $3::time, $4::time, $5)`,
+        [input.clinicId, d.weekday, d.start, d.end, input.slotMinutes],
+      );
+    }
     return null;
   });
 }

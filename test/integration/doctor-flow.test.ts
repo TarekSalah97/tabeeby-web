@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startHarness, Client, createAdmin, createPatient, login, lastOtp, firstSlotStart, testPhone, type Harness } from '../helpers.js';
+import { startHarness, Client, createAdmin, createApprovedDoctor, createPatient, login, lastOtp, firstSlotStart, testPhone, type Harness } from '../helpers.js';
 import { book } from '../../src/services/booking.js';
 
 let h: Harness;
@@ -154,4 +154,56 @@ test('time off removes those days from availability', async () => {
   const page = await new Client(h.baseUrl).get(`/en/doctors/${rows[0]!.slug}`);
   assert.ok(!page.body.includes(`date=${today}`) && !page.body.includes(`date=${tomorrow}`));
   assert.equal((await doc.post('/en/dashboard/hours/blocks', { fromDate: tomorrow, toDate: today, note: '' })).status, 422);
+});
+
+test('working hours: several days, each with its own times, saved together or not at all', async () => {
+  const me = await createApprovedDoctor(h.db);
+  const other = await createApprovedDoctor(h.db);
+  await h.db.query('delete from schedule_rules where clinic_id = $1', [me.clinicId]);
+  const doc = new Client(h.baseUrl);
+  await login(doc, me.phone, me.password);
+  const page = await doc.get('/en/dashboard/hours');
+  for (const d of ['Saturday', 'Sunday', 'Friday']) assert.match(page.body, new RegExp(`name="days" value="\\d"[^>]*><span>${d}</span>`));
+  const rules = async () =>
+    (await h.db.query<{ weekday: number; start_time: string; end_time: string; slot_minutes: number }>(
+      'select weekday, start_time::text, end_time::text, slot_minutes from schedule_rules where clinic_id = $1 order by weekday, start_time', [me.clinicId],
+    )).rows.map((r) => `${r.weekday} ${r.start_time.slice(0, 5)}-${r.end_time.slice(0, 5)} ${r.slot_minutes}`);
+  const base = { clinic: me.clinicId, slot: '20' };
+
+  // Nothing ticked.
+  const none = await doc.post('/en/dashboard/hours/rules', { ...base, start_0: '10:00', end_0: '12:00' });
+  assert.equal(none.status, 422);
+  assert.match(none.body, /Tick at least one day/);
+
+  // One bad day (Monday ends before it starts) → nothing saved, the day is named, typed values are kept.
+  const bad = await doc.post('/en/dashboard/hours/rules', { ...base, days: ['0', '1', '3'], start_0: '10:00', end_0: '14:00', start_1: '18:00', end_1: '09:00', start_3: '17:00', end_3: '21:00' });
+  assert.equal(bad.status, 422);
+  assert.match(bad.body, /Monday: the end time must be after the start time/);
+  assert.match(bad.body, /id="start_1" name="start_1" type="time" value="18:00"/);
+  assert.match(bad.body, /value="1" id="day-1" checked/);
+  assert.deepEqual(await rules(), []);
+
+  // Three days, different times, one submission. Unticked days' times are ignored.
+  const good = await doc.post('/en/dashboard/hours/rules', { ...base, days: ['0', '1', '3'], start_0: '10:00', end_0: '14:00', start_1: '18:00', end_1: '22:00', start_3: '17:00', end_3: '21:00', start_5: '01:00', end_5: '02:00' });
+  assert.equal(good.status, 303);
+  assert.deepEqual(await rules(), ['0 10:00-14:00 20', '1 18:00-22:00 20', '3 17:00-21:00 20']);
+
+  // A second period on Sunday evening is fine; one overlapping Wednesday's hours rejects the whole submission.
+  const overlap = await doc.post('/en/dashboard/hours/rules', { ...base, days: ['0', '3'], start_0: '18:00', end_0: '21:00', start_3: '20:00', end_3: '23:00' });
+  assert.equal(overlap.status, 422);
+  assert.match(overlap.body, /Wednesday: these hours overlap/);
+  assert.equal((await rules()).length, 3);
+  assert.equal((await doc.post('/en/dashboard/hours/rules', { ...base, days: ['0'], start_0: '18:00', end_0: '21:00' })).status, 303);
+  assert.equal((await rules()).length, 4);
+
+  // Arabic error text names the day in Arabic.
+  await doc.get('/dashboard/hours');
+  const ar = await doc.post('/dashboard/hours/rules', { ...base, days: ['2'], start_2: '12:00', end_2: '11:00' });
+  assert.match(ar.body, /الثلاثاء: يجب أن يكون وقت النهاية بعد وقت البداية/);
+
+  // Tampered input: unknown day, unknown visit length, someone else's clinic.
+  assert.equal((await doc.post('/en/dashboard/hours/rules', { ...base, days: ['9'], start_2: '10:00', end_2: '11:00' })).status, 422);
+  assert.equal((await doc.post('/en/dashboard/hours/rules', { ...base, slot: '7', days: ['2'], start_2: '10:00', end_2: '11:00' })).status, 422);
+  assert.equal((await doc.post('/en/dashboard/hours/rules', { clinic: other.clinicId, slot: '30', days: ['2'], start_2: '10:00', end_2: '11:00' })).status, 404);
+  assert.equal((await rules()).length, 4);
 });

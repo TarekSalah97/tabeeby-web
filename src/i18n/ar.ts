@@ -3,6 +3,11 @@ import type { en } from './en.js';
 /** Arabic copy. The type forces every English key to exist here too. */
 export const ar: Record<keyof typeof en, string> = {
   'brand': 'طبيبي',
+  'demo.banner': 'موقع تجريبي — كل الأطباء وهميون. لا تُدخل أي معلومات طبية حقيقية.',
+  'demo.code': 'للتجربة فقط: الكود هو {code}. في الموقع الحقيقي يُرسل برسالة نصية.',
+  'demo.logins': 'حسابات تجريبية (كلمة المرور: {password})',
+  'demo.patient': 'مريض',
+  'demo.doctor': 'طبيب',
   'nav.skip': 'انتقل إلى المحتوى',
   'nav.findDoctor': 'ابحث عن طبيب',
   'nav.forDoctors': 'للأطباء',

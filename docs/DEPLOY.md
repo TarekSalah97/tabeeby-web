@@ -2,6 +2,18 @@
 
 This runbook takes the app from this repository to a live HTTPS site on one server. It is sized for the Alexandria launch (hundreds of doctors, thousands of patients); see "Scaling later" for the next step.
 
+## Public demo (Render) — fictional data only
+
+For showing Tabeeby to doctors and investors before launch. `render.yaml` defines a demo web service and database in Render's Frankfurt region with `DEMO_MODE=true`, which:
+
+- shows a "demo site — fictional doctors" banner on every page and hides the site from search engines;
+- shows sign-in codes on the verification page instead of sending SMS;
+- loads the fictional doctors on every deploy and lists the demo logins on the sign-in page.
+
+Steps: Render dashboard → **New → Blueprint** → choose the `tabeeby-web` repository → enter `ADMIN_NAME`, `ADMIN_PHONE` and `ADMIN_PASSWORD` (14+ characters) → **Apply**. The site appears at `https://tabeeby-demo.onrender.com` (or similar). Free plans sleep after idle time and the free database expires after 30 days; switch both plans to paid ones in `render.yaml` for a permanent demo.
+
+**Never** let real patients use the demo: its data is hosted outside Egypt, SMS codes are shown on screen, and uploads are not kept.
+
 ## 0. Decisions you must make first (blocking)
 
 | Decision | Why it blocks | Who decides |

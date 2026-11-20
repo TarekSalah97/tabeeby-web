@@ -29,6 +29,20 @@ async function sendOtpQuietly(ctx: Ctx, user: { id: string; phone: string }): Pr
   }
 }
 
+/** Demo mode only: read the newest code from the outbox so testers without SMS can continue. */
+async function demoCode(ctx: Ctx): Promise<string | null> {
+  if (!ctx.deps.cfg.DEMO_MODE || !ctx.user) return null;
+  const { rows } = await ctx.deps.db.query<{ body: string }>(
+    `select body from notification_outbox where to_phone = $1 and created_at > now() - interval '15 minutes' order by id desc limit 5`,
+    [ctx.user.phone],
+  );
+  for (const r of rows) {
+    const m = /\b(\d{6})\b/.exec(r.body);
+    if (m) return m[1]!;
+  }
+  return null;
+}
+
 export function authRoutes(r: Router): void {
   r.get('/login', async (ctx) => {
     if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
@@ -81,7 +95,7 @@ export function authRoutes(r: Router): void {
   r.get('/verify-phone', async (ctx) => {
     const user = requireUser(ctx);
     if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, nextParam(ctx)));
-    sendHtml(ctx, 200, verifyPage(ctx, { next: nextParam(ctx) }));
+    sendHtml(ctx, 200, verifyPage(ctx, { next: nextParam(ctx), demoCode: await demoCode(ctx) }));
   });
 
   r.post('/verify-phone', async (ctx) => {
@@ -89,7 +103,7 @@ export function authRoutes(r: Router): void {
     const next = nextParam(ctx);
     if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
     const problem = await verifyPhoneOtp(ctx.deps, user.id, formValue(ctx, 'code'));
-    if (problem) return sendHtml(ctx, 422, verifyPage(ctx, { error: problem, next }));
+    if (problem) return sendHtml(ctx, 422, verifyPage(ctx, { error: problem, next, demoCode: await demoCode(ctx) }));
     redirect(ctx, afterAuth(ctx, user.role, next));
   });
 
@@ -98,7 +112,7 @@ export function authRoutes(r: Router): void {
     const next = nextParam(ctx);
     if (user.phoneVerified) return redirect(ctx, afterAuth(ctx, user.role, next));
     await issuePhoneOtp(ctx.deps, { id: user.id, phone: user.phone, locale: ctx.locale });
-    sendHtml(ctx, 200, verifyPage(ctx, { notice: 'verify.resent', next }));
+    sendHtml(ctx, 200, verifyPage(ctx, { notice: 'verify.resent', next, demoCode: await demoCode(ctx) }));
   });
 
   r.get('/for-doctors/join', async (ctx) => {

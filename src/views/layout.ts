@@ -40,7 +40,7 @@ export function layout(ctx: Ctx, o: PageOpts): SafeHtml {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${o.title}</title>
 ${o.description ? html`<meta name="description" content="${o.description}">` : ''}
-${o.noindex ? html`<meta name="robots" content="noindex">` : ''}
+${o.noindex || ctx.deps.cfg.DEMO_MODE ? html`<meta name="robots" content="noindex">` : ''}
 <link rel="alternate" hreflang="ar" href="${origin}${p || '/'}">
 <link rel="alternate" hreflang="en" href="${origin}/en${p}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -49,6 +49,7 @@ ${o.noindex ? html`<meta name="robots" content="noindex">` : ''}
 </head>
 <body class="variant-${variant}">
 <a class="skip-link" href="#main">${ctx.t('nav.skip')}</a>
+${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('demo.banner')}</div>` : ''}
 <header class="site-header${variant === 'doctors' ? ' dark' : ''}">
   <div class="container header-row">
     <a class="brand" href="${href(ctx, variant === 'doctors' ? '/for-doctors' : '/')}">

@@ -1,5 +1,10 @@
 export const en = {
   'brand': 'Tabeeby',
+  'demo.banner': 'Demo site — all doctors are fictional. Do not enter real medical information.',
+  'demo.code': 'Demo only: your code is {code}. A real site sends it by SMS.',
+  'demo.logins': 'Demo accounts (password: {password})',
+  'demo.patient': 'Patient',
+  'demo.doctor': 'Doctor',
   'nav.skip': 'Skip to content',
   'nav.findDoctor': 'Find a doctor',
   'nav.forDoctors': 'For doctors',

@@ -1,0 +1,49 @@
+# Render Blueprint for the PUBLIC DEMO only (fictional data, hosted outside Egypt).
+# Do not point real patients at this deployment — see docs/DEPLOY.md for production.
+#
+# Render dashboard → New → Blueprint → pick this repository → fill in the three
+# ADMIN_* values when asked → Apply.
+
+databases:
+  - name: tabeeby-demo-db
+    databaseName: tabeeby
+    user: tabeeby
+    plan: free            # free databases expire after 30 days; upgrade to basic-256mb to keep it
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []       # no access from the internet; only Render services in the same region
+
+services:
+  - type: web
+    name: tabeeby-demo
+    runtime: docker
+    plan: free            # free instances sleep after ~15 idle minutes; upgrade to starter for an always-on demo
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    # Migrate, (re)load the fictional demo data, create the admin from ADMIN_* if set, then start.
+    dockerCommand: sh -c "node dist/scripts/migrate.js && node dist/scripts/seed-demo.js && (node dist/scripts/create-admin.js || true) && exec node dist/src/server.js"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "true"
+      - key: SMS_PROVIDER
+        value: console
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tabeeby-demo-db
+          property: connectionString
+      - key: DATABASE_POOL_SIZE
+        value: "5"
+      - key: UPLOAD_DIR
+        value: /tmp/uploads   # demo only: uploaded cards are lost on each deploy
+      - key: ADMIN_NAME
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

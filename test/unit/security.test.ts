@@ -104,4 +104,8 @@ test('config: unsafe production settings are refused', () => {
   assert.doesNotThrow(() =>
     loadConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x@y/z', PUBLIC_ORIGIN: 'https://tabeeby.com', SMS_PROVIDER: 'http', SMS_HTTP_URL: 'https://sms.example/send', SMS_HTTP_TOKEN: 't' }),
   );
+  // A public demo may print codes instead of sending SMS; the origin can come from the host.
+  const demo = loadConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x@y/z', DEMO_MODE: 'true', RENDER_EXTERNAL_URL: 'https://tabeeby-demo.onrender.com' });
+  assert.equal(demo.PUBLIC_ORIGIN, 'https://tabeeby-demo.onrender.com');
+  assert.equal(demo.SMS_PROVIDER, 'console');
 });

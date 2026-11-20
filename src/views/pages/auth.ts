@@ -6,11 +6,15 @@ import { alert, consentField, csrfField, input, passwordInput } from '../compone
 import type { FieldErrors } from '../../services/accounts.js';
 import type { MessageKey } from '../../i18n/index.js';
 import { maskEgyptMobile } from '../../domain/phone.js';
+import { DEMO_PASSWORD, DEMO_PATIENT_PHONE, DEMO_DOCTOR_PHONE } from '../../demo.js';
 
 export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; next?: string | null }): SafeHtml {
   const body = html`<div class="container page auth-page">
     <div class="auth-card">
       <h1>${ctx.t('auth.signInTitle')}</h1>
+      ${ctx.deps.cfg.DEMO_MODE
+        ? alert('info', html`${ctx.t('demo.patient')}: <span dir="ltr">${DEMO_PATIENT_PHONE}</span> · ${ctx.t('demo.doctor')}: <span dir="ltr">${DEMO_DOCTOR_PHONE}</span>`, ctx.t('demo.logins', { password: DEMO_PASSWORD }))
+        : ''}
       ${o.error ? alert('error', ctx.t(o.error)) : ''}
       <form method="post" action="${href(ctx, '/login')}" class="stack" novalidate>
         ${csrfField(ctx)}
@@ -48,7 +52,7 @@ export function signupPage(ctx: Ctx, o: { values?: Record<string, string>; error
   return layout(ctx, { title: `${ctx.t('auth.signUpTitle')} — ${ctx.t('brand')}`, body, noindex: true });
 }
 
-export function verifyPage(ctx: Ctx, o: { error?: MessageKey; notice?: MessageKey; next?: string | null }): SafeHtml {
+export function verifyPage(ctx: Ctx, o: { error?: MessageKey; notice?: MessageKey; next?: string | null; demoCode?: string | null }): SafeHtml {
   const phone = ctx.user ? maskEgyptMobile(ctx.user.phone) : '';
   const body = html`<div class="container page auth-page">
     <div class="auth-card">
@@ -56,6 +60,7 @@ export function verifyPage(ctx: Ctx, o: { error?: MessageKey; notice?: MessageKe
       <p class="muted">${ctx.t('verify.lead', { phone })}</p>
       ${o.error ? alert('error', ctx.t(o.error)) : ''}
       ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
+      ${o.demoCode ? alert('warning', ctx.t('demo.code', { code: o.demoCode })) : ''}
       <form method="post" action="${href(ctx, '/verify-phone')}" class="stack" novalidate>
         ${csrfField(ctx)}
         ${o.next ? html`<input type="hidden" name="next" value="${o.next}">` : ''}

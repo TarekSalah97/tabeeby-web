@@ -139,3 +139,25 @@ test('reminders are queued once, 24h and 2h before, and not for cancelled visits
   assert.equal(rows.length, 3);
   assert.equal(rows.filter((r) => r.body.includes('Dr. Reminder')).length, 3);
 });
+
+test('demo mode: banner, hidden from search engines, code shown on the verify page', async () => {
+  h.deps.cfg.DEMO_MODE = true;
+  try {
+    const c = new Client(h.baseUrl);
+    const home = await c.get('/en');
+    assert.match(home.body, /Demo site — all doctors are fictional/);
+    assert.match(home.headers.get('x-robots-tag') ?? '', /noindex/);
+    assert.equal((await c.get('/robots.txt')).body, 'User-agent: *\nDisallow: /\n');
+    assert.match((await c.get('/en/login')).body, /Demo accounts/);
+    const phone = testPhone();
+    await c.get('/en/signup');
+    await c.post('/en/signup', { fullName: 'Demo Tester', phone: '0' + phone.slice(3), password: 'green-tea-garden', consent: 'yes' });
+    const page = await c.get('/en/verify-phone');
+    const shown = /your code is (\d{6})/.exec(page.body)?.[1];
+    assert.ok(shown);
+    assert.equal((await c.post('/en/verify-phone', { code: shown! })).status, 303);
+  } finally {
+    h.deps.cfg.DEMO_MODE = false;
+  }
+  assert.ok(!(await new Client(h.baseUrl).get('/en')).body.includes('Demo site'));
+});

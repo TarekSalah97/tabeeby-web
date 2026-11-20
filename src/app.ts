@@ -56,6 +56,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
     const started = Date.now();
     const requestId = crypto.randomBytes(6).toString('hex');
     applySecurityHeaders(res, https);
+    if (deps.cfg.DEMO_MODE) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     void handle(req, res).finally(() => {
       log.info('request', { id: requestId, method: req.method, route: (res as { route?: string }).route ?? (req.url?.startsWith('/static/') ? 'static' : 'unmatched'), status: res.statusCode, ms: Date.now() - started });
     });
@@ -80,7 +81,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
     }
     if (url.pathname === '/robots.txt') {
       res.setHeader('Content-Type', 'text/plain');
-      res.end('User-agent: *\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /book\nDisallow: /appointments\n');
+      res.end(deps.cfg.DEMO_MODE ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /book\nDisallow: /appointments\n');
       return;
     }
 

@@ -1,6 +1,6 @@
 /**
  * Demo data for local development and staging walkthroughs ONLY.
- * Refuses to run in production. All names, numbers and insurers are fictional.
+ * Refuses to run in production unless DEMO_MODE=true. All names, numbers and insurers are fictional.
  *
  *   npm run seed:demo
  */
@@ -8,14 +8,13 @@ import { loadConfig } from '../src/config.js';
 import { createDb, type Queryable } from '../src/db/db.js';
 import { hashPassword } from '../src/auth/password.js';
 import { clearReferenceCache } from '../src/services/reference.js';
+import { DEMO_PASSWORD } from '../src/demo.js';
 
 const cfg = loadConfig();
-if (cfg.NODE_ENV === 'production') {
-  console.error('Refusing to seed demo data in production.');
+if (cfg.NODE_ENV === 'production' && !cfg.DEMO_MODE) {
+  console.error('Refusing to seed demo data in production (set DEMO_MODE=true only for a public demo).');
   process.exit(1);
 }
-
-export const DEMO_PASSWORD = 'demo-password-2026';
 
 interface DemoDoctor {
   name: string;

@@ -44,6 +44,15 @@ const schema = z
     TIME_ZONE: z.string().default('Africa/Cairo'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     /** Run the notifications worker inside the web process. */
+    /**
+     * Public demo: fictional data only. Shows a banner, hides the site from search
+     * engines, shows SMS codes on screen (console SMS allowed) and lists demo logins.
+     * Never enable on a site that real patients use.
+     */
+    DEMO_MODE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     RUN_WORKER: z
       .enum(['true', 'false'])
       .default('true')
@@ -54,7 +63,7 @@ const schema = z
     if (!cfg.PUBLIC_ORIGIN.startsWith('https://')) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PUBLIC_ORIGIN'], message: 'must be https in production' });
     }
-    if (cfg.SMS_PROVIDER === 'console') {
+    if (cfg.SMS_PROVIDER === 'console' && !cfg.DEMO_MODE) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['SMS_PROVIDER'],
@@ -69,7 +78,9 @@ const schema = z
 export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = schema.safeParse(env);
+  // Hosting platforms such as Render publish the service URL; use it when PUBLIC_ORIGIN is not set.
+  const withOrigin = !env['PUBLIC_ORIGIN'] && env['RENDER_EXTERNAL_URL'] ? { ...env, PUBLIC_ORIGIN: env['RENDER_EXTERNAL_URL'] } : env;
+  const parsed = schema.safeParse(withOrigin);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid configuration:\n${issues}`);

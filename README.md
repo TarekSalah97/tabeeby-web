@@ -91,4 +91,4 @@ deploy/                   Docker Compose (Postgres + app + Caddy), backups
 docs/                     DEPLOY.md, USER_STORIES.md, DATA_INVENTORY.md
 ```
 
-See **docs/DEPLOY.md** to go live.
+See **docs/DEPLOY.md** to go live. For a public demo with fictional data, deploy `render.yaml` on Render (`DEMO_MODE=true`) — details in the same guide.

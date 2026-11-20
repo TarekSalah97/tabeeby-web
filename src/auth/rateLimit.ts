@@ -24,4 +24,6 @@ export const LIMITS = {
   bookingPerUser: { limit: 10, window: 60 * 60 },
   reviewPerUser: { limit: 20, window: 60 * 60 },
   waitlistPerUser: { limit: 20, window: 60 * 60 },
+  guestStartPerIp: { limit: 10, window: 60 * 60 },
+  emailCodePerAddress: { limit: 5, window: 60 * 60 },
 } as const;

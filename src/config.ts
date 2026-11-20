@@ -35,6 +35,16 @@ const schema = z
     SMS_HTTP_TOKEN: z.string().optional(),
     SMS_SENDER_ID: z.string().default('Tabeeby'),
 
+    /**
+     * Email (codes for booking without an account, sign-in codes, confirmations).
+     * Left unset it is 'brevo' when BREVO_API_KEY is set, otherwise 'none' in production and 'console' elsewhere.
+     */
+    EMAIL_PROVIDER: z.enum(['console', 'brevo', 'none']).optional(),
+    BREVO_API_KEY: z.string().min(1).optional(),
+    /** Sender address confirmed in Brevo, e.g. tabeeby.eg@gmail.com or no-reply@your-domain. */
+    EMAIL_FROM: z.string().email().optional(),
+    EMAIL_FROM_NAME: z.string().default('Tabeeby طبيبي'),
+
     /** Patients may cancel/reschedule up to this many hours before the visit. */
     CANCEL_CUTOFF_HOURS: z.coerce.number().int().min(0).max(72).default(2),
     /** How far ahead patients can book. */
@@ -79,12 +89,27 @@ const schema = z
         message: 'console SMS provider is not allowed in production (patients would never receive codes)',
       });
     }
+    if (cfg.EMAIL_PROVIDER === 'console' && !cfg.DEMO_MODE) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_PROVIDER'], message: 'console email provider is not allowed in production' });
+    }
     if (cfg.SMS_PROVIDER === 'http' && (!cfg.SMS_HTTP_URL || !cfg.SMS_HTTP_TOKEN)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SMS_HTTP_URL'], message: 'SMS_HTTP_URL and SMS_HTTP_TOKEN are required' });
     }
   });
 
-export type Config = z.infer<typeof schema>;
+type ParsedConfig = z.infer<typeof schema>;
+export type Config = Omit<ParsedConfig, 'EMAIL_PROVIDER'> & { EMAIL_PROVIDER: 'console' | 'brevo' | 'none' };
+
+/** Resolve the email provider when it was not set explicitly, and check Brevo has what it needs. */
+function resolveEmail(cfg: ParsedConfig): Config {
+  // A key without a sender address (e.g. half-way through setup) keeps email off rather than stopping the site.
+  const brevoReady = !!cfg.BREVO_API_KEY && !!cfg.EMAIL_FROM;
+  const provider = cfg.EMAIL_PROVIDER ?? (brevoReady ? 'brevo' : cfg.NODE_ENV === 'production' && !cfg.DEMO_MODE ? 'none' : 'console');
+  if (provider === 'brevo' && (!cfg.BREVO_API_KEY || !cfg.EMAIL_FROM)) {
+    throw new Error('Invalid configuration:\n  - EMAIL_FROM: BREVO_API_KEY and EMAIL_FROM are both required to send email');
+  }
+  return { ...cfg, EMAIL_PROVIDER: provider };
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Hosting platforms such as Render publish the service URL; use it when PUBLIC_ORIGIN is not set.
@@ -94,10 +119,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid configuration:\n${issues}`);
   }
-  return parsed.data;
+  return resolveEmail(parsed.data);
 }
 
 export const isProduction = (cfg: Config): boolean => cfg.NODE_ENV === 'production';
 
 /** Phone verification is only possible (and required) when SMS can be sent. */
 export const smsEnabled = (cfg: Pick<Config, 'SMS_PROVIDER'>): boolean => cfg.SMS_PROVIDER !== 'none';
+
+/** Booking without an account and email sign-in codes need a working email service. */
+export const emailEnabled = (cfg: Pick<Config, 'EMAIL_PROVIDER'>): boolean => cfg.EMAIL_PROVIDER !== 'none';

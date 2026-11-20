@@ -24,6 +24,8 @@ const NOTICES: Record<string, MessageKey> = {
   reviewSaved: 'review.saved',
   waitlistJoined: 'waitlist.joined',
   waitlistLeft: 'waitlist.left',
+  bookedGuest: 'guest.booked',
+  passwordSet: 'password.setDone',
 };
 
 export function noticeFrom(ctx: Ctx): MessageKey | undefined {

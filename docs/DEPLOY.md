@@ -7,6 +7,7 @@ This runbook takes the app from this repository to a live HTTPS site on one serv
 `render.yaml` runs the app on Render's free plan in Frankfurt with:
 
 - `SMS_PROVIDER=none` — no SMS provider yet: sign-up skips phone verification and no confirmations or reminders are sent. Switch to `http` with a gateway when you have one (verification then turns on automatically).
+- Email (optional, recommended): add `BREVO_API_KEY` (secret) and `EMAIL_FROM` (a sender address confirmed in Brevo) in Render → Environment. Email then turns on by itself: visitors can book without an account using an emailed code, patients can sign in with an emailed code, and patients with a confirmed email get booking confirmations. Without them the site works as before (visitors sign in to book). Brevo's free plan sends up to 300 emails a day.
 - `STORAGE_DRIVER=db` — syndicate cards are stored in PostgreSQL, because Render's free disk is wiped on every restart.
 - The database is an external free Neon PostgreSQL project (choose the Frankfurt region). Use its **direct** (not pooled) connection string with `?sslmode=require`.
 
@@ -65,6 +66,10 @@ SMS_PROVIDER=http
 SMS_HTTP_URL=<gateway endpoint>
 SMS_HTTP_TOKEN=<gateway token>
 SMS_SENDER_ID=Tabeeby
+# Optional: email (booking without an account, sign-in codes, confirmations). Off unless the key is set.
+BREVO_API_KEY=<key from app.brevo.com → SMTP & API → API keys>   # secret
+EMAIL_FROM=<sender address confirmed in Brevo>
+EMAIL_FROM_NAME=Tabeeby طبيبي
 # Optional: "Which specialist do I need?" (AI symptom checker). Hidden unless the key is set.
 ANTHROPIC_API_KEY=<key from console.anthropic.com>   # secret
 AI_MODEL=claude-haiku-5-5                            # default

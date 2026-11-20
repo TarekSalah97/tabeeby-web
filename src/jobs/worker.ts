@@ -45,6 +45,8 @@ export async function cleanup(deps: Deps): Promise<void> {
   // SMS bodies mention doctors and times: keep them only as long as needed for support.
   await deps.db.query("delete from notification_outbox where status <> 'pending' and created_at < now() - interval '30 days'");
   await expireOldEntries(deps.db, deps.cfg.TIME_ZONE, deps.now());
+  // Codes (and the booking details waiting on them) are not needed once used or expired.
+  await deps.db.query("delete from email_codes where created_at < now() - interval '2 days'");
 }
 
 export function startWorker(deps: Deps): () => void {
@@ -56,7 +58,7 @@ export function startWorker(deps: Deps): () => void {
     running = true;
     try {
       if (ticks % 12 === 0) await queueReminders(deps); // every minute
-      await deliverPending(deps.db, deps.sms);
+      await deliverPending(deps.db, deps.sms, 20, deps.email);
       if (ticks % 720 === 0) await cleanup(deps); // hourly
     } catch (err) {
       log.error('worker tick failed', errorFields(err));

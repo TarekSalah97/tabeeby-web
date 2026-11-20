@@ -14,6 +14,7 @@ import { migrate } from '../src/db/migrate.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { ConsoleSmsProvider } from '../src/services/sms.js';
+import { ConsoleEmailProvider } from '../src/services/email.js';
 import { LocalFileStorage } from '../src/storage/files.js';
 import type { Deps } from '../src/http/context.js';
 import { hashPassword } from '../src/auth/password.js';
@@ -27,6 +28,7 @@ export interface Harness {
   deps: Deps;
   db: Db;
   sms: ConsoleSmsProvider;
+  email: ConsoleEmailProvider;
   baseUrl: string;
   close(): Promise<void>;
 }
@@ -50,7 +52,11 @@ export async function startHarness(overrides: Partial<Record<keyof Config, strin
   (sms as unknown as { send: ConsoleSmsProvider['send'] }).send = async (to, body) => {
     sms.sent.push({ to, body });
   };
-  const deps: Deps = { cfg, db, sms, storage: new LocalFileStorage(uploadDir), now: () => new Date() };
+  const email = new ConsoleEmailProvider();
+  (email as unknown as { send: ConsoleEmailProvider['send'] }).send = async (to, subject, text) => {
+    email.sent.push({ to, subject, text });
+  };
+  const deps: Deps = { cfg, db, sms, email, storage: new LocalFileStorage(uploadDir), now: () => new Date() };
   const server: Server = createApp(deps, path.join(root, 'public'));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   const port = (server.address() as AddressInfo).port;
@@ -61,6 +67,7 @@ export async function startHarness(overrides: Partial<Record<keyof Config, strin
     deps,
     db,
     sms,
+    email,
     baseUrl: `http://127.0.0.1:${port}`,
     async close() {
       await new Promise((r) => server.close(r));
@@ -186,7 +193,7 @@ export async function login(client: Client, phone: string, password: string) {
 
 /** Sends queued SMS and returns the last OTP sent to a phone. */
 export async function lastOtp(h: Harness, phone: string): Promise<string> {
-  await deliverPending(h.db, h.sms);
+  await deliverPending(h.db, h.sms, 20, h.email);
   const msg = [...h.sms.sent].reverse().find((m) => m.to === phone && /\d{6}/.test(m.body));
   if (!msg) throw new Error('no OTP sent');
   return /(\d{6})/.exec(msg.body)![1]!;
@@ -208,4 +215,12 @@ export async function firstSlotStart(client: Client, slug: string, minHoursAhead
     }
   }
   throw new Error('no suitable slot link on profile page');
+}
+
+/** Sends queued messages and returns the last 6-digit code emailed to an address. */
+export async function lastEmailCode(h: Harness, email: string): Promise<string> {
+  await deliverPending(h.db, h.sms, 20, h.email);
+  const msg = [...h.email.sent].reverse().find((m) => m.to.toLowerCase() === email.toLowerCase() && /\d{6}/.test(m.text));
+  if (!msg) throw new Error('no code emailed');
+  return /(\d{6})/.exec(msg.text)![1]!;
 }

@@ -1,14 +1,19 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser, safeNext, setCookie } from '../http/context.js';
-import { smsEnabled } from '../config.js';
+import { smsEnabled, emailEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { field, fieldAll } from '../http/body.js';
 import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPreferredLocale } from '../services/accounts.js';
 import { registerDoctor, type PositionInput } from '../services/doctors.js';
 import { getReference } from '../services/reference.js';
 import { destroySession, SESSION_COOKIE } from '../auth/sessions.js';
-import { loginPage, signupPage, verifyPage } from '../views/pages/auth.js';
+import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage } from '../views/pages/auth.js';
+import { requestLoginCode, confirmLoginCode, setFirstPassword, hasPassword } from '../services/guestBooking.js';
+import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
+import { notFound } from '../http/errors.js';
+import { uuidParam } from './helpers.js';
+import type { MessageKey } from '../i18n/index.js';
 import { joinPage } from '../views/pages/forDoctors.js';
 import { HttpError } from '../http/errors.js';
 import { startSession, homeFor, localized, formValue } from './helpers.js';
@@ -62,6 +67,71 @@ export function authRoutes(r: Router): void {
       return redirect(ctx, href(ctx, '/verify-phone', { next: next ?? undefined }));
     }
     redirect(ctx, afterAuth(ctx, user.role, next));
+  });
+
+  // Sign in with a code sent to the patient's email (patients who booked without a password, or anyone who prefers it).
+  r.get('/login/email', async (ctx) => {
+    if (!emailEnabled(ctx.deps.cfg)) throw notFound();
+    if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
+    sendHtml(ctx, 200, loginEmailPage(ctx, { next: nextParam(ctx) }));
+  });
+
+  r.post('/login/email', async (ctx) => {
+    if (!emailEnabled(ctx.deps.cfg)) throw notFound();
+    const next = nextParam(ctx);
+    const email = formValue(ctx, 'email');
+    const result = await requestLoginCode(ctx.deps, email, ctx.locale, ctx.ip);
+    if ('error' in result) return sendHtml(ctx, 422, loginEmailPage(ctx, { email, error: result.error, next }));
+    redirect(ctx, href(ctx, `/login/email/${result.codeId}`, { next: next ?? undefined }));
+  });
+
+  const loginCodePage = async (ctx: Ctx, id: string, status: number, error?: MessageKey) => {
+    const pending = await pendingEmailCode(ctx.deps.db, id, 'login');
+    const next = nextParam(ctx);
+    sendHtml(
+      ctx,
+      pending ? status : 410,
+      emailCodePage(ctx, {
+        action: href(ctx, `/login/email/${id}`),
+        maskedEmail: pending ? maskEmail(pending.email) : '',
+        title: 'loginEmail.codeTitle',
+        lead: 'loginEmail.codeLead',
+        error: pending ? error : (error ?? 'emailCode.expired'),
+        next,
+        startOver: href(ctx, '/login/email', { next: next ?? undefined }),
+      }),
+    );
+  };
+
+  r.get('/login/email/:id', async (ctx) => {
+    if (!emailEnabled(ctx.deps.cfg)) throw notFound();
+    await loginCodePage(ctx, uuidParam(ctx, 'id'), 200);
+  });
+
+  r.post('/login/email/:id', async (ctx) => {
+    if (!emailEnabled(ctx.deps.cfg)) throw notFound();
+    const id = uuidParam(ctx, 'id');
+    const result = await confirmLoginCode(ctx.deps, id, formValue(ctx, 'code'), ctx.ip);
+    if ('error' in result) return loginCodePage(ctx, id, 422, result.error);
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, result.userId, result.role);
+    await setPreferredLocale(ctx.deps, result.userId, ctx.locale);
+    redirect(ctx, afterAuth(ctx, result.role, nextParam(ctx)));
+  });
+
+  // First password for patients who joined with an emailed code.
+  r.get('/account/password', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    if (await hasPassword(ctx.deps, user.id)) return redirect(ctx, href(ctx, '/appointments'));
+    sendHtml(ctx, 200, setPasswordPage(ctx, {}));
+  });
+
+  r.post('/account/password', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const problem = await setFirstPassword(ctx.deps, user.id, ctx.form['password']?.[0] ?? '', ctx.ip);
+    if (problem === 'password.alreadySet') return redirect(ctx, href(ctx, '/appointments'));
+    if (problem) return sendHtml(ctx, 422, setPasswordPage(ctx, { error: problem }));
+    redirect(ctx, href(ctx, '/appointments', { ok: 'passwordSet' }));
   });
 
   r.post('/logout', async (ctx) => {

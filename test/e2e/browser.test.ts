@@ -25,7 +25,8 @@ test('patient books through the Arabic UI: search → profile → sign in → co
   await page.getByRole('link', { name: 'د. سلمى القلب' }).click();
 
   await page.locator('.booking-panel .slot').first().click();
-  // Not signed in → sign-in page, then back to the confirm step.
+  // Not signed in → the booking page offers "already have an account? sign in", then comes back to confirm.
+  await page.locator('.have-account a').click();
   await page.waitForURL(/\/login\?next=/);
   await page.getByLabel('رقم الموبايل').fill('0' + patient.phone.slice(3));
   await page.getByLabel('كلمة المرور', { exact: true }).fill(patient.password);

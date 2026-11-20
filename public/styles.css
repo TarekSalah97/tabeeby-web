@@ -534,3 +534,13 @@ details[open] > summary { margin-block-end: 12px; }
   .variant-app .main-nav { display: none; }
   .has-tabbar .header-row, .has-tabbar .header-actions { flex-wrap: nowrap; }
 }
+
+/* Booking without an account, sign-in page for patient-only pages */
+.alert.row-between { flex-direction: row; align-items: center; }
+.h3 { font-size: 1.2rem; }
+.have-account { padding: 14px 16px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.gate { text-align: center; align-items: stretch; }
+.gate h1 { font-size: clamp(1.4rem, 1.1rem + 1.2vw, 1.9rem); }
+.gate-icon { align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 18px;
+  background: var(--primary-tint); color: var(--primary); }
+.gate-icon svg { width: 30px; height: 30px; }

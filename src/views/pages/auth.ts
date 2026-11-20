@@ -2,7 +2,8 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, input, passwordInput } from '../components.js';
+import { alert, consentField, csrfField, icon, input, passwordInput } from '../components.js';
+import { emailEnabled } from '../../config.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { MessageKey } from '../../i18n/index.js';
 import { maskEgyptMobile } from '../../domain/phone.js';
@@ -23,6 +24,7 @@ export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; nex
         ${passwordInput(ctx, { name: 'password', label: ctx.t('auth.password'), autocomplete: 'current-password', required: true })}
         <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('auth.submitSignIn')}</button>
       </form>
+      ${emailEnabled(ctx.deps.cfg) ? html`<a class="btn btn-ghost btn-block" href="${href(ctx, '/login/email', { next: o.next ?? undefined })}">${ctx.t('loginEmail.link')}</a>` : ''}
       <p class="center muted">${ctx.t('auth.noAccount')} <a href="${href(ctx, '/signup', { next: o.next ?? undefined })}">${ctx.t('nav.signUp')}</a></p>
     </div>
   </div>`;
@@ -75,4 +77,85 @@ export function verifyPage(ctx: Ctx, o: { error?: MessageKey; notice?: MessageKe
     </div>
   </div>`;
   return layout(ctx, { title: `${ctx.t('verify.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/** "Enter the 6-digit code we emailed to a•••@gmail.com" — for booking without an account and for email sign-in. */
+export function emailCodePage(
+  ctx: Ctx,
+  o: { action: string; maskedEmail: string; title: MessageKey; lead: MessageKey; error?: MessageKey; next?: string | null; startOver: string },
+): SafeHtml {
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card">
+      <h1>${ctx.t(o.title)}</h1>
+      <p class="muted">${ctx.t(o.lead, { email: o.maskedEmail })}</p>
+      ${o.error ? alert('error', ctx.t(o.error)) : ''}
+      <form method="post" action="${o.action}" class="stack" novalidate>
+        ${csrfField(ctx)}
+        ${o.next ? html`<input type="hidden" name="next" value="${o.next}">` : ''}
+        ${input(ctx, { name: 'code', label: ctx.t('verify.code'), inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 6, required: true })}
+        <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('verify.submit')}</button>
+      </form>
+      <p class="hint center">${ctx.t('emailCode.checkSpam')}</p>
+      <p class="center"><a href="${o.startOver}">${ctx.t('emailCode.startOver')}</a></p>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t(o.title)} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+export function loginEmailPage(ctx: Ctx, o: { email?: string; error?: MessageKey; next?: string | null }): SafeHtml {
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card">
+      <h1>${ctx.t('loginEmail.title')}</h1>
+      <p class="muted">${ctx.t('loginEmail.lead')}</p>
+      ${o.error ? alert('error', ctx.t(o.error)) : ''}
+      <form method="post" action="${href(ctx, '/login/email')}" class="stack" novalidate>
+        ${csrfField(ctx)}
+        ${o.next ? html`<input type="hidden" name="next" value="${o.next}">` : ''}
+        ${input(ctx, { name: 'email', label: ctx.t('guest.email'), type: 'email', value: o.email, autocomplete: 'email', inputmode: 'email', maxlength: 254, required: true })}
+        <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('loginEmail.send')}</button>
+      </form>
+      <p class="center"><a href="${href(ctx, '/login', { next: o.next ?? undefined })}">${ctx.t('loginEmail.usePassword')}</a></p>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('loginEmail.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+export function setPasswordPage(ctx: Ctx, o: { error?: MessageKey }): SafeHtml {
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card">
+      <h1>${ctx.t('password.setTitle')}</h1>
+      <p class="muted">${ctx.t('password.setLead')}</p>
+      ${o.error ? alert('error', ctx.t(o.error)) : ''}
+      <form method="post" action="${href(ctx, '/account/password')}" class="stack" novalidate>
+        ${csrfField(ctx)}
+        ${passwordInput(ctx, { name: 'password', label: ctx.t('auth.password'), autocomplete: 'new-password', hint: ctx.t('auth.passwordHint'), required: true })}
+        <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('password.setButton')}</button>
+      </form>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('password.setTitle')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/**
+ * Shown instead of a bare redirect when a visitor opens a patient-only page
+ * (My appointments, My prescriptions & tests) without being signed in as a patient.
+ */
+export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions', returnTo: string): SafeHtml {
+  const staff = ctx.user && ctx.user.role !== 'patient';
+  const title: MessageKey = kind === 'appointments' ? 'gate.appointmentsTitle' : 'gate.prescriptionsTitle';
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card gate">
+      <span class="gate-icon" aria-hidden="true">${kind === 'appointments' ? icon.calendar : icon.check}</span>
+      <h1>${ctx.t(title)}</h1>
+      ${staff
+        ? html`<p class="muted">${ctx.t('gate.staffLead')}</p>
+           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' ? '/dashboard' : '/admin')}">${ctx.t(ctx.user!.role === 'doctor' ? 'nav.dashboard' : 'nav.admin')}</a>`
+        : html`<p class="muted">${ctx.t(kind === 'appointments' ? 'gate.appointmentsLead' : 'gate.prescriptionsLead')}</p>
+           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, '/login', { next: returnTo })}">${ctx.t('gate.signIn')}</a>
+           <a class="btn btn-outline btn-lg btn-block" href="${href(ctx, '/signup', { next: returnTo })}">${ctx.t('gate.signUp')}</a>
+           <p class="hint center">${ctx.t('gate.free')}</p>
+           <p class="center muted small">${ctx.t('auth.areYouDoctor')} <a href="${href(ctx, '/login')}">${ctx.t('gate.doctorSignIn')}</a></p>`}
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t(title)} — ${ctx.t('brand')}`, body, noindex: true });
 }

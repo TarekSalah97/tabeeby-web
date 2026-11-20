@@ -89,11 +89,12 @@ test('unverified patients are sent to verify before booking', async () => {
   assert.match(book.location!, /^\/en\/verify-phone\?next=/);
 });
 
-test('anonymous visitors are sent to sign in, then back', async () => {
+test('anonymous visitors see a sign-in page that brings them back afterwards', async () => {
   const c = new Client(h.baseUrl);
   const res = await c.get('/en/appointments');
-  assert.equal(res.status, 303);
-  assert.equal(res.location, '/en/login?next=%2Fappointments');
+  assert.equal(res.status, 200);
+  assert.match(res.body, /href="\/en\/login\?next=%2Fappointments"/);
+  assert.match(res.body, /href="\/en\/signup\?next=%2Fappointments"/);
 });
 
 test('wrong password and unknown phone give the same answer', async () => {

@@ -19,6 +19,7 @@ import {
 } from '../views/pages/records.js';
 import { requireDoctor } from './dashboard.js';
 import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
+import { patientGatePage } from '../views/pages/auth.js';
 
 /** A signed-in doctor whose clinical records are switched on. Everyone else gets "not found". */
 async function recordsDoctor(ctx: Ctx): Promise<{ user: SessionUser; doctor: OwnDoctor } | null> {
@@ -243,7 +244,8 @@ export function recordsRoutes(r: Router): void {
 
   // ---- patient: their own prescriptions and lab orders (never the doctor's notes)
   r.get('/prescriptions', async (ctx) => {
-    const user = requireUser(ctx, 'patient');
+    if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'prescriptions', ctx.path));
+    const user = ctx.user;
     sendHtml(ctx, 200, patientDocumentsPage(ctx, await listPatientDocuments(ctx.deps.db, user.id)));
   });
 

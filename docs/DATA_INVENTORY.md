@@ -6,7 +6,7 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 |---|---|---|---|---|---|
 | users.full_name | patients, doctors, admins | No | Identify the account; shown to the doctor on bookings | User, their doctors, admins | Account lifetime + 1 year |
 | users.phone_e164 | all | No | Sign-in, OTP, booking SMS | User, their doctors (to contact), admins | Account lifetime + 1 year |
-| users.email | doctors, admins | No | Doctor contact | User, admins | Account lifetime + 1 year |
+| users.email (+ email_verified_at) | doctors, admins, patients who booked by email code or added it | No | Doctor contact; patient codes and booking confirmations | User, the doctors they booked with (shown on the day schedule), admins | Account lifetime + 1 year |
 | users.password_hash | all | No (secret) | Authentication | Nobody (one-way hash) | Account lifetime |
 | sessions, otp_codes | all | No | Sign-in | Nobody (hashes only) | Sessions ≤30 days; OTP rows deleted after 2 days |
 | appointments (time, clinic, status, visit type) | patients | **Health-adjacent** (that a person sees a given specialist) | Booking, reminders, doctor's schedule | Patient, that doctor | Proposed 2 years, then anonymise patient link |
@@ -15,6 +15,8 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 | doctor_positions | doctors | No | Experience shown on profile | Public once approved, admins | While listed |
 | verification_documents (syndicate card file) | doctors | ID document | Verify licence to practise | Admins only; every view audited | Proposed 1 year after verification decision |
 | notification_outbox (phone, SMS text incl. doctor name and time) | patients, doctors | **Health-adjacent** | Deliver SMS | Operators with DB access | Deleted after 30 days (worker cleanup) |
+| email_codes (email, hashed 6-digit code; for guest bookings also name, mobile, chosen time, reason for visit until confirmed) | visitors and patients | **Health-adjacent** (reason for visit is health data) | Confirm a booking without an account; sign in by email | Nobody in the UI (code stored only as a hash) | Expire after 15 minutes; proposed deletion after 2 days |
+| notification_outbox emails (address, subject, body incl. codes, doctor, time, clinic) | patients | **Health-adjacent** | Deliver emails | Operators with DB access | Deleted after 30 days (worker cleanup) |
 | audit_log (actor id, action, record id, IP) | all | No | Security and accountability | Admins with DB access | Proposed 1 year |
 | rate_limits (keys contain phone numbers and IPs) | all | No | Abuse prevention | Nobody in UI | Deleted after 2 days |
 | patient_records (name, phone, date of birth, sex, occupation, marital status, habits, allergies, chronic conditions, past/family history, current medications) | patients (booked and walk-in) | **Yes — health data** | The treating doctor's patient file (clinical records feature, switched on per doctor) | That doctor only; every opening audited | Medical-record retention rules apply — lawyer/Ministry of Health to confirm |
@@ -28,7 +30,7 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 
 | Symptom checker description, age group, sex | visitors and patients | **Yes — health data** | Suggest a specialty | Sent to the AI provider (Anthropic, USA) only after the visitor ticks a consent box; **not stored by Tabeeby** (not in the database or logs). Only a per-IP request counter is kept (rate_limits). | Not stored |
 
-**Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), backup storage provider, AI provider for the symptom checker (Anthropic; receives the symptom description).
+**Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), email provider (Brevo; receives email addresses, codes and booking confirmations), backup storage provider, AI provider for the symptom checker (Anthropic; receives the symptom description).
 
 **Not collected:** lab results (only the requests), payment cards, national ID numbers, location tracking, analytics cookies.
 

@@ -7,7 +7,7 @@ import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { checkTransition, type AppointmentStatus } from '../domain/appointmentStatus.js';
 import { toZoned } from '../domain/time.js';
 import { slotsForDoctors } from './availability.js';
-import { enqueueSms } from './outbox.js';
+import { enqueueSms, enqueueEmail } from './outbox.js';
 import { audit } from './audit.js';
 import { closeOnBooking, notifyWaitlist } from './waitlist.js';
 import { translator, formatDateTime, type Locale } from '../i18n/index.js';
@@ -100,6 +100,23 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
           link: `${deps.cfg.PUBLIC_ORIGIN}${patient.locale === 'en' ? '/en' : ''}/appointments`,
         }),
       );
+      // Patients with a confirmed email also get the confirmation by email (works without SMS).
+      const mail = await tx.query<{ email: string }>('select email from users where id = $1 and email is not null and email_verified_at is not null', [patient.id]);
+      if (mail.rows[0]) {
+        await enqueueEmail(
+          tx,
+          mail.rows[0].email,
+          t('email.bookedSubject', { doctor: target.doctorName }),
+          t('email.bookedBody', {
+            name: patient.fullName,
+            doctor: target.doctorName,
+            when: formatDateTime(target.startsAt, patient.locale, deps.cfg.TIME_ZONE),
+            clinic: target.clinicName,
+            address: target.clinicAddress,
+            link: `${deps.cfg.PUBLIC_ORIGIN}${patient.locale === 'en' ? '/en' : ''}/appointments`,
+          }),
+        );
+      }
       await audit(tx, { actorId: patient.id, action: 'appointment.book', entityType: 'appointment', entityId: id, ip });
       return id;
     });

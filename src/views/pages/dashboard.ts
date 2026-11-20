@@ -113,7 +113,7 @@ export function todayPage(
               const started = ctx.deps.now().getTime() >= a.starts_at.getTime();
               return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : ''}">
                 <td class="nowrap cell-time" data-label="${ctx.t('dash.time')}"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
-                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong><a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a></span></td>
+                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong><a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a>${a.patient_email ? html`<a class="muted small" dir="ltr" href="mailto:${a.patient_email}">${a.patient_email}</a>` : ''}</span></td>
                 <td data-label="${ctx.t('dash.clinic')}">${a.clinic_name}</td>
                 <td data-label="${ctx.t('dash.type')}">${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')}</td>
                 <td class="muted" data-label="${ctx.t('dash.reason')}">${a.reason ?? '—'}</td>

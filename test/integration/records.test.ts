@@ -265,7 +265,10 @@ test('access control: other doctors and other patients get nothing', async () =>
   const anon = new Client(h.baseUrl);
   assert.equal((await anon.get(`/en/dashboard/patients/${recordId}`)).status, 303);
   assert.equal((await anon.get(`/en/prescriptions/${rxId}`)).status, 303);
-  assert.equal((await anon.get('/en/prescriptions')).status, 303);
+  const gate = await anon.get('/en/prescriptions');
+  assert.equal(gate.status, 200, 'visitors get the sign-in page');
+  assert.doesNotMatch(gate.body, /Cataflam/);
+  assert.match(gate.body, /href="\/en\/login\?next=%2Fprescriptions"/);
 
   // Bad ids are "not found", not errors.
   assert.equal((await owner.c.get('/en/dashboard/patients/not-a-uuid')).status, 404);

@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { createDb } from './db/db.js';
 import { createApp } from './app.js';
 import { createSmsProvider } from './services/sms.js';
+import { createEmailProvider } from './services/email.js';
 import { createAdvisor } from './services/symptomChecker.js';
 import { LocalFileStorage, DbFileStorage } from './storage/files.js';
 import { startWorker } from './jobs/worker.js';
@@ -16,10 +17,12 @@ const deps: Deps = {
   cfg,
   db,
   sms: createSmsProvider(cfg),
+  email: createEmailProvider(cfg),
   storage: cfg.STORAGE_DRIVER === 'db' ? new DbFileStorage(db) : new LocalFileStorage(cfg.UPLOAD_DIR),
   now: () => new Date(),
   ai: createAdvisor(cfg),
 };
+if (cfg.EMAIL_PROVIDER === 'none') log.warn('running without email: booking without an account and email sign-in codes are off', { brevoKeySet: !!cfg.BREVO_API_KEY, emailFromSet: !!cfg.EMAIL_FROM });
 if (cfg.SMS_PROVIDER === 'none') log.warn('running without SMS: phone numbers are not verified and no confirmations or reminders are sent');
 
 const server = createApp(deps);

@@ -5,6 +5,7 @@ import type { Session, SessionUser, Role } from '../auth/sessions.js';
 import type { FormFields, UploadedFile } from './body.js';
 import type { Locale, Translator } from '../i18n/index.js';
 import type { SmsProvider } from '../services/sms.js';
+import type { EmailProvider } from '../services/email.js';
 import type { FileStorage } from '../storage/files.js';
 import type { SpecialtyAdvisor } from '../services/symptomChecker.js';
 import { serializeCookie, type CookieOptions } from './cookies.js';
@@ -14,6 +15,7 @@ export interface Deps {
   cfg: Config;
   db: Db;
   sms: SmsProvider;
+  email: EmailProvider;
   storage: FileStorage;
   now: () => Date;
   /** Symptom checker AI; null/undefined when no API key is configured. */

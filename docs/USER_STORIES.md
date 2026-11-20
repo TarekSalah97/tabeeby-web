@@ -97,3 +97,15 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 **D-EZ — Doctor's day on a phone.** As a doctor, I want to run my clinic day from my phone.
 - The day's visits show as cards on phones with the next-step button full width and at least 44px tall; no sideways scrolling (E).
 - Dashboard sections are tabs across the top on phones.
+
+## Booking without an account and patient sign-in page
+
+**P-GB — Book with an emailed code.** As a visitor without an account, I want to book with my name, mobile and email, so that I don't have to sign up first.
+- Shown only when an email service is configured; otherwise visitors sign in to book as before (I).
+- A 6-digit code (15 minutes, 5 tries, single use, stored hashed) is emailed; nothing is created until it is confirmed (I).
+- The right code creates a patient account (email confirmed, no password yet), signs the visitor in and books through the normal booking rules; the visit shows in My appointments and on the doctor's schedule with the patient's mobile and email (I).
+- A mobile or email that already has an account must sign in instead — an email code never opens an existing account (I).
+- Patients can later sign in with an emailed code (patients only; same answer for unknown emails) or set a password (I).
+- With SMS on, the new account also verifies its mobile before the booking is made (I).
+
+**P-GT — Patient-only pages explain how to get in.** Visitors who open My appointments or My prescriptions & tests see a page with "Sign in as a patient" and "Create a patient account" that brings them back afterwards; staff are pointed to their dashboard (I).

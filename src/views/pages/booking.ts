@@ -2,7 +2,8 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, directionsHref, icon, statusChip, starRow } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, icon, input, statusChip, starRow } from '../components.js';
+import type { FieldErrors } from '../../services/accounts.js';
 import { formatDate, formatTime, formatShortDate, type MessageKey } from '../../i18n/index.js';
 import type { BookingTarget, PatientAppointment } from '../../services/booking.js';
 import type { PatientWaitlistEntry } from '../../services/waitlist.js';
@@ -52,7 +53,7 @@ export function appointmentsPage(
   ctx: Ctx,
   list: PatientAppointment[],
   waitlist: PatientWaitlistEntry[],
-  o: { notice?: MessageKey; error?: MessageKey },
+  o: { notice?: MessageKey; error?: MessageKey; needsPassword?: boolean },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const now = ctx.deps.now().getTime();
@@ -114,6 +115,10 @@ export function appointmentsPage(
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
     ${ctx.user && !ctx.user.phoneVerified && ctx.deps.cfg.SMS_PROVIDER !== 'none' ? alert('warning', html`<a href="${href(ctx, '/verify-phone')}">${ctx.t('book.verifyFirst')}</a>`) : ''}
+    ${o.needsPassword
+      ? html`<div class="alert alert-info row-between" role="status"><span>${ctx.t('password.setPrompt')}</span>
+          <a class="btn btn-primary btn-sm" href="${href(ctx, '/account/password')}">${ctx.t('password.setButton')}</a></div>`
+      : ''}
     <section class="stack"><h2>${ctx.t('appts.upcoming')}</h2>
       ${upcoming.length ? html`<ul class="appt-list">${upcoming.map(upcomingRow)}</ul>`
         : html`<div class="empty"><p>${ctx.t('appts.none')}</p><a class="btn btn-primary btn-lg" href="${href(ctx, '/search')}">${ctx.t('appts.findDoctor')}</a></div>`}
@@ -153,4 +158,64 @@ export function reviewPage(ctx: Ctx, t: ReviewTarget, o: { error?: MessageKey; r
     </div>
   </div>`;
   return layout(ctx, { title: `${ctx.t('review.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/** Booking for someone without an account: details + consent, then an emailed code. */
+export function guestConfirmPage(
+  ctx: Ctx,
+  target: BookingTarget,
+  o: { values?: Record<string, string>; errors?: FieldErrors; error?: MessageKey },
+): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const v = o.values ?? {};
+  const visit = v['visitType'] === 'follow_up' ? 'follow_up' : 'new';
+  const bookUrl = href(ctx, '/book', { doctor: target.doctorSlug, clinic: target.clinicId, start: target.startsAt.toISOString() });
+  const hasAccountError = o.errors?.['phone'] === 'guest.phoneHasAccount' || o.errors?.['email'] === 'guest.emailHasAccount';
+  const body = html`<div class="container page narrow">
+    <div class="panel stack">
+      <h1>${ctx.t('book.title')}</h1>
+      <dl class="summary">
+        <div><dt>${ctx.t('book.with')}</dt><dd><a href="${href(ctx, `/doctors/${target.doctorSlug}`)}">${target.doctorName}</a></dd></div>
+        <div><dt>${ctx.t('book.when')}</dt><dd>${formatDate(target.startsAt, ctx.locale, tz)} · ${formatTime(target.startsAt, ctx.locale, tz)}</dd></div>
+        <div><dt>${ctx.t('book.where')}</dt><dd>${target.clinicName}<br><span class="muted">${target.clinicAddress}</span></dd></div>
+        <div><dt>${ctx.t('book.fee')}</dt><dd>${money(ctx, target.fee)} · ${ctx.t('doctor.payAtClinic')}</dd></div>
+      </dl>
+      <div class="have-account row-between">
+        <span>${ctx.t('guest.haveAccount')}</span>
+        <a class="btn btn-outline" href="${href(ctx, '/login', { next: bookUrl })}">${ctx.t('nav.signIn')}</a>
+      </div>
+      <h2 class="h3">${ctx.t('guest.title')}</h2>
+      <p class="muted">${ctx.t('guest.lead')}</p>
+      ${o.error ? alert('error', ctx.t(o.error)) : ''}
+      ${hasAccountError
+        ? alert('warning', html`${ctx.t('guest.signInInstead')} <a href="${href(ctx, '/login', { next: bookUrl })}">${ctx.t('nav.signIn')}</a>`)
+        : o.errors && Object.keys(o.errors).length
+          ? alert('error', ctx.t('common.fixErrors'))
+          : ''}
+      <form method="post" action="${href(ctx, '/book/guest')}" class="stack" novalidate>
+        ${csrfField(ctx)}
+        <input type="hidden" name="clinic" value="${target.clinicId}">
+        <input type="hidden" name="start" value="${target.startsAt.toISOString()}">
+        ${input(ctx, { name: 'fullName', label: ctx.t('auth.fullName'), value: v['fullName'], autocomplete: 'name', maxlength: 120, errors: o.errors, required: true })}
+        ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: v['phone'], prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('auth.phoneHint'), errors: o.errors, required: true })}
+        ${input(ctx, { name: 'email', label: ctx.t('guest.email'), type: 'email', value: v['email'], autocomplete: 'email', inputmode: 'email', hint: ctx.t('guest.emailHint'), maxlength: 254, errors: o.errors, required: true })}
+        <fieldset class="stack-sm">
+          <legend class="label">${ctx.t('book.visitType')}</legend>
+          <div class="segmented">
+            <label><input type="radio" name="visitType" value="new"${visit === 'new' ? html` checked` : ''}><span>${ctx.t('book.new')}</span></label>
+            <label><input type="radio" name="visitType" value="follow_up"${visit === 'follow_up' ? html` checked` : ''}><span>${ctx.t('book.followUp')}</span></label>
+          </div>
+        </fieldset>
+        <div class="field">
+          <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+          <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${v['reason'] ?? ''}</textarea>
+          <p class="hint" id="reason-hint">${ctx.t('book.reasonHint')}</p>
+        </div>
+        ${consentField(ctx, o.errors)}
+        <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('guest.sendCode')}</button>
+        <p class="hint center">${ctx.t('book.cancelPolicy', { hours: ctx.deps.cfg.CANCEL_CUTOFF_HOURS })}</p>
+      </form>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('book.title')} — ${ctx.t('brand')}`, body, noindex: true });
 }

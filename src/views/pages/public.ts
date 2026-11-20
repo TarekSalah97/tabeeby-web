@@ -44,24 +44,24 @@ export interface PatientHome {
 }
 
 /** For a signed-in patient: their next visit and the doctors they can rebook in one tap. */
-function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome): SafeHtml {
+function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const first = (ctx.user?.fullName ?? '').split(/\s+/)[0] ?? '';
   return html`<section class="container quick-start" aria-labelledby="qs-title">
     <div class="panel stack">
-      <h2 id="qs-title">${ctx.t('home.welcomeBack', { name: first })}</h2>
+      <h2 id="qs-title">${p ? ctx.t('home.welcomeBack', { name: first }) : ctx.t('home.visitorTitle')}</h2>
       <div class="quick-grid">
         <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/prescriptions')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
         ${ctx.deps.ai ? html`<a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>` : ''}
       </div>
-      ${p.next
+      ${p?.next
         ? html`<a class="next-visit" href="${href(ctx, '/appointments')}"><span class="label">${ctx.t('home.nextVisit')}</span>
             <strong>${formatShortDate(p.next.starts_at, ctx.locale, tz)} · ${formatTime(p.next.starts_at, ctx.locale, tz)}</strong>
             <span class="muted" dir="auto">${p.next.doctor_name} · ${p.next.clinic_name}</span></a>`
         : ''}
-      ${p.recent.length
+      ${p?.recent.length
         ? html`<div class="stack-sm"><span class="label">${ctx.t('home.yourDoctors')}</span>
             <ul class="rebook-list">${p.recent.map((r) => {
               const spec = ref.specialtyById.get(r.specialty_id);
@@ -77,7 +77,7 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
   const conditions = ref.conditions.slice(0, 6);
   const examples = ref.conditions.filter((c) => c.subspecialty_id !== null).slice(0, 4);
   const body = html`
-  ${patient ? patientQuickStart(ctx, ref, patient) : ''}
+  ${patient ? patientQuickStart(ctx, ref, patient) : !ctx.user ? patientQuickStart(ctx, ref, null) : ''}
   <section class="hero">
     <div class="container hero-grid">
       <div class="hero-copy">

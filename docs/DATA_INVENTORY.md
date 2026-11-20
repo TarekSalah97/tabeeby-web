@@ -17,10 +17,15 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 | notification_outbox (phone, SMS text incl. doctor name and time) | patients, doctors | **Health-adjacent** | Deliver SMS | Operators with DB access | Deleted after 30 days (worker cleanup) |
 | audit_log (actor id, action, record id, IP) | all | No | Security and accountability | Admins with DB access | Proposed 1 year |
 | rate_limits (keys contain phone numbers and IPs) | all | No | Abuse prevention | Nobody in UI | Deleted after 2 days |
+| patient_records (name, phone, date of birth, sex, occupation, marital status, habits, allergies, chronic conditions, past/family history, current medications) | patients (booked and walk-in) | **Yes — health data** | The treating doctor's patient file (clinical records feature, switched on per doctor) | That doctor only; every opening audited | Medical-record retention rules apply — lawyer/Ministry of Health to confirm |
+| encounters (chief complaint, history, examination, diagnosis, plan) | patients | **Yes — health data** | Visit notes | That doctor only (never shown to the patient in the app) | As above |
+| prescriptions, prescription_items, lab_orders, lab_order_items | patients | **Yes — health data** | Prescriptions and lab/imaging requests; never edited, only cancelled | That doctor; the patient (if the file is linked to their account, and not cancelled) | As above |
+| record_revisions | patients | **Yes — health data** | Earlier versions of edited files and visit notes | Nobody in the UI (database operators) | As above |
+| doctor_medicines (medicine names a doctor has prescribed) | doctors | No | Type-ahead suggestions | That doctor | While the doctor's account exists |
 
 **Data processors to list:** hosting provider, SMS gateway (receives phone numbers and message text), backup storage provider.
 
-**Not collected in v1:** diagnoses, prescriptions, lab results, payment cards, national ID numbers, location tracking, analytics cookies.
+**Not collected:** lab results (only the requests), payment cards, national ID numbers, location tracking, analytics cookies.
 
 **Open items for the lawyer**
 1. Hosting location vs. cross-border transfer licence.
@@ -28,3 +33,5 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 3. Consent wording on sign-up (currently: agree to Terms and Privacy Policy) — is separate explicit consent for health-adjacent booking data required?
 4. Data-subject request process (access, correction, deletion) — v1 has no self-service deletion; requests are handled by admins in the database.
 5. Whether a Data Protection Officer must be appointed.
+6. Clinical records (patient files, visit notes, prescriptions, lab orders) are sensitive health data stored outside Egypt. The feature is off by default and switched on per doctor by an admin; confirm the PDPC licence, cross-border transfer, consent wording ("The patient agreed that I keep a medical file for them on Tabeeby", recorded with a timestamp) and retention before turning it on for real patients.
+7. Confirm what an Egyptian prescription must show (e.g. syndicate number, signature) — the printout currently shows the doctor's name, specialty, title, clinic, patient, date, medicines and a signature line.

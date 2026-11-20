@@ -29,7 +29,7 @@ export function adminListPage(ctx: Ctx, ref: ReferenceData, data: { pending: Rev
   return layout(ctx, { title: `${ctx.t('admin.title')} — ${ctx.t('brand')}`, body, variant: 'app', noindex: true });
 }
 
-export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, error?: MessageKey): SafeHtml {
+export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, error?: MessageKey, notice?: MessageKey): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const spec = ref.specialtyById.get(d.specialty_id);
   const years = experienceYears(d.positions, ctx.deps.now());
@@ -42,6 +42,7 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
     <a href="${href(ctx, '/admin')}">← ${ctx.t('common.back')}</a>
     <div class="row-wrap"><h1>${d.full_name}</h1>${vstatus(ctx, st)}</div>
     ${error ? alert('error', ctx.t(error)) : ''}
+    ${notice ? alert('success', ctx.t(notice)) : ''}
     <section class="panel">
       <dl class="summary">
         <div><dt>${ctx.t('join.kind')}</dt><dd>${ctx.t(d.kind === 'dental' ? 'join.kindDental' : 'join.kindMedical')}</dd></div>
@@ -61,6 +62,14 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
     </section>
     ${d.positions.length ? html`<section class="panel stack"><h2>${ctx.t('doctor.experienceSection')}</h2>
       <ol class="timeline">${d.positions.map((p) => html`<li><span class="muted" dir="ltr">${p.start} – ${p.end ?? ctx.t('common.present')}</span><span><strong>${p.title}</strong> <span class="muted">${p.workplace}</span></span></li>`)}</ol></section>` : ''}
+    <section class="panel stack">
+      <h2>${ctx.t('admin.recordsTitle')}</h2>
+      <p class="muted">${ctx.t(d.records_enabled ? 'admin.recordsOn' : 'admin.recordsOff')}</p>
+      <p class="hint">${ctx.t('admin.recordsHint')}</p>
+      <form method="post" action="${href(ctx, `/admin/doctors/${d.user_id}/records`)}">${csrfField(ctx)}
+        <input type="hidden" name="on" value="${d.records_enabled ? 'no' : 'yes'}">
+        <button type="submit" class="btn ${d.records_enabled ? 'btn-outline' : 'btn-primary'}">${ctx.t(d.records_enabled ? 'admin.recordsDisable' : 'admin.recordsEnable')}</button></form>
+    </section>
     <section class="panel row-wrap align-start">
       ${st === 'pending' || st === 'rejected' ? action('approve', 'admin.approve', false, true) : ''}
       ${st === 'pending' ? action('reject', 'admin.reject', true) : ''}

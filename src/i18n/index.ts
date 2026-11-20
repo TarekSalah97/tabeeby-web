@@ -40,6 +40,15 @@ export function formatTime(d: Date, locale: Locale, tz: string): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d);
 }
 
+/** Date with the year, for records: "20 November 2026". */
+export function formatFullDate(d: Date, locale: Locale, tz: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+}
+
+export function formatFullDateTime(d: Date, locale: Locale, tz: string): string {
+  return `${formatFullDate(d, locale, tz)} · ${formatTime(d, locale, tz)}`;
+}
+
 export function formatDateTime(d: Date, locale: Locale, tz: string): string {
   return `${formatShortDate(d, locale, tz)} · ${formatTime(d, locale, tz)}`;
 }

@@ -39,6 +39,27 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 **D3 — Run the day.** See the day's appointments with patient name, phone and reason; mark arrived → start → finish; mark no-show only after the time; cancel (patient gets an SMS) (U, I).
 - Another doctor can never see or change these appointments (I).
 
+**D4 — Patient files (clinical records; switched on per doctor by an admin).** As a doctor, I want a file for each patient with their personal details and medical background, so that I have their history at every visit.
+- Open a file from an appointment (linked to the patient's account) or for a walk-in patient; the patient's consent must be confirmed (I).
+- Age is calculated from date of birth (U); allergies are shown at the top of the file and every visit (I).
+- A walk-in file with the same phone can be linked when that patient later books; a file linked to another account cannot be relinked (I).
+- Edits keep the earlier version (I). Every opening is audited (I).
+- Another doctor, another patient or a visitor can never see or change a file (I).
+
+**D5 — Visits, prescriptions and lab orders.** As a doctor, I want to record a visit, write a prescription and order tests in one place, so that the patient leaves with printed papers and the visit is on file.
+- Notes: chief complaint (required), history, examination, diagnosis, plan (I).
+- Prescription lines: medicine and strength, form, dose, how often, when, how long, instructions; blank lines are ignored, incomplete lines are named and nothing is saved (U, I).
+- Medicine suggestions come from the doctor's own past prescriptions; picking one fills its form (I).
+- Lab and imaging orders from a fixed list plus free text (U, I).
+- Visit, prescription and lab order are saved together or not at all (I).
+- Prescriptions and lab orders are never edited, only cancelled with a reason; the database refuses changes (I).
+- Printable A4 page in Arabic or English (I).
+
+## Patients — prescriptions
+
+**P-RX — My prescriptions.** As a patient, I want to see the prescriptions and lab orders my doctors issued, so that I can show them at the pharmacy or lab.
+- Only for files linked to my account; cancelled ones disappear; the doctor's notes are never shown (I).
+
 ## Admins
 
 **A1 — Verify doctors.** See pending doctors, open the syndicate card (every opening audited) (I), approve (doctor gets an SMS and becomes visible) (I), reject or suspend with a required reason (I). Suspension signs the doctor out and hides them (I).

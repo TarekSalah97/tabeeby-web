@@ -13,6 +13,43 @@
     input.focus();
   });
 
+  // Prescriptions: add more medicine lines (the page always offers a few without JavaScript).
+  var addLine = document.querySelector('[data-rx-add]');
+  if (addLine) {
+    addLine.hidden = false;
+    addLine.addEventListener('click', function () {
+      var list = addLine.closest('[data-rx]').querySelector('[data-rx-lines]');
+      var lines = list.querySelectorAll('[data-rx-line]');
+      if (lines.length >= Number(addLine.getAttribute('data-max'))) return;
+      var copy = lines[lines.length - 1].cloneNode(true);
+      Array.prototype.forEach.call(copy.querySelectorAll('input'), function (el) { el.value = ''; });
+      Array.prototype.forEach.call(copy.querySelectorAll('select'), function (el) { el.selectedIndex = 0; });
+      list.appendChild(copy);
+      copy.querySelector('[data-medicine]').focus();
+      if (lines.length + 1 >= Number(addLine.getAttribute('data-max'))) addLine.hidden = true;
+    });
+  }
+
+  // Prescriptions: picking a known medicine fills in its usual form.
+  document.addEventListener('change', function (event) {
+    var field = event.target;
+    if (!field.matches || !field.matches('[data-medicine]')) return;
+    var line = field.closest('[data-rx-line]');
+    var form = line && line.querySelector('[data-form]');
+    var list = document.getElementById('medicine-list');
+    if (!form || !list || form.value) return;
+    var wanted = field.value.trim().toLowerCase();
+    var match = Array.prototype.find.call(list.options, function (o) { return o.value.toLowerCase() === wanted; });
+    if (match) form.value = match.getAttribute('data-form');
+  });
+
+  // Printable prescriptions and lab orders.
+  var print = document.querySelector('[data-print]');
+  if (print) {
+    print.hidden = false;
+    print.addEventListener('click', function () { window.print(); });
+  }
+
   // Working hours: copy the first ticked day's times to every other ticked day.
   var copy = document.querySelector('[data-copy-hours]');
   if (copy) {

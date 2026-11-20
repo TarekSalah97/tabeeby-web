@@ -4,6 +4,7 @@ import { sendHtml, redirect } from '../http/respond.js';
 import { applyDocumentHeaders } from '../http/security.js';
 import { getReference } from '../services/reference.js';
 import { listForReview, getForReview, decide, readDocument, type Decision } from '../services/admin.js';
+import { setRecordsEnabled } from '../services/records.js';
 import { adminListPage, adminDoctorPage } from '../views/pages/admin.js';
 import { DomainError, notFound } from '../http/errors.js';
 import { isMessageKey } from '../i18n/index.js';
@@ -23,7 +24,15 @@ export function adminRoutes(r: Router): void {
     const id = uuidParam(ctx, 'id');
     const [ref, d] = await Promise.all([getReference(ctx.deps.db), getForReview(ctx.deps.db, id)]);
     const e = ctx.query.get('error') ?? '';
-    sendHtml(ctx, 200, adminDoctorPage(ctx, ref, d, isMessageKey(e) ? e : undefined));
+    sendHtml(ctx, 200, adminDoctorPage(ctx, ref, d, isMessageKey(e) ? e : undefined, noticeFrom(ctx)));
+  });
+
+  // Registered before the generic decision route below so "records" is not read as a decision.
+  r.post('/admin/doctors/:id/records', async (ctx) => {
+    const admin = requireUser(ctx, 'admin');
+    const id = uuidParam(ctx, 'id');
+    await setRecordsEnabled(ctx.deps, admin.id, id, formValue(ctx, 'on') === 'yes', ctx.ip);
+    redirect(ctx, href(ctx, `/admin/doctors/${id}`, { ok: 'done' }));
   });
 
   r.post('/admin/doctors/:id/:decision', async (ctx) => {

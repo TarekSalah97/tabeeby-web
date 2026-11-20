@@ -14,11 +14,12 @@ import { addDays, todayIn } from '../../domain/time.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { money } from './public.js';
 
-type Section = 'today' | 'clinics' | 'hours' | 'profile';
+export type Section = 'today' | 'patients' | 'clinics' | 'hours' | 'profile';
 
-function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: Section; path: string; label: MessageKey }[] = [
     { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
+    ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
     { key: 'clinics', path: '/dashboard/clinics', label: 'dash.nav.clinics' },
     { key: 'hours', path: '/dashboard/hours', label: 'dash.nav.hours' },
     { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
@@ -112,6 +113,7 @@ export function todayPage(
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
                   ${a.status === 'confirmed' || a.status === 'arrived' ? actionForm(a, 'cancelled', 'action.cancel', false) : ''}
+                  ${doctor.records_enabled && a.status !== 'cancelled' ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
                 </div></td>
               </tr>`;
             })}</tbody></table></div>`

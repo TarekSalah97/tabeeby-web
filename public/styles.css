@@ -281,6 +281,59 @@ textarea { resize: vertical; }
 .form-grid.five { grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); }
 .form-grid > legend { grid-column: 1 / -1; }
 .span-all { grid-column: 1 / -1; }
+/* Clinical records */
+.check-grid { display: grid; gap: 8px 16px; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
+fieldset.form-grid > legend, fieldset.stack-sm > legend { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; margin-block-end: 4px; }
+fieldset legend.label { font-family: inherit; font-size: .9rem; color: var(--muted); }
+.record-list, .visit-timeline { list-style: none; margin: 0; padding: 0; }
+.record-list li + li, .visit-timeline li + li { border-block-start: 1px solid var(--line); }
+.record-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 16px 20px; color: var(--ink); text-decoration: none; }
+.record-row:hover { background: #f4faf8; color: var(--ink); }
+.visit-timeline .record-row { padding-inline: 0; }
+.record-row-end { align-items: flex-end; text-align: end; }
+.rx-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; counter-reset: rx; }
+.rx-line { counter-increment: rx; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); padding: 14px; padding-block-start: 34px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); position: relative; }
+.rx-line::before { content: counter(rx); position: absolute; inset-block-start: 8px; inset-inline-start: 14px; font-weight: 800; color: var(--primary); }
+.rx-line label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rx-line label > span { font-size: .82rem; font-weight: 600; color: var(--muted); }
+.rx-line .rx-medicine, .rx-line .rx-instructions { grid-column: 1 / -1; }
+.rx-line input, .rx-line select { min-height: 44px; }
+.order-card { border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.order-card.voided { background: #f6f6f5; color: var(--muted); }
+.order-card.voided .rx-print-list, .order-card.voided .lab-print-list { text-decoration: line-through; }
+.voided-note { color: var(--danger); font-weight: 600; font-size: .9rem; }
+.rx-print-list, .lab-print-list { margin: 0; padding-inline-start: 1.4rem; display: flex; flex-direction: column; gap: 10px; }
+details > summary { list-style: none; cursor: pointer; display: inline-flex; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary { margin-block-end: 12px; }
+.void-box[open] { flex-basis: 100%; }
+.lab-group { border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; }
+.lab-group > summary { display: flex; gap: 6px; align-items: center; min-height: 48px; font-weight: 700; }
+.lab-group > summary::after { content: '+'; margin-inline-start: auto; font-size: 1.3rem; color: var(--primary); }
+.lab-group[open] > summary::after { content: '−'; }
+.lab-group[open] { padding-block-end: 14px; }
+.lab-group[open] > summary { margin-block-end: 4px; }
+/* Printable sheet (prescription / lab order) */
+.print-page { background: #e9ecea; }
+.print-toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 16px; }
+.sheet { background: #fff; color: #000; max-width: 210mm; min-height: 270mm; margin: 0 auto 32px; padding: 18mm 16mm; display: flex; flex-direction: column; gap: 18px; box-shadow: var(--shadow); }
+.sheet-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; border-block-end: 2px solid var(--primary); padding-block-end: 12px; }
+.sheet-doctor { font-family: var(--font-display); font-size: 1.4rem; }
+.sheet-clinic { text-align: end; font-size: .92rem; }
+.sheet-patient { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: .95rem; }
+.sheet-title { font-size: 1.3rem; color: var(--primary-dark); }
+.sheet-list { font-size: 1.05rem; gap: 14px; }
+.sheet-foot { margin-block-start: auto; display: flex; flex-direction: column; gap: 24px; font-size: .82rem; }
+.signature { align-self: flex-end; min-width: 200px; border-block-start: 1px solid #000; padding-block-start: 6px; text-align: center; }
+.voided-stamp { border: 3px solid var(--danger); color: var(--danger); font-weight: 800; font-size: 1.2rem; text-align: center; padding: 8px; border-radius: 8px; }
+@media (max-width: 720px) { .sheet { padding: 20px 16px; min-height: 0; } .sheet-clinic { text-align: start; } }
+@media print {
+  .no-print, .site-header, .site-footer, .skip-link { display: none !important; }
+  .print-page, body { background: #fff; }
+  .sheet { box-shadow: none; margin: 0; max-width: none; min-height: 0; padding: 0; }
+  @page { size: A4; margin: 14mm; }
+}
+
 /* Working hours: one row per weekday, tick the day and set its times. */
 .day-list { display: flex; flex-direction: column; gap: 8px; }
 .day-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr); gap: 8px 16px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }

@@ -32,6 +32,7 @@ export interface ReviewDetail extends ReviewListItem {
   graduation_year: number;
   verification_note: string | null;
   phone_verified_at: Date | null;
+  records_enabled: boolean;
   documents: { id: string; mime_type: string; size_bytes: number; uploaded_at: Date }[];
   positions: { title: string; workplace: string; start: string; end: string | null }[];
   subspecialtyIds: number[];
@@ -40,7 +41,7 @@ export interface ReviewDetail extends ReviewListItem {
 export async function getForReview(db: Queryable, doctorId: string): Promise<ReviewDetail> {
   const { rows } = await db.query<Omit<ReviewDetail, 'documents' | 'positions' | 'subspecialtyIds'>>(
     `select d.user_id, u.full_name, d.specialty_id, d.kind, d.verification_status, d.created_at, d.verified_at,
-            u.phone_e164, u.email, d.graduation_year, d.verification_note, u.phone_verified_at
+            u.phone_e164, u.email, d.graduation_year, d.verification_note, u.phone_verified_at, d.records_enabled
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [doctorId],
   );

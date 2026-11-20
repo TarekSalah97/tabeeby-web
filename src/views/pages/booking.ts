@@ -62,7 +62,7 @@ export function appointmentsPage(ctx: Ctx, list: PatientAppointment[], o: { noti
         : ''}</div>
   </li>`;
   const body = html`<div class="container page narrow stack-lg">
-    <h1>${ctx.t('appts.title')}</h1>
+    <div class="row-between"><h1>${ctx.t('appts.title')}</h1><a class="btn btn-outline" href="${href(ctx, '/prescriptions')}">${ctx.t('appts.myDocs')}</a></div>
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
     ${ctx.user && !ctx.user.phoneVerified && ctx.deps.cfg.SMS_PROVIDER !== 'none' ? alert('warning', html`<a href="${href(ctx, '/verify-phone')}">${ctx.t('book.verifyFirst')}</a>`) : ''}

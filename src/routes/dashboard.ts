@@ -22,7 +22,7 @@ import type { AppointmentStatus } from '../domain/appointmentStatus.js';
 import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
 
 /** Doctors must have verified their phone before using the dashboard. */
-function requireDoctor(ctx: Ctx): SessionUser | null {
+export function requireDoctor(ctx: Ctx): SessionUser | null {
   const user = requireUser(ctx, 'doctor');
   if (smsEnabled(ctx.deps.cfg) && !user.phoneVerified) {
     redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));

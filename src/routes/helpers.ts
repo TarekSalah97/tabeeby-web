@@ -15,6 +15,12 @@ const NOTICES: Record<string, MessageKey> = {
   cancelled: 'appts.cancelled',
   saved: 'common.saved',
   done: 'admin.done',
+  fileCreated: 'records.createdNotice',
+  linked: 'records.linked',
+  visitSaved: 'visit.saved',
+  rxIssued: 'rx.issued',
+  labIssued: 'lab.issued',
+  voided: 'rx.voidedNotice',
 };
 
 export function noticeFrom(ctx: Ctx): MessageKey | undefined {

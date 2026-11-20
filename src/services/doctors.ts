@@ -173,13 +173,14 @@ export interface OwnDoctor {
   gender: 'female' | 'male' | null;
   languages: string[];
   verification_status: 'pending' | 'approved' | 'rejected' | 'suspended';
+  records_enabled: boolean;
   verification_note: string | null;
 }
 
 export async function getOwnDoctor(db: Queryable, userId: string): Promise<OwnDoctor> {
   const { rows } = await db.query<OwnDoctor>(
     `select d.user_id, d.slug, d.kind, u.full_name, d.title_en, d.title_ar, d.bio, d.specialty_id, d.graduation_year,
-            d.gender, d.languages, d.verification_status, d.verification_note
+            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [userId],
   );

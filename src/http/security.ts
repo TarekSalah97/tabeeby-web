@@ -2,8 +2,8 @@ import type { ServerResponse } from 'node:http';
 
 /**
  * Strict Content-Security-Policy: only our own scripts and styles, no inline
- * script, no third-party origins (fonts are system fonts, so no visitor data
- * goes to Google — which also matters for the data-transfer rules).
+ * script, no third-party origins (the Cairo font is self-hosted under /static,
+ * so no visitor data goes to Google — which also matters for the data-transfer rules).
  */
 const CSP = [
   "default-src 'self'",

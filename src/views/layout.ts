@@ -44,6 +44,7 @@ ${o.noindex || ctx.deps.cfg.DEMO_MODE ? html`<meta name="robots" content="noinde
 <link rel="alternate" hreflang="ar" href="${origin}${p || '/'}">
 <link rel="alternate" hreflang="en" href="${origin}/en${p}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+${ctx.locale === 'ar' ? html`<link rel="preload" href="/static/fonts/cairo.woff" as="font" type="font/woff" crossorigin>` : ''}
 <link rel="stylesheet" href="/static/styles.css">
 <script src="/static/app.js" defer></script>
 </head>

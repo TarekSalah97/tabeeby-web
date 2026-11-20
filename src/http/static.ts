@@ -9,6 +9,7 @@ const TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 };
 

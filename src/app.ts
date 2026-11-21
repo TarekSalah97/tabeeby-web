@@ -29,10 +29,11 @@ import { healthRecordRoutes } from './routes/healthRecord.js';
 import { messagingRoutes } from './routes/messaging.js';
 import { facilityRoutes } from './routes/facilities.js';
 import { log, errorFields } from './log.js';
+import { staticRoot } from './http/staticRoot.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // src/ when run with tsx, dist/src/ when compiled.
-const STATIC_DIR = [path.resolve(here, '../public'), path.resolve(here, '../../public')].find((p) => fs.existsSync(p)) ?? path.resolve('public');
+const STATIC_DIR = staticRoot;
 const FORM_LIMIT = 64 * 1024;
 
 export function buildRouter(): Router {
@@ -86,7 +87,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
     }
 
     if (url.pathname.startsWith('/static/')) {
-      if (await serveStatic(staticDir, url.pathname, res, method)) return;
+      if (await serveStatic(staticDir, url.pathname, res, method, url.searchParams.has('v'))) return;
       res.statusCode = 404;
       res.end();
       return;

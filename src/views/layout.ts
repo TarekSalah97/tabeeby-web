@@ -2,6 +2,8 @@ import { html, type SafeHtml } from './html.js';
 import type { Ctx } from '../http/context.js';
 import { href, alternateHref } from '../http/context.js';
 import { csrfField, icon } from './components.js';
+import { assetVersion } from '../http/static.js';
+import { staticRoot as STATIC_ROOT } from '../http/staticRoot.js';
 
 export interface PageOpts {
   title: string;
@@ -65,8 +67,8 @@ ${o.noindex || ctx.deps.cfg.DEMO_MODE ? html`<meta name="robots" content="noinde
 <link rel="alternate" hreflang="en" href="${origin}/en${p}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 ${ctx.locale === 'ar' ? html`<link rel="preload" href="/static/fonts/cairo.woff" as="font" type="font/woff" crossorigin>` : ''}
-<link rel="stylesheet" href="/static/styles.css">
-<script src="/static/app.js" defer></script>
+<link rel="stylesheet" href="/static/styles.css?v=${assetVersion(STATIC_ROOT, 'styles.css')}">
+<script src="/static/app.js?v=${assetVersion(STATIC_ROOT, 'app.js')}" defer></script>
 </head>
 <body class="variant-${variant}${ctx.user?.role === 'patient' ? ' has-tabbar' : ''}">
 <a class="skip-link" href="#main">${ctx.t('nav.skip')}</a>

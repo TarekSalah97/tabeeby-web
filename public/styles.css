@@ -769,3 +769,19 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .hr-choice:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint); }
 .hr-choice input { margin-top: 4px; }
 .hr-status { justify-self: start; width: fit-content; }
+
+/* Doctor's own services (besides consultation and follow-up) */
+.svc-panel { border-top: 1px dashed var(--line); padding-top: 14px; }
+.svc-panel h3 { margin: 0; }
+.svc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.svc-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto; gap: 8px 12px; align-items: end; }
+.svc-add { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; background: var(--bg); border-radius: var(--radius-sm); padding: 10px 12px; }
+.svc-form .field { margin: 0; }
+.svc-hidden { opacity: .6; }
+@media (max-width: 640px) { .svc-form, .svc-add { grid-template-columns: minmax(0, 1fr); } .svc-save .btn { width: 100%; } }
+.segmented-wrap { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.visit-option { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+.visit-option:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint); }
+.visit-option > .stack-sm { flex: 1; min-width: 0; }
+.visit-price { font-weight: 700; white-space: nowrap; }
+.svc-public summary { cursor: pointer; font-weight: 600; padding: 6px 0; }

@@ -1,8 +1,8 @@
-import { html, type SafeHtml } from '../html.js';
+import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, icon, input, statusChip, starRow, errorSummary } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, icon, input, statusChip, starRow, errorSummary, visitLabel } from '../components.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import { formatDate, formatTime, formatShortDate, type MessageKey } from '../../i18n/index.js';
 import type { BookingTarget, PatientAppointment } from '../../services/booking.js';
@@ -13,9 +13,27 @@ import { zonedToUtc } from '../../domain/time.js';
 import { money } from './public.js';
 import { paidChip } from './payments.js';
 import { canReport, ISSUE_CATEGORIES, type IssueTarget } from '../../services/reliability.js';
-import type { VisitType } from '../../domain/visitPricing.js';
+import type { VisitType, Visit } from '../../domain/visitPricing.js';
+import type { ClinicService } from '../../services/clinicServices.js';
 import type { LiveVisit } from '../../services/queue.js';
 import { queueCard } from './queue.js';
+
+/**
+ * "What is the visit for?" — shown when the clinic offers services besides the consultation.
+ * The consultation option shows the price the server decided (new or follow-up).
+ */
+function visitChoice(ctx: Ctx, consult: Visit, services: ClinicService[], chosen: string): SafeHtml {
+  if (!services.length) return html``;
+  const option = (value: string, label: string, fee: number, note?: string) =>
+    html`<label class="visit-option"><input type="radio" name="service" value="${value}"${attrIf(chosen === value, 'checked')}>
+      <span class="stack-sm"><strong dir="auto">${label}</strong>${note ? html`<span class="small muted">${note}</span>` : ''}</span>
+      <span class="visit-price">${money(ctx, fee)}</span></label>`;
+  return html`<fieldset class="stack-sm"><legend class="label">${ctx.t('svc.whatFor')}</legend>
+    ${option('', ctx.t(consult.type === 'follow_up' ? 'book.followUp' : 'svc.consultation'), consult.fee, consult.type === 'follow_up' ? ctx.t('svc.followUpNote') : undefined)}
+    ${services.map((s) => option(s.id, s.name, s.price_egp))}
+    <p class="hint">${ctx.t('doctor.payAtClinic')}</p>
+  </fieldset>`;
+}
 
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
 function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number }): SafeHtml {
@@ -28,9 +46,10 @@ function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: 
 export function confirmPage(
   ctx: Ctx,
   target: BookingTarget,
-  visit: { type: VisitType; fee: number },
-  o: { error?: MessageKey; reason?: string },
+  visit: Visit,
+  o: { error?: MessageKey; reason?: string; services?: ClinicService[]; serviceId?: string },
 ): SafeHtml {
+  const services = o.services ?? [];
   const tz = ctx.deps.cfg.TIME_ZONE;
   const body = html`<div class="container page narrow">
     <div class="panel stack">
@@ -40,12 +59,13 @@ export function confirmPage(
         <div><dt>${ctx.t('book.with')}</dt><dd><a href="${href(ctx, `/doctors/${target.doctorSlug}`)}">${target.doctorName}</a></dd></div>
         <div><dt>${ctx.t('book.when')}</dt><dd>${formatDate(target.startsAt, ctx.locale, tz)} · ${formatTime(target.startsAt, ctx.locale, tz)}</dd></div>
         <div><dt>${ctx.t('book.where')}</dt><dd>${target.clinicName}<br><span class="muted">${target.clinicAddress}</span></dd></div>
-        ${feeRow(ctx, target, visit)}
+        ${services.length ? '' : feeRow(ctx, target, visit)}
       </dl>
       <form method="post" action="${href(ctx, '/book')}" class="stack">
         ${csrfField(ctx)}
         <input type="hidden" name="clinic" value="${target.clinicId}">
         <input type="hidden" name="start" value="${target.startsAt.toISOString()}">
+        ${visitChoice(ctx, visit, services, o.serviceId ?? '')}
         <div class="field">
           <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
           <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${o.reason ?? ''}</textarea>
@@ -79,7 +99,7 @@ export function appointmentsPage(
     <div class="appt-when"><strong>${formatDate(a.starts_at, ctx.locale, tz)}</strong><span class="appt-time">${formatTime(a.starts_at, ctx.locale, tz)}</span></div>
     <div class="stack-sm">
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto"><strong>${a.doctor_name}</strong></a> · <span dir="auto">${a.clinic_name}</span></span>
-      <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${a.visit_type === 'follow_up' ? html`${ctx.t('book.followUp')} · ` : ''}${money(ctx, a.fee_egp)}</span>
+      <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${a.visit_type !== 'new' ? html`<bdi>${visitLabel(ctx, a)}</bdi> · ` : ''}${money(ctx, a.fee_egp)}</span>
       ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
       <div>${statusChip(ctx, a.status)}</div>
     </div>
@@ -194,7 +214,7 @@ export function reviewPage(ctx: Ctx, t: ReviewTarget, o: { error?: MessageKey; r
 export function guestConfirmPage(
   ctx: Ctx,
   target: BookingTarget,
-  o: { values?: Record<string, string>; errors?: FieldErrors; error?: MessageKey },
+  o: { values?: Record<string, string>; errors?: FieldErrors; error?: MessageKey; services?: ClinicService[] },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const v = o.values ?? {};
@@ -207,7 +227,7 @@ export function guestConfirmPage(
         <div><dt>${ctx.t('book.with')}</dt><dd><a href="${href(ctx, `/doctors/${target.doctorSlug}`)}">${target.doctorName}</a></dd></div>
         <div><dt>${ctx.t('book.when')}</dt><dd>${formatDate(target.startsAt, ctx.locale, tz)} · ${formatTime(target.startsAt, ctx.locale, tz)}</dd></div>
         <div><dt>${ctx.t('book.where')}</dt><dd>${target.clinicName}<br><span class="muted">${target.clinicAddress}</span></dd></div>
-        ${feeRow(ctx, target, { type: 'new', fee: target.fee })}
+        ${o.services?.length ? '' : feeRow(ctx, target, { type: 'new', fee: target.fee })}
       </dl>
       <div class="have-account row-between">
         <span>${ctx.t('guest.haveAccount')}</span>
@@ -225,6 +245,7 @@ export function guestConfirmPage(
         ${csrfField(ctx)}
         <input type="hidden" name="clinic" value="${target.clinicId}">
         <input type="hidden" name="start" value="${target.startsAt.toISOString()}">
+        ${visitChoice(ctx, { type: 'new', fee: target.fee }, o.services ?? [], v['service'] ?? '')}
         ${input(ctx, { name: 'fullName', label: ctx.t('auth.fullName'), value: v['fullName'], autocomplete: 'name', maxlength: 120, errors: o.errors, required: true })}
         ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: v['phone'], prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('auth.phoneHint'), errors: o.errors, required: true })}
         ${input(ctx, { name: 'email', label: ctx.t('guest.email'), type: 'email', value: v['email'], autocomplete: 'email', inputmode: 'email', hint: ctx.t('guest.emailHint'), maxlength: 254, errors: o.errors, required: true })}

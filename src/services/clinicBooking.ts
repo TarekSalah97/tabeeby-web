@@ -3,6 +3,7 @@ import type { Queryable } from '../db/db.js';
 import { isExclusionViolation } from '../db/db.js';
 import type { SessionUser } from '../auth/sessions.js';
 import type { Slot } from '../domain/availability.js';
+import { bookableService } from './clinicServices.js';
 import { priceOf, type ClinicPrices, type VisitType } from '../domain/visitPricing.js';
 import { normalizeEgyptMobile } from '../domain/phone.js';
 import { addDays, isValidDate, todayIn, toZoned } from '../domain/time.js';
@@ -85,6 +86,8 @@ export interface ClinicBookingInput {
   clinicId: string;
   startsAt: Date;
   visitType: VisitType;
+  /** With visitType "service": one of this clinic's services; its price comes from the doctor's list. */
+  serviceId?: string;
   reason: string;
   /** Set when booking a follow-up from an earlier appointment; name and phone then come from it. */
   fromAppointmentId: string | null;
@@ -122,16 +125,19 @@ export async function bookByClinic(deps: Deps, doctor: SessionUser, input: Clini
       // Re-derived from the real schedule: the form only says "this clinic, this start time".
       const slot = (await clinicSlots(deps, tx, doctor.id, clinic.id, date)).find((s) => s.startsAt.getTime() === input.startsAt.getTime());
       if (!slot) throw new DomainError('booking.slotUnavailable');
-      const visitType: VisitType = source ? 'follow_up' : input.visitType;
-      const fee = priceOf(clinic, visitType);
+      // A chosen service wins (also for a follow-up booking, e.g. the next laser session).
+      const service = input.visitType === 'service' && input.serviceId ? await bookableService(tx, clinic.id, input.serviceId) : null;
+      if (input.visitType === 'service' && !service) throw new DomainError('svc.err.unavailable');
+      const visitType: VisitType = service ? 'service' : source ? 'follow_up' : input.visitType === 'follow_up' ? 'follow_up' : 'new';
+      const fee = service ? service.price_egp : priceOf(clinic, visitType as 'new' | 'follow_up');
       const patientId = source?.patientId ?? null;
       const walkInName = patientId ? null : (source?.name ?? walkIn!.name);
       const walkInPhone = patientId ? null : (source?.phone ?? walkIn!.phone);
 
       const { rows } = await tx.query<{ id: string }>(
-        `insert into appointments (doctor_id, clinic_id, patient_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, reason, fee_egp)
-         values ($1, $2, $3, $4, $5, 'doctor', $6, $7, $8, $9, $10) returning id`,
-        [doctor.id, clinic.id, patientId, walkInName, walkInPhone, slot.startsAt, slot.endsAt, visitType, reason || null, fee],
+        `insert into appointments (doctor_id, clinic_id, patient_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name)
+         values ($1, $2, $3, $4, $5, 'doctor', $6, $7, $8, $9, $10, $11, $12) returning id`,
+        [doctor.id, clinic.id, patientId, walkInName, walkInPhone, slot.startsAt, slot.endsAt, visitType, reason || null, fee, service?.id ?? null, service?.name ?? null],
       );
       const id = rows[0]!.id;
 

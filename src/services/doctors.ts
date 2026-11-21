@@ -234,7 +234,7 @@ export interface ClinicInput {
   isActive: boolean;
 }
 
-const parseFee = (raw: string): number => {
+export const parseFee = (raw: string): number => {
   const digits = normalizeDigits(raw).replace(/[,\s]/g, '');
   const n = /^\d{1,6}$/.test(digits) ? Number(digits) : NaN;
   return Number.isInteger(n) && n >= 0 && n <= 100000 ? n : NaN;

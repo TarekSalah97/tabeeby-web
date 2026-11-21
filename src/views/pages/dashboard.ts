@@ -1,8 +1,10 @@
+import type { ClinicService } from '../../services/clinicServices.js';
+import { suggestionsFor } from '../../domain/serviceSuggestions.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -180,7 +182,7 @@ export function todayPage(
                         noShowsOf(a) ? html`<span class="chip status-cancelled">${ctx.t('cbook.noShows', { n: noShowsOf(a) })}</span>` : ''}</span>`
                     : ''}<a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a>${a.patient_email ? html`<a class="muted small" dir="ltr" href="mailto:${a.patient_email}">${a.patient_email}</a>` : ''}</span></td>
                 <td data-label="${ctx.t('dash.clinic')}">${a.clinic_name}</td>
-                <td data-label="${ctx.t('dash.type')}">${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')} <span class="muted small">· ${money(ctx, a.fee_egp)}</span></td>
+                <td data-label="${ctx.t('dash.type')}"><bdi>${visitLabel(ctx, a)}</bdi> <span class="muted small">· ${money(ctx, a.fee_egp)}</span></td>
                 <td class="muted" data-label="${ctx.t('dash.reason')}">${a.reason ?? '—'}</td>
                 <td data-label="${ctx.t('dash.status')}">${statusChip(ctx, a.status)}</td>
                 <td class="cell-actions"><div class="row-wrap">
@@ -205,7 +207,68 @@ export function todayPage(
   return shell(ctx, doctor, 'today', content, o.notice);
 }
 
-export function clinicsPage(ctx: Ctx, doctor: OwnDoctor, ref: ReferenceData, clinics: ClinicRow[], o: { errors?: FieldErrors; values?: Record<string, string>; editing?: string | null; notice?: { kind: 'success' | 'error'; key: MessageKey } }): SafeHtml {
+/**
+ * The doctor's own services at one clinic: each can be renamed, re-priced or hidden, and new ones
+ * added (with suggestions for the doctor's specialty). Prices apply to new bookings only.
+ */
+function servicesPanel(
+  ctx: Ctx,
+  clinic: ClinicRow,
+  services: ClinicService[],
+  suggestions: string[],
+  o: { serviceErrors?: FieldErrors; serviceTarget?: string; serviceValues?: Record<string, string> },
+): SafeHtml {
+  const mine = services.filter((s) => s.clinic_id === clinic.id);
+  const listId = `svc-suggest-${clinic.id.slice(0, 8)}`;
+  const row = (s: ClinicService) => {
+    const isTarget = o.serviceTarget === s.id;
+    const v = isTarget && o.serviceValues ? o.serviceValues : { serviceName: s.name, servicePrice: String(s.price_egp), active: s.is_active ? 'yes' : '' };
+    const errors = isTarget ? o.serviceErrors : undefined;
+    const idPrefix = `s${s.id.slice(0, 8)}-`;
+    return html`<li class="svc-row${s.is_active ? '' : ' svc-hidden'}">
+      <form method="post" action="${href(ctx, `/dashboard/services/${s.id}`)}" class="svc-form">
+        ${csrfField(ctx)}
+        ${input(ctx, { idPrefix, name: 'serviceName', label: ctx.t('svc.name'), value: v['serviceName'], maxlength: 80, errors, required: true })}
+        ${input(ctx, { idPrefix, name: 'servicePrice', label: ctx.t('svc.price'), value: v['servicePrice'], inputmode: 'numeric', errors, required: true })}
+        <div class="field"><label class="check"><input type="checkbox" name="active" value="yes"${attrIf(v['active'] === 'yes', 'checked')}><span>${ctx.t('svc.active')}</span></label></div>
+        <div class="field svc-save"><button class="btn btn-outline btn-sm" type="submit">${ctx.t('svc.save')}</button></div>
+      </form>
+    </li>`;
+  };
+  const isNew = o.serviceTarget === `new:${clinic.id}`;
+  const nv = isNew && o.serviceValues ? o.serviceValues : {};
+  return html`<section class="stack-sm svc-panel" id="services-${clinic.id}">
+    <h3>${ctx.t('svc.title')}</h3>
+    <p class="small muted">${ctx.t('svc.lead')}</p>
+    ${mine.length ? html`<ul class="svc-list">${mine.map(row)}</ul>` : ''}
+    <form method="post" action="${href(ctx, `/dashboard/clinics/${clinic.id}/services`)}" class="svc-form svc-add">
+      ${csrfField(ctx)}
+      ${input(ctx, { idPrefix: `n${clinic.id.slice(0, 8)}-`, name: 'serviceName', label: ctx.t('svc.newName'), value: nv['serviceName'], maxlength: 80, list: listId, hint: suggestions.length ? ctx.t('svc.suggestHint') : undefined, errors: isNew ? o.serviceErrors : undefined, required: true })}
+      ${input(ctx, { idPrefix: `n${clinic.id.slice(0, 8)}-`, name: 'servicePrice', label: ctx.t('svc.price'), value: nv['servicePrice'], inputmode: 'numeric', errors: isNew ? o.serviceErrors : undefined, required: true })}
+      <div class="field svc-save"><button class="btn btn-primary btn-sm" type="submit">${ctx.t('svc.add')}</button></div>
+      ${suggestions.length ? html`<datalist id="${listId}">${suggestions.map((s) => html`<option value="${s}"></option>`)}</datalist>` : ''}
+    </form>
+  </section>`;
+}
+
+export function clinicsPage(
+  ctx: Ctx,
+  doctor: OwnDoctor,
+  ref: ReferenceData,
+  clinics: ClinicRow[],
+  o: {
+    errors?: FieldErrors;
+    values?: Record<string, string>;
+    editing?: string | null;
+    notice?: { kind: 'success' | 'error'; key: MessageKey };
+    services?: ClinicService[];
+    serviceErrors?: FieldErrors;
+    serviceTarget?: string;
+    serviceValues?: Record<string, string>;
+  },
+): SafeHtml {
+  const specialtySlug = ref.specialties.find((s) => s.id === doctor.specialty_id)?.slug ?? null;
+  const suggestions = suggestionsFor(specialtySlug, ctx.locale);
   const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
   const form = (c: ClinicRow | null) => {
     const isTarget = (o.editing ?? null) === (c?.id ?? null);
@@ -229,7 +292,7 @@ export function clinicsPage(ctx: Ctx, doctor: OwnDoctor, ref: ReferenceData, cli
   };
   const content = html`
     <div><h1>${ctx.t('clinics.title')}</h1><p class="muted">${ctx.t('clinics.lead')}</p></div>
-    ${clinics.length ? clinics.map((c) => html`<section class="panel stack"><h2>${c.name} <span class="muted">· ${money(ctx, c.fee_egp)}</span></h2>${form(c)}</section>`) : html`<p class="muted">${ctx.t('clinics.none')}</p>`}
+    ${clinics.length ? clinics.map((c) => html`<section class="panel stack"><h2>${c.name} <span class="muted">· ${money(ctx, c.fee_egp)}</span></h2>${form(c)}${servicesPanel(ctx, c, o.services ?? [], suggestions, o)}</section>`) : html`<p class="muted">${ctx.t('clinics.none')}</p>`}
     <section class="panel stack"><h2>${ctx.t('clinics.add')}</h2>${form(null)}</section>`;
   return shell(ctx, doctor, 'clinics', content, o.notice);
 }
@@ -436,6 +499,8 @@ export interface ClinicBookView {
   values?: Record<string, string>;
   errors?: FieldErrors;
   error?: MessageKey;
+  /** The clinic's own services besides the consultation and follow-up. */
+  services?: ClinicService[];
 }
 
 /** The clinic books for someone: a phone call, a walk-in, or a follow-up from today's list. Two steps on one page: pick a day, then a time. */
@@ -449,7 +514,12 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
     ? [{ label: 'cbook.in1w', days: 7 }, { label: 'cbook.in2w', days: 14 }, { label: 'cbook.in1m', days: 30 }]
     : [{ label: 'common.today', days: 0 }, { label: 'cbook.tomorrow', days: 1 }];
   const chosen = values['start'] ?? '';
-  const visit = v.source ? 'follow_up' : values['visitType'] === 'follow_up' ? 'follow_up' : 'new';
+  const services = v.services ?? [];
+  const picked = values['visitType'] ?? '';
+  const visit = picked.startsWith('svc:') && services.some((s) => `svc:${s.id}` === picked) ? picked : v.source ? 'follow_up' : picked === 'follow_up' ? 'follow_up' : 'new';
+  const serviceOptions = services.map(
+    (s) => html`<label><input type="radio" name="visitType" value="svc:${s.id}"${attrIf(visit === `svc:${s.id}`, 'checked')}><span><bdi>${s.name}</bdi> · ${money(ctx, s.price_egp)}</span></label>`,
+  );
   const followUpPrice = clinic.followUpFee ?? clinic.fee;
 
   const content = html`
@@ -492,17 +562,25 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
       ${v.source
         ? html`<dl class="summary">
             <div><dt>${ctx.t('dash.patient')}</dt><dd><strong dir="auto">${v.source.name}</strong> · <span dir="ltr">${formatEgyptMobile(v.source.phone)}</span></dd></div>
-            <div><dt>${ctx.t('book.feeFollowUp')}</dt><dd>${money(ctx, followUpPrice)}</dd></div>
-          </dl>`
+            ${services.length ? '' : html`<div><dt>${ctx.t('book.feeFollowUp')}</dt><dd>${money(ctx, followUpPrice)}</dd></div>`}
+          </dl>
+          ${services.length
+            ? html`<fieldset class="stack-sm"><legend class="label">${ctx.t('book.visitType')}</legend>
+                <div class="segmented segmented-wrap">
+                  <label><input type="radio" name="visitType" value="follow_up"${attrIf(visit === 'follow_up', 'checked')}><span>${ctx.t('book.followUp')} · ${money(ctx, followUpPrice)}</span></label>
+                  ${serviceOptions}
+                </div></fieldset>`
+            : ''}`
         : html`<div class="form-grid">
             ${input(ctx, { name: 'name', label: ctx.t('cbook.name'), value: values['name'], autocomplete: 'off', maxlength: 120, errors: v.errors, required: true })}
             ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: values['phone'], prefix: '+20', inputmode: 'tel', autocomplete: 'off', errors: v.errors, required: true })}
           </div>
           <fieldset class="stack-sm">
             <legend class="label">${ctx.t('book.visitType')}</legend>
-            <div class="segmented">
+            <div class="segmented${services.length ? ' segmented-wrap' : ''}">
               <label><input type="radio" name="visitType" value="new"${attrIf(visit === 'new', 'checked')}><span>${ctx.t('book.new')} · ${money(ctx, clinic.fee)}</span></label>
               <label><input type="radio" name="visitType" value="follow_up"${attrIf(visit === 'follow_up', 'checked')}><span>${ctx.t('book.followUp')} · ${money(ctx, followUpPrice)}</span></label>
+              ${serviceOptions}
             </div>
           </fieldset>`}
       <div class="field">

@@ -7,6 +7,7 @@ import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { hashPassword, checkPasswordPolicy } from '../auth/password.js';
 import type { Role } from '../auth/sessions.js';
 import { translator, formatDateTime, type Locale, type MessageKey } from '../i18n/index.js';
+import { bookableService } from './clinicServices.js';
 import { DomainError, notFound, tooManyRequests } from '../http/errors.js';
 import { resolveSlot, type BookingTarget } from './booking.js';
 import { validateName, type FieldErrors } from './accounts.js';
@@ -21,6 +22,8 @@ export interface GuestBookingInput {
   phone: string;
   email: string;
   reason: string;
+  /** Chosen clinic service (checked against the clinic again when the booking is made). */
+  serviceId?: string;
   consent: boolean;
   locale: Locale;
   ip: string;
@@ -34,6 +37,7 @@ export interface GuestRequest {
   startsAt: string;
   reason: string;
   locale: Locale;
+  serviceId?: string;
 }
 
 /**
@@ -53,6 +57,8 @@ export async function startGuestBooking(deps: Deps, input: GuestBookingInput): P
   if (!email) errors['email'] = 'guest.emailInvalid';
   if (!input.consent) errors['consent'] = 'auth.consentRequired';
   const reason = input.reason.trim().slice(0, 200);
+  // A chosen service must be one of this clinic's current services.
+  if (input.serviceId && !(await bookableService(deps.db, input.clinicId, input.serviceId))) throw new DomainError('svc.err.unavailable');
 
   // The slot must still be real and free (throws a booking error the route turns into a redirect).
   const target = await resolveSlot(deps, deps.db, input.clinicId, input.startsAt);
@@ -69,7 +75,7 @@ export async function startGuestBooking(deps: Deps, input: GuestBookingInput): P
   if (existing.rows[0]?.email_taken) return { errors: { email: 'guest.emailHasAccount' } };
 
   const code = newCode();
-  const request: GuestRequest = { fullName, phone, clinicId: target.clinicId, startsAt: target.startsAt.toISOString(), reason, locale: input.locale };
+  const request: GuestRequest = { fullName, phone, clinicId: target.clinicId, startsAt: target.startsAt.toISOString(), reason, locale: input.locale, serviceId: input.serviceId };
   const t = translator(input.locale);
   const codeId = await deps.db.transaction(async (tx) => {
     const id = await createEmailCode(tx, email, 'guest_booking', code, { ...request });

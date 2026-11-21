@@ -1,3 +1,4 @@
+import type { ClinicService } from '../../services/clinicServices.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
@@ -293,6 +294,8 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
 }
 
 export interface ProfileBooking {
+  /** The chosen clinic's own services (besides consultation and follow-up). */
+  services?: ClinicService[];
   clinicId: string;
   date: string;
   slots: Slot[];
@@ -443,6 +446,11 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
       ${clinic && clinic.followUpFee !== null && clinic.followUpFee < clinic.fee
         ? html`<div class="fee-row"><span class="muted">${ctx.t('doctor.followUpFee', { days: clinic.followUpDays })}</span><strong>${money(ctx, clinic.followUpFee)}</strong></div>`
+        : ''}
+      ${booking.services?.length
+        ? html`<details class="svc-public"${booking.services.length <= 4 ? html` open` : ''}><summary>${ctx.t('svc.publicTitle', { n: booking.services.length })}</summary>
+            ${booking.services.map((s) => html`<div class="fee-row"><span class="muted" dir="auto">${s.name}</span><strong>${money(ctx, s.price_egp)}</strong></div>`)}
+            <p class="small muted">${ctx.t('svc.publicHint')}</p></details>`
         : ''}
       ${booking.message && booking.message !== 'hidden'
         ? html`<a class="btn btn-outline btn-block" href="${href(ctx, `/messages/${d.slug}`)}">${icon.chat}${ctx.t(booking.message === 'open' ? 'msg.messageDoctor' : 'msg.messageDoctorClosed')}</a>`

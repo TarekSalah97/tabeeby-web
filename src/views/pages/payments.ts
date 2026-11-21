@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField } from '../components.js';
+import { alert, csrfField, visitLabel } from '../components.js';
 import { formatDateTime, formatFullDateTime, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { addDays } from '../../domain/time.js';
 import type { OwnDoctor } from '../../services/doctors.js';
@@ -115,7 +115,7 @@ export function receiptPage(ctx: Ctx, r: Receipt, back: string): SafeHtml {
         <div><dt>${ctx.t('pay.receiptPatient')}</dt><dd><bdi>${r.patient_name}</bdi></dd></div>
         <div><dt>${ctx.t('book.with')}</dt><dd><bdi>${r.doctor_name}</bdi></dd></div>
         <div><dt>${ctx.t('book.where')}</dt><dd>${r.clinic_name}<br><span class="muted">${r.clinic_address}</span></dd></div>
-        <div><dt>${ctx.t('pay.visit')}</dt><dd>${formatFullDateTime(r.visit_at, ctx.locale, tz)} · ${ctx.t(r.visit_type === 'new' ? 'book.new' : 'book.followUp')}</dd></div>
+        <div><dt>${ctx.t('pay.visit')}</dt><dd>${formatFullDateTime(r.visit_at, ctx.locale, tz)} · <bdi>${visitLabel(ctx, r)}</bdi></dd></div>
         <div><dt>${ctx.t('pay.method')}</dt><dd>${methodLabel(ctx, r.method)}</dd></div>
         <div><dt>${ctx.t('pay.paidAt')}</dt><dd>${formatFullDateTime(r.paid_at, ctx.locale, tz)}</dd></div>
         <div class="receipt-total"><dt>${ctx.t('pay.amount')}</dt><dd><strong>${money(ctx, r.amount_egp)}</strong></dd></div>

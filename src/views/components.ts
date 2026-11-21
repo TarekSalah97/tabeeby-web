@@ -113,6 +113,8 @@ export interface InputOpts {
   placeholder?: string;
   maxlength?: number;
   prefix?: string;
+  /** id of a <datalist> with suggestions. */
+  list?: string;
   errors?: FieldErrors | undefined;
   extra?: SafeHtml;
 }
@@ -123,7 +125,7 @@ export function input(ctx: Ctx, o: InputOpts): SafeHtml {
   const describedBy = [o.hint ? `${id}-hint` : '', err ? `${id}-error` : ''].filter(Boolean).join(' ');
   const control = html`<input id="${id}" name="${o.name}" type="${o.type ?? 'text'}" value="${o.value ?? ''}"
     ${o.autocomplete ? html`autocomplete="${o.autocomplete}"` : ''} ${o.inputmode ? html`inputmode="${o.inputmode}"` : ''}
-    ${o.placeholder ? html`placeholder="${o.placeholder}"` : ''} ${o.maxlength ? html`maxlength="${o.maxlength}"` : ''}
+    ${o.placeholder ? html`placeholder="${o.placeholder}"` : ''} ${o.maxlength ? html`maxlength="${o.maxlength}"` : ''} ${o.list ? html`list="${o.list}"` : ''}
     ${describedBy ? html`aria-describedby="${describedBy}"` : ''}${attrIf(!!err, 'aria-invalid="true"')}${attrIf(!!o.required, 'required')}>`;
   return html`<div class="field${err ? ' has-error' : ''}">
     <label for="${id}">${o.label}</label>
@@ -258,4 +260,10 @@ export function doctorAvatar(ctx: Ctx, d: { slug: string; fullName: string; phot
 export function subMap(ctx: Ctx, ref: { specialties: { id: number; slug: string; name_en: string; name_ar: string; subspecialties: { id: number; slug: string; name_en: string; name_ar: string }[] }[] }, key: 'id' | 'slug'): string {
   const label = (x: { name_en: string; name_ar: string }) => (ctx.locale === 'ar' ? x.name_ar : x.name_en);
   return JSON.stringify(Object.fromEntries(ref.specialties.map((s) => [String(s[key]), s.subspecialties.map((x) => [String(x[key]), label(x)])])));
+}
+
+/** "New visit", "Follow-up", or the doctor's own service name. */
+export function visitLabel(ctx: Ctx, a: { visit_type: string; service_name: string | null }): string {
+  if (a.visit_type === 'service' && a.service_name) return a.service_name;
+  return ctx.t(a.visit_type === 'follow_up' ? 'book.followUp' : 'book.new');
 }

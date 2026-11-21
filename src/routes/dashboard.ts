@@ -16,6 +16,7 @@ import { changeStatus } from '../services/booking.js';
 import { ratingsFor } from '../services/reviews.js';
 import { todayPage, clinicsPage, hoursPage, profileEditPage, clinicBookPage, type HoursFormValues, type ClinicBookView } from '../views/pages/dashboard.js';
 import { bookByClinic, clampClinicDate, clinicSlots, followUpSource, noShowCounts, ownActiveClinics, CLINIC_BOOKING_DAYS, type ClinicBookingInput } from '../services/clinicBooking.js';
+import { activeServices, addService, updateService, listDoctorServices } from '../services/clinicServices.js';
 import type { FieldErrors } from '../services/accounts.js';
 import { recordPayment, refundPayment, paymentsFor, incomeReport, getReceipt, toCsv } from '../services/payments.js';
 import { activeStrikes, bookingsOnDay, cancelDay } from '../services/reliability.js';
@@ -66,8 +67,13 @@ function rawClinicValues(ctx: Ctx): Record<string, string> {
 }
 
 async function renderClinics(ctx: Ctx, user: SessionUser, extra: Parameters<typeof clinicsPage>[4] = {}, status = 200): Promise<void> {
-  const [doctor, ref, clinics] = await Promise.all([getOwnDoctor(ctx.deps.db, user.id), getReference(ctx.deps.db), listOwnClinics(ctx.deps.db, user.id)]);
-  sendHtml(ctx, status, clinicsPage(ctx, doctor, ref, clinics, { notice: ok(ctx), ...extra }));
+  const [doctor, ref, clinics, services] = await Promise.all([
+    getOwnDoctor(ctx.deps.db, user.id),
+    getReference(ctx.deps.db),
+    listOwnClinics(ctx.deps.db, user.id),
+    listDoctorServices(ctx.deps.db, user.id),
+  ]);
+  sendHtml(ctx, status, clinicsPage(ctx, doctor, ref, clinics, { notice: ok(ctx), services, ...extra }));
 }
 
 async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: RuleProblem; ruleValues?: HoursFormValues; blockError?: MessageKey } = {}, status = 200): Promise<void> {
@@ -248,8 +254,8 @@ export function dashboardRoutes(r: Router): void {
     const clinic = clinics.find((c) => c.id === req.clinicId) ?? clinics.find((c) => c.id === source?.clinicId) ?? clinics[0]!;
     const today = todayIn(ctx.deps.cfg.TIME_ZONE, ctx.deps.now());
     const date = clampClinicDate(req.date, today);
-    const slots = await clinicSlots(ctx.deps, db, user.id, clinic.id, date);
-    sendHtml(ctx, status, clinicBookPage(ctx, doctor, { clinics, clinicId: clinic.id, date, today, lastDate: addDays(today, CLINIC_BOOKING_DAYS), slots, source, ...extra }));
+    const [slots, services] = await Promise.all([clinicSlots(ctx.deps, db, user.id, clinic.id, date), activeServices(db, [clinic.id])]);
+    sendHtml(ctx, status, clinicBookPage(ctx, doctor, { clinics, clinicId: clinic.id, date, today, lastDate: addDays(today, CLINIC_BOOKING_DAYS), slots, source, services, ...extra }));
   };
 
   r.get('/dashboard/book', async (ctx) => {
@@ -271,10 +277,14 @@ export function dashboardRoutes(r: Router): void {
     const values = Object.fromEntries(['name', 'phone', 'visitType', 'reason', 'start'].map((k) => [k, formValue(ctx, k)]));
     const back = { clinicId, date: formValue(ctx, 'date'), fromId };
     if (!startRaw) return renderClinicBook(ctx, user, back, { values, errors: { start: 'cbook.pickTime' } satisfies FieldErrors }, 422);
+    // "new", "follow_up", or "svc:<id>" for one of the clinic's services (checked again by the service layer).
+    const kind = values['visitType'] ?? '';
+    const serviceId = kind.startsWith('svc:') && isUuid(kind.slice(4)) ? kind.slice(4) : undefined;
     const input: ClinicBookingInput = {
       clinicId,
       startsAt: new Date(startRaw),
-      visitType: values['visitType'] === 'follow_up' ? 'follow_up' : 'new',
+      visitType: serviceId ? 'service' : kind === 'follow_up' ? 'follow_up' : 'new',
+      serviceId,
       reason: values['reason'] ?? '',
       fromAppointmentId: fromId,
       name: values['name'] ?? '',
@@ -335,6 +345,27 @@ export function dashboardRoutes(r: Router): void {
       return renderClinics(ctx, user, { errors, editing: id, values: rawClinicValues(ctx) }, 422);
     }
     redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'saved' }));
+  });
+
+  // ---- the doctor's own services per clinic (besides consultation and follow-up)
+  r.post('/dashboard/clinics/:id/services', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const clinicId = uuidParam(ctx, 'id');
+    const values = { serviceName: formValue(ctx, 'serviceName'), servicePrice: formValue(ctx, 'servicePrice') };
+    const errors = await addService(ctx.deps, user.id, clinicId, { name: values.serviceName, price: values.servicePrice }, ctx.ip);
+    if (errors) return renderClinics(ctx, user, { serviceErrors: errors, serviceTarget: `new:${clinicId}`, serviceValues: values }, 422);
+    redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'serviceSaved' }) + `#services-${clinicId}`);
+  });
+
+  r.post('/dashboard/services/:id', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const id = uuidParam(ctx, 'id');
+    const values = { serviceName: formValue(ctx, 'serviceName'), servicePrice: formValue(ctx, 'servicePrice'), active: formValue(ctx, 'active') };
+    const errors = await updateService(ctx.deps, user.id, id, { name: values.serviceName, price: values.servicePrice, active: values.active === 'yes' }, ctx.ip);
+    if (errors) return renderClinics(ctx, user, { serviceErrors: errors, serviceTarget: id, serviceValues: values }, 422);
+    redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'serviceSaved' }));
   });
 
   r.get('/dashboard/hours', async (ctx) => {

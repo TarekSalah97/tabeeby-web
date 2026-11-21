@@ -3,6 +3,7 @@ import { sendHtml, sendJson } from '../http/respond.js';
 import { getReference } from '../services/reference.js';
 import { searchDoctors, getPublicProfile, type SearchFilters } from '../services/search.js';
 import { slotsForDoctors } from '../services/availability.js';
+import { activeServices } from '../services/clinicServices.js';
 import { homePage, searchPage, profilePage, legalPage, groupDays } from '../views/pages/public.js';
 import { forDoctorsPage } from '../views/pages/forDoctors.js';
 import { notFound } from '../http/errors.js';
@@ -80,16 +81,17 @@ export function publicRoutes(r: Router): void {
     const days = groupDays(slots);
     const requestedDate = ctx.query.get('date') ?? '';
     const date = isValidDate(requestedDate) && days.some((d) => d.date === requestedDate) ? requestedDate : (days[0]?.date ?? '');
-    const [reviews, full, waiting, message] = await Promise.all([
+    const [reviews, full, waiting, message, services] = await Promise.all([
       listDoctorReviews(ctx.deps.db, doctor.id),
       clinicId ? fullDays(ctx.deps, ctx.deps.db, doctor.id, clinicId) : Promise.resolve([]),
       clinicId && ctx.user?.role === 'patient' ? waitingDates(ctx.deps, ctx.user.id, clinicId) : Promise.resolve([]),
       ctx.user?.role === 'patient' ? messageButtonState(ctx.deps, ctx.user.id, doctor.id) : Promise.resolve('hidden' as const),
+      clinicId ? activeServices(ctx.deps.db, [clinicId]) : Promise.resolve([]),
     ]);
     sendHtml(
       ctx,
       200,
-      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: paused ? [] : full, waiting, message, paused }, reviews),
+      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: paused ? [] : full, waiting, message, paused, services }, reviews),
     );
   });
 

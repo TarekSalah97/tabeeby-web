@@ -1,4 +1,12 @@
-export type VisitType = 'new' | 'follow_up';
+export type VisitType = 'new' | 'follow_up' | 'service';
+
+/** A quoted visit: consultation, follow-up, or one of the doctor's own services (with its name). */
+export interface Visit {
+  type: VisitType;
+  fee: number;
+  serviceId?: string;
+  serviceName?: string;
+}
 
 export interface ClinicPrices {
   fee: number;

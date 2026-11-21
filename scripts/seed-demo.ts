@@ -19,6 +19,7 @@ import { DbFileStorage, LocalFileStorage } from '../src/storage/files.js';
 import { sectionOf, type Section } from '../src/services/orderResults.js';
 import { labTest } from '../src/domain/clinical.js';
 import { textPdf } from './demo-pdf.js';
+import { SERVICE_SUGGESTIONS } from '../src/domain/serviceSuggestions.js';
 import { DOCTORS, PATIENTS, TEMPLATES, REVIEW_COMMENTS, MESSAGES, FACILITIES, patientsFor, type DemoDoctor, type DemoFacility } from './demo-data.js';
 
 const cfg = loadConfig();
@@ -285,6 +286,18 @@ try {
     for (const d of DOCTORS) doctors.push({ d, ...(await upsertDoctor(tx, d, hash, insurerA)) });
 
     for (const f of FACILITIES) await upsertFacility(tx, f, hash);
+
+    // A few services per demo doctor (names from the specialty suggestions), so booking a service can be tried.
+    for (const { d, userId, clinicId } of doctors) {
+      const picks = (SERVICE_SUGGESTIONS[d.specialty] ?? []).slice(0, 3);
+      for (const [i, [en]] of picks.entries()) {
+        await tx.query(
+          `insert into clinic_services (clinic_id, doctor_id, name, price_egp) values ($1, $2, $3, $4)
+           on conflict (clinic_id, lower(btrim(name))) do nothing`,
+          [clinicId, userId, en, Math.round((d.fee * (1.2 + i * 0.6)) / 50) * 50],
+        );
+      }
+    }
 
     const patientIds: string[] = [];
     for (const p of PATIENTS) {

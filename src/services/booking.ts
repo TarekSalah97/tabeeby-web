@@ -1,7 +1,8 @@
 import type { Deps } from '../http/context.js';
 import type { Config } from '../config.js';
 import type { PaymentMethod } from './payments.js';
-import { visitForOnlineBooking, type ClinicPrices, type VisitType } from '../domain/visitPricing.js';
+import { visitForOnlineBooking, type ClinicPrices, type VisitType, type Visit } from '../domain/visitPricing.js';
+import { bookableService } from './clinicServices.js';
 import { smsEnabled } from '../config.js';
 import type { Queryable } from '../db/db.js';
 import { isExclusionViolation } from '../db/db.js';
@@ -21,6 +22,8 @@ export interface BookingRequest {
   clinicId: string;
   startsAt: Date;
   reason: string;
+  /** One of the clinic's services, or empty for a consultation (new or follow-up, decided here). */
+  serviceId?: string;
 }
 
 export interface BookingTarget {
@@ -102,8 +105,16 @@ export async function countedNoShows(db: Queryable, cfg: Pick<Config, 'NO_SHOW_W
 
 export const pricesOf = (t: BookingTarget): ClinicPrices => ({ fee: t.fee, followUpFee: t.followUpFee, followUpDays: t.followUpDays });
 
-/** What the patient will be charged for this slot, shown before they confirm. */
-export async function quote(db: Queryable, patientId: string | null, target: BookingTarget): Promise<{ type: VisitType; fee: number }> {
+/**
+ * What the patient will be charged for this slot, shown before they confirm. A chosen service is
+ * priced from the doctor's own list for that clinic; an unknown or hidden service is refused.
+ */
+export async function quote(db: Queryable, patientId: string | null, target: BookingTarget, serviceId?: string): Promise<Visit> {
+  if (serviceId) {
+    const svc = await bookableService(db, target.clinicId, serviceId);
+    if (!svc) throw new DomainError('svc.err.unavailable');
+    return { type: 'service', fee: svc.price_egp, serviceId: svc.id, serviceName: svc.name };
+  }
   const last = patientId ? await lastCompletedVisit(db, patientId, target.doctorId) : null;
   return visitForOnlineBooking(pricesOf(target), last, target.startsAt);
 }
@@ -150,11 +161,11 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
       if ((active.rows[0]?.n ?? 0) >= deps.cfg.MAX_ACTIVE_APPOINTMENTS_PER_PATIENT) throw new DomainError('booking.tooManyActive');
 
       const target = await resolveSlot(deps, tx, req.clinicId, req.startsAt);
-      const visit = await quote(tx, patient.id, target);
+      const visit = await quote(tx, patient.id, target, req.serviceId);
       const { rows } = await tx.query<{ id: string }>(
-        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp)
-         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee],
+        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee, visit.serviceId ?? null, visit.serviceName ?? null],
       );
       const id = rows[0]!.id;
       await closeOnBooking(tx, deps.cfg.TIME_ZONE, patient.id, target.clinicId, target.startsAt);
@@ -175,7 +186,8 @@ export interface PatientAppointment {
   id: string;
   starts_at: Date;
   status: AppointmentStatus;
-  visit_type: 'new' | 'follow_up';
+  visit_type: 'new' | 'follow_up' | 'service';
+  service_name: string | null;
   fee_egp: number;
   clinic_id: string;
   clinic_name: string;
@@ -196,7 +208,7 @@ export interface PatientAppointment {
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
   return (
     await db.query<PatientAppointment>(
-      `select a.id, a.starts_at, a.status, a.visit_type, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
+      `select a.id, a.starts_at, a.status, a.visit_type, a.service_name, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
               c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
               u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
               pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by

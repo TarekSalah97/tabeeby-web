@@ -10,7 +10,7 @@ import type { OwnDoctor } from '../../services/doctors.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type {
   RecordListItem, PatientRecord, VisitSummary, VisitDetail, PrescriptionView, LabOrderView, PrintHeader,
-  OrderProblem, VisitErrors, AppointmentFile,
+  OrderProblem, VisitErrors, AppointmentFile, PhoneFile,
 } from '../../services/records.js';
 import { MAX_RX_LINES } from '../../services/records.js';
 import {
@@ -148,9 +148,10 @@ export function recordValuesFrom(r: PatientRecord): Record<string, string> {
 export function newRecordPage(
   ctx: Ctx,
   doctor: OwnDoctor,
-  o: { values: Record<string, string>; habits: string[]; errors?: FieldErrors; appointment?: Extract<AppointmentFile, { kind: 'new' }>; linkError?: MessageKey },
+  o: { values: Record<string, string>; habits: string[]; errors?: FieldErrors; appointment?: Extract<AppointmentFile, { kind: 'new' }>; linkError?: MessageKey; samePhone?: PhoneFile[] },
 ): SafeHtml {
   const appt = o.appointment;
+  const tz = ctx.deps.cfg.TIME_ZONE;
   const content = html`
     <a href="${href(ctx, '/dashboard/patients')}">← ${ctx.t('records.title')}</a>
     <div><h1>${ctx.t(appt ? 'records.newFromAppt' : 'records.newWalkIn')}</h1>
@@ -168,16 +169,28 @@ export function newRecordPage(
           )}</ul>
         </section>`
       : ''}
+    ${o.samePhone?.length
+      ? html`<section class="panel stack alert-panel" role="alert">
+          <h2>${ctx.t('records.samePhoneTitle')}</h2>
+          <p>${ctx.t('records.samePhoneLead')}</p>
+          <ul class="appt-list">${o.samePhone.map(
+            (f) => html`<li class="appt-row"><span><strong dir="auto">${f.full_name}</strong> <span class="muted">· ${ctx.t('records.created', { date: formatDate(f.created_at, ctx.locale, tz) })}</span></span>
+              <a class="btn btn-primary btn-sm" href="${appt && !f.patient_user_id ? href(ctx, `/dashboard/patients/${f.id}/visits/new`, { appointment: appt.appointmentId }) : href(ctx, `/dashboard/patients/${f.id}`)}">${ctx.t('records.openThisFile')}</a></li>`,
+          )}</ul>
+          <p class="small muted">${ctx.t('records.samePhoneNew')}</p>
+        </section>`
+      : ''}
     <form method="post" action="${href(ctx, '/dashboard/patients')}" class="panel stack-lg" novalidate>
       ${csrfField(ctx)}
       ${appt ? html`<input type="hidden" name="appointment" value="${appt.appointmentId}">` : ''}
+      ${o.samePhone?.length ? html`<input type="hidden" name="newPerson" value="yes">` : ''}
       ${errorSummary(ctx, o.errors)}
       ${recordFields(ctx, o.values, o.habits, o.errors)}
       <div class="field${o.errors?.['consent'] ? ' has-error' : ''}">
         <label class="check"><input type="checkbox" name="consent" value="yes" required${attrIf(o.values['consent'] === 'yes', 'checked')}><span>${ctx.t('records.consent')}</span></label>
         ${fieldError(ctx, o.errors, 'consent')}
       </div>
-      <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('records.create')}</button></div>
+      <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t(o.samePhone?.length ? 'records.createAnyway' : 'records.create')}</button></div>
     </form>`;
   return shell(ctx, doctor, 'patients', content);
 }
@@ -357,11 +370,12 @@ export function newVisitPage(
   ctx: Ctx,
   doctor: OwnDoctor,
   r: PatientRecord,
-  o: { appointmentId: string | null; notes?: Partial<NotesValues>; rx?: RxFormValues; lab?: LabFormValues; errors?: VisitErrors; medicines: { name: string; form: string }[] },
+  o: { appointmentId: string | null; notes?: Partial<NotesValues>; rx?: RxFormValues; lab?: LabFormValues; errors?: VisitErrors; medicines: { name: string; form: string }[]; notice?: MessageKey },
 ): SafeHtml {
   const content = html`
     <a href="${href(ctx, `/dashboard/patients/${r.id}`)}">← ${r.full_name}</a>
     <div><h1>${ctx.t('visit.new')}</h1><p class="muted">${[r.full_name, patientFacts(ctx, r)].filter(Boolean).join(sep(ctx))}</p></div>
+    ${o.notice ? alert('info', ctx.t(o.notice)) : ''}
     ${r.allergies ? alert('warning', html`<span class="prose">${r.allergies}</span>`, ctx.t('records.allergies')) : ''}
     <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}/visits`)}" class="stack-lg" novalidate>
       ${csrfField(ctx)}

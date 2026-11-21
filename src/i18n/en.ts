@@ -1384,4 +1384,10 @@ export const en = {
   'svc.publicTitle': "Other services ({n})",
   'svc.publicHint': "Choose the service when you confirm the booking.",
   'demo.emailCode': "Demo site: no email is really sent. Your code is {code}.",
+  'records.foundByPhone': "This patient already had a file with this mobile number, so it was opened and any new details were added to it.",
+  'records.samePhoneTitle': "This mobile number already has a file",
+  'records.samePhoneLead': "Is this the same person? Open their file to continue — nothing is lost.",
+  'records.samePhoneNew': "Different person using the same phone (for example a family member)? Create a new file below.",
+  'records.openThisFile': "Open this file",
+  'records.createAnyway': "Create a new file for a different person",
 } as const;

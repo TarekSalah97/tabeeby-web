@@ -785,3 +785,4 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .visit-option > .stack-sm { flex: 1; min-width: 0; }
 .visit-price { font-weight: 700; white-space: nowrap; }
 .svc-public summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.alert-panel { border-color: var(--accent); background: var(--accent-tint); }

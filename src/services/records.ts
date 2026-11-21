@@ -1,3 +1,4 @@
+import { sameName } from '../domain/personName.js';
 import type { Deps } from '../http/context.js';
 import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
@@ -164,7 +165,8 @@ async function ownAppointment(db: Queryable, doctorId: string, appointmentId: st
 }
 
 export type AppointmentFile =
-  | { kind: 'existing'; recordId: string }
+  /** matched: found by the same mobile number and name (not by the patient's account). */
+  | { kind: 'existing'; recordId: string; matched?: boolean }
   | { kind: 'new'; appointmentId: string; patientName: string; patientPhone: string; walkIns: { id: string; full_name: string; created_at: Date }[] };
 
 /**
@@ -178,6 +180,15 @@ export async function fileForAppointment(db: Queryable, doctorId: string, appoin
     const existing = await db.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, appt.patient_id]);
     if (existing.rows[0]) return { kind: 'existing', recordId: existing.rows[0].id };
   }
+  // Same mobile and same name: the same person, so their existing file opens (a booking with an
+  // account also gets that file linked to it, if it was a walk-in file).
+  const same = await samePersonFile(db, doctorId, appt.phone_e164, appt.full_name, appt.patient_id);
+  if (same) {
+    if (appt.patient_id && !same.patient_user_id) {
+      await db.query('update patient_records set patient_user_id = $3, updated_at = now() where id = $1 and doctor_id = $2 and patient_user_id is null', [same.id, doctorId, appt.patient_id]);
+    }
+    return { kind: 'existing', recordId: same.id, matched: true };
+  }
   const walkIns = await db.query<{ id: string; full_name: string; created_at: Date }>(
     'select id, full_name, created_at from patient_records where doctor_id = $1 and patient_user_id is null and phone_e164 = $2 order by created_at desc limit 10',
     [doctorId, appt.phone_e164],
@@ -185,17 +196,76 @@ export async function fileForAppointment(db: Queryable, doctorId: string, appoin
   return { kind: 'new', appointmentId: appt.id, patientName: appt.full_name, patientPhone: appt.phone_e164, walkIns: walkIns.rows };
 }
 
+export interface PhoneFile {
+  id: string;
+  full_name: string;
+  patient_user_id: string | null;
+  created_at: Date;
+}
+
+/** The doctor's files with this mobile number, newest first. */
+async function filesWithPhone(db: Queryable, doctorId: string, phone: string | null): Promise<PhoneFile[]> {
+  if (!phone) return [];
+  const { rows } = await db.query<PhoneFile>(
+    'select id, full_name, patient_user_id, created_at from patient_records where doctor_id = $1 and phone_e164 = $2 order by updated_at desc limit 20',
+    [doctorId, phone],
+  );
+  return rows;
+}
+
+/** The file of the same person (same mobile and name), unless it belongs to a different account. */
+async function samePersonFile(db: Queryable, doctorId: string, phone: string | null, name: string, accountId: string | null): Promise<PhoneFile | null> {
+  return (await filesWithPhone(db, doctorId, phone)).find((f) => sameName(f.full_name, name) && (!f.patient_user_id || f.patient_user_id === accountId)) ?? null;
+}
+
+/** Text fields that grow: new information is added on a new line unless it is already there. */
+const GROWING = ['habits_note', 'allergies', 'chronic_conditions', 'past_history', 'current_medications', 'family_history'] as const;
+/** Fields that are only filled when still empty (never overwritten). */
+const FILL_ONLY = ['date_of_birth', 'sex', 'occupation', 'marital_status'] as const;
+
+/**
+ * Add what was just entered to an existing file without losing anything already in it.
+ * The previous version is kept in record_revisions, like any other edit.
+ */
+async function addInformation(tx: Queryable, doctorId: string, recordId: string, clean: CleanRecord, ip: string): Promise<void> {
+  const old = await tx.query<Record<string, unknown>>(`select ${RECORD_COLUMNS} from patient_records r where r.id = $1 and r.doctor_id = $2 for update`, [recordId, doctorId]);
+  const row = old.rows[0];
+  if (!row) throw notFound();
+  const next: Record<string, unknown> = {};
+  for (const k of FILL_ONLY) if (!row[k] && clean[k]) next[k] = clean[k];
+  for (const k of GROWING) {
+    const was = (row[k] as string | null)?.trim() ?? '';
+    const add = clean[k]?.trim() ?? '';
+    if (!add || was.toLowerCase().includes(add.toLowerCase())) continue;
+    next[k] = was ? `${was}\n${add}` : add;
+  }
+  const habits = [...new Set([...((row['habits'] as string[]) ?? []), ...clean.habits])];
+  if (habits.length !== ((row['habits'] as string[]) ?? []).length) next['habits'] = habits;
+  if (!Object.keys(next).length) return;
+  await tx.query(`insert into record_revisions (entity_type, entity_id, doctor_id, data) values ('patient_record', $1, $2, $3)`, [recordId, doctorId, row]);
+  const cols = Object.keys(next);
+  const sets = cols.map((c, i) => `${c} = $${i + 3}${c === 'date_of_birth' ? '::date' : c === 'habits' ? '::text[]' : ''}`).join(', ');
+  await tx.query(`update patient_records set ${sets}, updated_at = now() where id = $1 and doctor_id = $2`, [recordId, doctorId, ...cols.map((c) => next[c])]);
+  await audit(tx, { actorId: doctorId, action: 'record.add_information', entityType: 'patient_record', entityId: recordId, metadata: { fields: cols }, ip });
+}
+
+export type CreateRecordResult =
+  | { id: string; merged?: boolean }
+  | { errors: FieldErrors }
+  /** Same mobile but a different name (often a family sharing a phone): the doctor chooses. */
+  | { samePhone: PhoneFile[] };
+
 export async function createRecord(
   deps: Deps,
   doctorId: string,
   input: RecordInput,
-  o: { consent: boolean; appointmentId: string | null },
+  o: { consent: boolean; appointmentId: string | null; newPerson?: boolean },
   ip: string,
-): Promise<{ id: string } | { errors: FieldErrors }> {
+): Promise<CreateRecordResult> {
   const { errors, clean } = validateRecord(input, todayIn(deps.cfg.TIME_ZONE, deps.now()));
   if (!o.consent) errors['consent'] = 'records.err.consent';
   if (Object.keys(errors).length) return { errors };
-  return deps.db.transaction(async (tx) => {
+  return deps.db.transaction(async (tx): Promise<CreateRecordResult> => {
     let patientUserId: string | null = null;
     if (o.appointmentId) {
       const appt = await ownAppointment(tx, doctorId, o.appointmentId);
@@ -204,6 +274,20 @@ export async function createRecord(
         const existing = await tx.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, patientUserId]);
         if (existing.rows[0]) return { id: existing.rows[0].id };
       }
+    }
+    if (!o.newPerson && clean.phone_e164) {
+      // Serialise per doctor + mobile so two quick submits cannot both create a file.
+      await tx.query('select pg_advisory_xact_lock(hashtext($1))', [`record:${doctorId}:${clean.phone_e164}`]);
+      const same = await samePersonFile(tx, doctorId, clean.phone_e164, clean.full_name, patientUserId);
+      if (same) {
+        if (patientUserId && !same.patient_user_id) {
+          await tx.query('update patient_records set patient_user_id = $3 where id = $1 and doctor_id = $2', [same.id, doctorId, patientUserId]);
+        }
+        await addInformation(tx, doctorId, same.id, clean, ip);
+        return { id: same.id, merged: true };
+      }
+      const others = await filesWithPhone(tx, doctorId, clean.phone_e164);
+      if (others.length) return { samePhone: others };
     }
     const { rows } = await tx.query<{ id: string }>(
       `insert into patient_records (doctor_id, patient_user_id, full_name, phone_e164, date_of_birth, sex, occupation, marital_status,

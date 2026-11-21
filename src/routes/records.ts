@@ -144,7 +144,7 @@ export function recordsRoutes(r: Router): void {
     const d = await recordsDoctor(ctx);
     if (!d) return;
     const f = await fileForAppointment(ctx.deps.db, d.user.id, uuidParam(ctx, 'id'));
-    if (f.kind === 'existing') return redirect(ctx, href(ctx, `/dashboard/patients/${f.recordId}/visits/new`, { appointment: ctx.params['id'] }));
+    if (f.kind === 'existing') return redirect(ctx, href(ctx, `/dashboard/patients/${f.recordId}/visits/new`, { appointment: ctx.params['id'], ...(f.matched ? { ok: 'fileFoundByPhone' } : {}) }));
     sendHtml(ctx, 200, newRecordPage(ctx, d.doctor, { values: { fullName: f.patientName, phone: '0' + f.patientPhone.slice(3) }, habits: [], appointment: f, linkError: errorFrom(ctx) }));
   });
 
@@ -153,14 +153,23 @@ export function recordsRoutes(r: Router): void {
     if (!d) return;
     const { input, values, habits } = recordForm(ctx);
     const appointmentId = optionalUuid(formValue(ctx, 'appointment'));
-    const result = await createRecord(ctx.deps, d.user.id, input, { consent: values['consent'] === 'yes', appointmentId }, ctx.ip);
-    if ('errors' in result) {
+    const newPerson = formValue(ctx, 'newPerson') === 'yes';
+    const result = await createRecord(ctx.deps, d.user.id, input, { consent: values['consent'] === 'yes', appointmentId, newPerson }, ctx.ip);
+    if ('errors' in result || 'samePhone' in result) {
       const appointment = appointmentId ? await fileForAppointment(ctx.deps.db, d.user.id, appointmentId) : null;
-      return sendHtml(ctx, 422, newRecordPage(ctx, d.doctor, { values, habits, errors: result.errors, appointment: appointment?.kind === 'new' ? appointment : undefined }));
+      return sendHtml(ctx, 422, newRecordPage(ctx, d.doctor, {
+        values,
+        habits,
+        errors: 'errors' in result ? result.errors : undefined,
+        samePhone: 'samePhone' in result ? result.samePhone : undefined,
+        appointment: appointment?.kind === 'new' ? appointment : undefined,
+      }));
     }
+    // Same mobile and name: the existing file was opened and the new details were added to it.
+    const ok = result.merged ? 'fileFoundByPhone' : 'fileCreated';
     redirect(ctx, appointmentId
-      ? href(ctx, `/dashboard/patients/${result.id}/visits/new`, { appointment: appointmentId })
-      : href(ctx, `/dashboard/patients/${result.id}`, { ok: 'fileCreated' }));
+      ? href(ctx, `/dashboard/patients/${result.id}/visits/new`, { appointment: appointmentId, ...(result.merged ? { ok } : {}) })
+      : href(ctx, `/dashboard/patients/${result.id}`, { ok }));
   });
 
   r.get('/dashboard/patients/:id', async (ctx) => {
@@ -210,7 +219,7 @@ export function recordsRoutes(r: Router): void {
     if (!d) return;
     const record = await getRecord(ctx.deps.db, d.user.id, uuidParam(ctx, 'id'));
     const appointmentId = optionalUuid(ctx.query.get('appointment'));
-    sendHtml(ctx, 200, newVisitPage(ctx, d.doctor, record, { appointmentId, medicines: await listDoctorMedicines(ctx.deps.db, d.user.id) }));
+    sendHtml(ctx, 200, newVisitPage(ctx, d.doctor, record, { appointmentId, medicines: await listDoctorMedicines(ctx.deps.db, d.user.id), notice: noticeFrom(ctx) }));
   });
 
   r.post('/dashboard/patients/:id/visits', async (ctx) => {

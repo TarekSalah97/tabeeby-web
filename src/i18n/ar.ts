@@ -1387,4 +1387,10 @@ export const ar: Record<keyof typeof en, string> = {
   'svc.publicTitle': "خدمات أخرى ({n})",
   'svc.publicHint': "اختر الخدمة عند تأكيد الحجز.",
   'demo.emailCode': "موقع تجريبي: لا يتم إرسال بريد فعلًا. الكود الخاص بك هو {code}.",
+  'records.foundByPhone': "هذا المريض له ملف بنفس رقم الموبايل، فتم فتحه وإضافة أي بيانات جديدة إليه.",
+  'records.samePhoneTitle': "رقم الموبايل هذا له ملف بالفعل",
+  'records.samePhoneLead': "هل هو نفس الشخص؟ افتح ملفه للمتابعة — لن يضيع أي شيء.",
+  'records.samePhoneNew': "شخص مختلف يستخدم نفس الموبايل (مثل أحد أفراد الأسرة)؟ أنشئ ملفًا جديدًا بالأسفل.",
+  'records.openThisFile': "افتح هذا الملف",
+  'records.createAnyway': "أنشئ ملفًا جديدًا لشخص مختلف",
 };

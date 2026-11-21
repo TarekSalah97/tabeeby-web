@@ -26,6 +26,7 @@ import { adminRoutes } from './routes/admin.js';
 import { recordsRoutes } from './routes/records.js';
 import { symptomCheckerRoutes } from './routes/symptomChecker.js';
 import { messagingRoutes } from './routes/messaging.js';
+import { facilityRoutes } from './routes/facilities.js';
 import { log, errorFields } from './log.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,7 @@ export function buildRouter(): Router {
   authRoutes(r);
   patientRoutes(r);
   messagingRoutes(r);
+  facilityRoutes(r);
   symptomCheckerRoutes(r);
   recordsRoutes(r);
   dashboardRoutes(r);

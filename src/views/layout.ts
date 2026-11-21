@@ -23,6 +23,8 @@ function userMenu(ctx: Ctx): SafeHtml {
       ? html`<a class="btn btn-ghost" href="${href(ctx, '/dashboard')}">${ctx.t('nav.dashboard')}</a>`
       : u.role === 'admin'
         ? html`<a class="btn btn-ghost" href="${href(ctx, '/admin')}">${ctx.t('nav.admin')}</a>`
+        : u.role === 'facility'
+          ? html`<a class="btn btn-ghost" href="${href(ctx, '/facility')}">${ctx.t('nav.dashboard')}</a>`
         : html`<a class="btn btn-ghost" href="${href(ctx, '/appointments')}">${ctx.t('nav.myAppointments')}</a>`;
   return html`${home}
     <form method="post" action="${href(ctx, '/logout')}" class="inline-form">${csrfField(ctx)}
@@ -77,6 +79,7 @@ ${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('de
     <nav aria-label="${ctx.t('nav.main')}" class="main-nav">
       <a href="${href(ctx, '/search')}">${ctx.t('nav.findDoctor')}</a>
       ${ctx.deps.ai && ctx.user?.role !== 'doctor' && ctx.user?.role !== 'admin' ? html`<a href="${href(ctx, '/symptom-checker')}">${ctx.t('nav.symptomChecker')}</a>` : ''}
+      <a href="${href(ctx, '/pharmacies')}">${ctx.t('nav.pharmaciesLabs')}</a>
       <a href="${href(ctx, '/for-doctors')}">${ctx.t('nav.forDoctors')}</a>
     </nav>
     <div class="header-actions">
@@ -94,6 +97,7 @@ ${ctx.user?.role === 'patient' ? patientTabBar(ctx) : ''}
     <nav class="footer-links" aria-label="Legal">
       <a href="${href(ctx, '/privacy')}">${ctx.t('footer.privacy')}</a>
       <a href="${href(ctx, '/terms')}">${ctx.t('footer.terms')}</a>
+      <a href="${href(ctx, '/facilities/join')}">${ctx.t('footer.listFacility')}</a>
       <span>${ctx.t('footer.rights', { year: ctx.deps.now().getUTCFullYear() })}</span>
     </nav>
   </div>

@@ -1,7 +1,7 @@
 import type { Queryable } from '../db/db.js';
 import { randomToken, sha256 } from './tokens.js';
 
-export type Role = 'patient' | 'doctor' | 'admin';
+export type Role = 'patient' | 'doctor' | 'admin' | 'facility';
 
 export interface SessionUser {
   id: string;
@@ -21,6 +21,7 @@ export interface Session {
 const POLICY: Record<Role, { absoluteHours: number; idleHours: number }> = {
   patient: { absoluteHours: 24 * 30, idleHours: 24 * 14 },
   doctor: { absoluteHours: 24 * 7, idleHours: 12 },
+  facility: { absoluteHours: 24 * 7, idleHours: 12 },
   admin: { absoluteHours: 12, idleHours: 1 },
 };
 

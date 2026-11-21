@@ -8,12 +8,13 @@ import { formatEgyptMobile } from '../../domain/phone.js';
 import { zonedToUtc } from '../../domain/time.js';
 import type { AccountRow, AdminStats, AuditFilters, AuditRow, DayRange, FailedMessage, OutboxCount, RangePreset } from '../../services/adminConsole.js';
 
-export type AdminSection = 'dashboard' | 'doctors' | 'accounts' | 'reviews' | 'audit' | 'messages';
+export type AdminSection = 'dashboard' | 'doctors' | 'facilities' | 'accounts' | 'reviews' | 'audit' | 'messages';
 
 const svg = (paths: string) =>
   trusted(`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`);
 
 export const adminIcon = {
+  facilities: svg('<path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M10 12h4M12 10v4"></path>'),
   dashboard: svg('<path d="M3 3v18h18"></path><path d="M8 17V11"></path><path d="M13 17V7"></path><path d="M18 17v-4"></path>'),
   doctors: svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="12" r="2"></circle><path d="M14 10h4M14 14h4"></path>'),
   accounts: svg('<circle cx="12" cy="12" r="9"></circle><path d="m5.7 5.7 12.6 12.6"></path>'),
@@ -34,6 +35,7 @@ export const adminIcon = {
 const NAV: { key: AdminSection; path: string; label: MessageKey; icon: SafeHtml }[] = [
   { key: 'dashboard', path: '/admin', label: 'adm.nav.dashboard', icon: adminIcon.dashboard },
   { key: 'doctors', path: '/admin/doctors', label: 'adm.nav.doctors', icon: adminIcon.doctors },
+  { key: 'facilities', path: '/admin/facilities', label: 'adm.nav.facilities', icon: adminIcon.facilities },
   { key: 'accounts', path: '/admin/accounts', label: 'adm.nav.accounts', icon: adminIcon.accounts },
   { key: 'reviews', path: '/admin/reviews', label: 'adm.nav.reviews', icon: adminIcon.reviews },
   { key: 'audit', path: '/admin/audit', label: 'adm.nav.audit', icon: adminIcon.audit },
@@ -89,6 +91,7 @@ function rangePicker(ctx: Ctx, path: string, r: DayRange, keep: Record<string, s
 export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): SafeHtml {
   const quick: { path: string; label: MessageKey; icon: SafeHtml; badge?: number }[] = [
     { path: '/admin/doctors', label: 'adm.nav.doctors', icon: adminIcon.doctors, badge: s.doctorsPending },
+    { path: '/admin/facilities', label: 'adm.nav.facilities', icon: adminIcon.facilities, badge: s.facilitiesPending },
     { path: '/admin/accounts', label: 'adm.nav.accounts', icon: adminIcon.accounts },
     { path: '/admin/reviews', label: 'adm.nav.reviews', icon: adminIcon.reviews },
     { path: '/admin/audit', label: 'adm.nav.audit', icon: adminIcon.audit },
@@ -97,6 +100,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
   const content = html`
     <h1>${ctx.t('adm.nav.dashboard')}</h1>
     ${s.doctorsPending ? alert('info', html`${ctx.t('adm.pendingAlert', { n: formatNumber(s.doctorsPending, ctx.locale) })} <a href="${href(ctx, '/admin/doctors')}">${ctx.t('admin.review')}</a>`) : ''}
+    ${s.facilitiesPending ? alert('info', html`${ctx.t('adm.facPendingAlert', { n: formatNumber(s.facilitiesPending, ctx.locale) })} <a href="${href(ctx, '/admin/facilities')}">${ctx.t('admin.review')}</a>`) : ''}
     ${s.failedMessages ? alert('warning', html`${ctx.t('adm.failedAlert', { n: formatNumber(s.failedMessages, ctx.locale) })} <a href="${href(ctx, '/admin/messages')}">${ctx.t('adm.nav.messages')}</a>`) : ''}
     ${rangePicker(ctx, '/admin', range)}
     <section class="stack-sm" aria-labelledby="k-people"><h2 id="k-people" class="h3">${ctx.t('adm.groupPeople')}</h2>
@@ -105,6 +109,8 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
         ${kpi(ctx, 'adm.doctorsPending', s.doctorsPending, adminIcon.clock, 'warn', href(ctx, '/admin/doctors'))}
         ${kpi(ctx, 'adm.doctorsSuspended', s.doctorsSuspended, adminIcon.accounts, 'danger')}
         ${kpi(ctx, 'adm.patients', s.patients, adminIcon.people)}
+        ${kpi(ctx, 'adm.facilitiesActive', s.facilitiesActive, adminIcon.facilities, 'ok', href(ctx, '/admin/facilities'))}
+        ${kpi(ctx, 'adm.facilitiesPending', s.facilitiesPending, adminIcon.clock, 'warn', href(ctx, '/admin/facilities'))}
       </div>
     </section>
     <section class="stack-sm" aria-labelledby="k-activity"><h2 id="k-activity" class="h3">${ctx.t('adm.groupActivity')} <span class="muted small">(${rangeLabel(ctx, range)})</span></h2>
@@ -126,7 +132,8 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
   return adminShell(ctx, 'dashboard', ctx.t('adm.nav.dashboard'), content);
 }
 
-const roleLabel = (ctx: Ctx, role: string) => ctx.t(role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : 'adm.rolePatient');
+const roleLabel = (ctx: Ctx, role: string) =>
+  ctx.t(role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : role === 'facility' ? 'adm.roleFacility' : 'adm.rolePatient');
 
 export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; notice?: MessageKey; error?: MessageKey }): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
@@ -140,6 +147,7 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
     </div>
     <div class="stack-sm account-actions">
       ${a.role === 'doctor' ? html`<a class="btn btn-ghost btn-sm" href="${href(ctx, `/admin/doctors/${a.id}`)}">${ctx.t('adm.openDoctor')}</a>` : ''}
+      ${a.role === 'facility' ? html`<a class="btn btn-ghost btn-sm" href="${href(ctx, `/admin/facilities/${a.id}`)}">${ctx.t('adm.openFacility')}</a>` : ''}
       ${a.role === 'patient' && a.no_shows
         ? html`<form method="post" action="${href(ctx, `/admin/accounts/${a.id}/clear-no-shows`)}">${csrfField(ctx)}
             <input type="hidden" name="q" value="${o.q}">

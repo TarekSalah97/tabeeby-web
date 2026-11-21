@@ -247,3 +247,48 @@ test('patient and doctor exchange messages on phones (Arabic) without sideways s
   await pp.close();
   await dp.close();
 });
+
+test('pharmacy and lab pages fit a phone in Arabic; a lab owner saves prices by tapping', async () => {
+  const { hashPassword } = await import('../../src/auth/password.js');
+  const { testPhone } = await import('../helpers.js');
+  const phone = testPhone();
+  const { rows } = await h.db.query<{ id: string }>(
+    `insert into users (role, full_name, phone_e164, password_hash, phone_verified_at) values ('facility', 'Owner', $1, $2, now()) returning id`,
+    [phone, await hashPassword('facility-password-1')],
+  );
+  const id = rows[0]!.id;
+  await h.db.query(`insert into facilities (user_id, kind, slug, name, licence_number, description, home_service, verification_status, verified_at)
+    values ($1, 'lab', 'alpha-labs-e2e', 'معامل ألفا Alpha Labs', 'LIC-9', 'تحاليل شاملة ونتائج في نفس اليوم.', true, 'approved', now())`, [id]);
+  await h.db.query(`insert into facility_branches (facility_id, name, district_id, address, opens, closes) select $1, 'فرع سموحة', id, '١٤ ميدان فيكتور عمانويل، سموحة', '08:00', '02:00' from districts where slug = 'smouha'`, [id]);
+  await h.db.query(`insert into facility_tests (facility_id, test_code, price_egp) values ($1, 'cbc', 150), ($1, 'hba1c', 300)`, [id]);
+  const shots = process.env['SHOTS_DIR'];
+  const wide = async (page: import('playwright').Page) => (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+
+  const visitor = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  for (const path of ['/', '/labs', '/labs?tests=cbc,hba1c', '/labs/alpha-labs-e2e?tests=cbc,hba1c', '/pharmacies', '/scan-centres', '/facilities/join']) {
+    await visitor.goto(h.baseUrl + path);
+    assert.ok((await wide(visitor)) <= 1, `${path} is too wide`);
+  }
+  await visitor.goto(h.baseUrl + '/labs?tests=cbc,hba1c');
+  if (shots) await visitor.screenshot({ path: `${shots}/labs-phone.png`, fullPage: true });
+  await visitor.close();
+
+  const owner = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await owner.goto(h.baseUrl + '/login');
+  await owner.locator('input[name=phone]').fill('0' + phone.slice(3));
+  await owner.locator('input[name=password]').fill('facility-password-1');
+  await owner.locator('form button[type=submit]').first().click();
+  await owner.waitForLoadState('load');
+  assert.match(owner.url(), /\/facility$/);
+  for (const path of ['/facility', '/facility/branches', '/facility/prices']) {
+    await owner.goto(h.baseUrl + path);
+    assert.ok((await wide(owner)) <= 1, `${path} is too wide`);
+  }
+  await owner.getByLabel('سكر صائم').fill('٧٠');
+  await owner.getByRole('button', { name: 'حفظ' }).click();
+  await owner.waitForLoadState('load');
+  const saved = await h.db.query<{ price_egp: number }>("select price_egp from facility_tests where facility_id = $1 and test_code = 'fbs'", [id]);
+  assert.equal(saved.rows[0]?.price_egp, 70);
+  if (shots) await owner.screenshot({ path: `${shots}/lab-prices-phone.png` });
+  await owner.close();
+});

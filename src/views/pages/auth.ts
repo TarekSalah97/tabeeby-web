@@ -149,7 +149,7 @@ export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions'
       <h1>${ctx.t(title)}</h1>
       ${staff
         ? html`<p class="muted">${ctx.t('gate.staffLead')}</p>
-           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' ? '/dashboard' : '/admin')}">${ctx.t(ctx.user!.role === 'doctor' ? 'nav.dashboard' : 'nav.admin')}</a>`
+           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' ? '/dashboard' : ctx.user!.role === 'facility' ? '/facility' : '/admin')}">${ctx.t(ctx.user!.role === 'admin' ? 'nav.admin' : 'nav.dashboard')}</a>`
         : html`<p class="muted">${ctx.t(`gate.${kind}Lead`)}</p>
            <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, '/login', { next: returnTo })}">${ctx.t('gate.signIn')}</a>
            <a class="btn btn-outline btn-lg btn-block" href="${href(ctx, '/signup', { next: returnTo })}">${ctx.t('gate.signUp')}</a>

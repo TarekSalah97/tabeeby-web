@@ -474,7 +474,7 @@ function labItemName(ctx: Ctx, it: { test_code: string | null; test_name: string
 
 // ---------------------------------------------------------------- printable pages
 
-function printDocument(ctx: Ctx, title: string, back: string, body: SafeHtml): SafeHtml {
+function printDocument(ctx: Ctx, title: string, back: string, body: SafeHtml, extraActions: SafeHtml = html``): SafeHtml {
   const dir = ctx.locale === 'ar' ? 'rtl' : 'ltr';
   return html`<html lang="${ctx.locale}" dir="${dir}">
 <head>
@@ -490,6 +490,7 @@ function printDocument(ctx: Ctx, title: string, back: string, body: SafeHtml): S
 <div class="print-toolbar no-print">
   <a class="btn btn-ghost" href="${back}">← ${ctx.t('common.back')}</a>
   <a class="btn btn-outline" href="${alternateHref(ctx)}" hreflang="${ctx.locale === 'ar' ? 'en' : 'ar'}">${ctx.t('rx.printOtherLanguage')}</a>
+  ${extraActions}
   <button type="button" class="btn btn-primary" data-print hidden>${ctx.t('rx.print')}</button>
 </div>
 <main class="sheet">${body}</main>
@@ -541,14 +542,24 @@ export function prescriptionPrintPage(ctx: Ctx, ref: ReferenceData, h: PrintHead
   return printDocument(ctx, `${ctx.t('rx.sheetTitle')} — ${h.patient_name}`, back, body);
 }
 
-export function labOrderPrintPage(ctx: Ctx, ref: ReferenceData, h: PrintHeader, lab: LabOrderView, back: string): SafeHtml {
+export function labOrderPrintPage(ctx: Ctx, ref: ReferenceData, h: PrintHeader, lab: LabOrderView, back: string, forPatient = false): SafeHtml {
   const body = html`
     ${sheetHeader(ctx, h, ref, 'lab.sheetTitle')}
     ${lab.status === 'voided' ? html`<p class="voided-stamp">${ctx.t('rx.voidedStamp')} — ${lab.void_reason ?? ''}</p>` : ''}
     <ul class="lab-print-list sheet-list">${lab.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
     ${lab.notes ? html`<p class="prose" dir="auto">${lab.notes}</p>` : ''}
     ${sheetFooter(ctx, lab.id)}`;
-  return printDocument(ctx, `${ctx.t('lab.sheetTitle')} — ${h.patient_name}`, back, body);
+  // For the patient: compare labs / scan centres that do these tests (nothing is sent to them).
+  const codes = lab.items.map((it) => it.test_code).filter((c): c is string => !!c);
+  const isScan = (c: string) => ['imaging', 'dental'].includes(labTest(c)?.group ?? '');
+  const labCodes = codes.filter((c) => !isScan(c));
+  const scanCodes = codes.filter(isScan);
+  const find =
+    forPatient && lab.status !== 'voided'
+      ? html`${labCodes.length ? html`<a class="btn btn-outline" href="${href(ctx, '/labs', { tests: labCodes.join(',') })}">${ctx.t('lab.findLab')}</a>` : ''}
+          ${scanCodes.length ? html`<a class="btn btn-outline" href="${href(ctx, '/scan-centres', { tests: scanCodes.join(',') })}">${ctx.t('lab.findScan')}</a>` : ''}`
+      : html``;
+  return printDocument(ctx, `${ctx.t('lab.sheetTitle')} — ${h.patient_name}`, back, body, find);
 }
 
 // ---------------------------------------------------------------- patient's own view

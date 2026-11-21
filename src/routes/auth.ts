@@ -7,7 +7,7 @@ import { field, fieldAll } from '../http/body.js';
 import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPreferredLocale } from '../services/accounts.js';
 import { registerDoctor, type PositionInput } from '../services/doctors.js';
 import { getReference } from '../services/reference.js';
-import { destroySession, SESSION_COOKIE } from '../auth/sessions.js';
+import { destroySession, SESSION_COOKIE, type Role } from '../auth/sessions.js';
 import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage } from '../views/pages/auth.js';
 import { requestLoginCode, confirmLoginCode, setFirstPassword, hasPassword } from '../services/guestBooking.js';
 import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
@@ -21,7 +21,7 @@ import { startSession, homeFor, localized, formValue } from './helpers.js';
 const nextParam = (ctx: Ctx) => safeNext(ctx.method === 'GET' ? ctx.query.get('next') : field(ctx.form, 'next'));
 
 /** Where to go after a successful sign-in or verification. */
-function afterAuth(ctx: Ctx, role: 'patient' | 'doctor' | 'admin', next: string | null): string {
+function afterAuth(ctx: Ctx, role: Role, next: string | null): string {
   if (next) return localized(ctx, next);
   return homeFor(ctx, role);
 }

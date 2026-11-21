@@ -260,6 +260,6 @@ export function recordsRoutes(r: Router): void {
     const user = requireUser(ctx, 'patient');
     const { header, lab } = await getLabOrderForPrint(ctx.deps.db, { patientId: user.id }, uuidParam(ctx, 'id'));
     if (lab.status !== 'active') throw notFound();
-    sendHtml(ctx, 200, labOrderPrintPage(ctx, await getReference(ctx.deps.db), header, lab, href(ctx, '/prescriptions')));
+    sendHtml(ctx, 200, labOrderPrintPage(ctx, await getReference(ctx.deps.db), header, lab, href(ctx, '/prescriptions'), true));
   });
 }

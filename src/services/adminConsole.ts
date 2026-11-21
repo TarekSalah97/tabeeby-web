@@ -61,6 +61,8 @@ export interface AdminStats {
   doctorsPending: number;
   doctorsSuspended: number;
   patients: number;
+  facilitiesActive: number;
+  facilitiesPending: number;
   /** Activity in the chosen range. */
   bookings: number;
   completed: number;
@@ -81,6 +83,8 @@ export async function adminStats(db: Queryable, range: DayRange, tz: string): Pr
        (select count(*)::int from doctors where verification_status = 'pending') as "doctorsPending",
        (select count(*)::int from doctors d join users u on u.id = d.user_id where d.verification_status = 'suspended' or (u.status = 'suspended')) as "doctorsSuspended",
        (select count(*)::int from users where role = 'patient') as patients,
+       (select count(*)::int from facilities f join users u on u.id = f.user_id where f.verification_status = 'approved' and u.status = 'active') as "facilitiesActive",
+       (select count(*)::int from facilities where verification_status = 'pending') as "facilitiesPending",
        (select count(*)::int from appointments where ${inRange('created_at', 1, 2)}) as bookings,
        (select count(*)::int from appointments where status = 'completed' and ${inRange('starts_at', 1, 2)}) as completed,
        (select count(*)::int from appointments where status = 'cancelled' and ${inRange('cancelled_at', 1, 2)}) as cancellations,
@@ -100,7 +104,7 @@ export async function adminStats(db: Queryable, range: DayRange, tz: string): Pr
 
 export interface AccountRow {
   id: string;
-  role: 'patient' | 'doctor' | 'admin';
+  role: 'patient' | 'doctor' | 'admin' | 'facility';
   full_name: string;
   phone_e164: string;
   email: string | null;

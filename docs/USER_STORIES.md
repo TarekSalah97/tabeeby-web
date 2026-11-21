@@ -148,3 +148,12 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - As a doctor, I want to block a patient from sending new messages (and undo it).
 - As either side, I want to see unread conversations (badge in the dashboard menu / patient tab bar) and get one text alert per batch of new messages; email for replies if my email is confirmed.
   - Alerts never include the message text (health data). Only the two participants can read a conversation; other doctors get 404, admins 403.
+
+## Pharmacies, laboratories and scan centres
+
+- As a pharmacy, lab or scan centre, I want to sign up with my licence number and licence document, so that I can list my place on Tabeeby (free).
+  - Kind, place name, licence number (3–40), contact name, mobile, email, password, licence file (JPG/PNG/PDF, content-checked) and consent are required. The place stays private until an admin approves it; the owner can preview it.
+- As an admin, I want to review, approve, reject (with a reason), suspend and reinstate places; opening a licence document is recorded in the audit log.
+- As a place, I want to edit my description, public phone, WhatsApp and home service (delivery / home samples), add branches (area, address, phone, days, hours, 24 hours or closing after midnight), and — for labs and scan centres — set prices for tests from the built-in list.
+- As a patient, I want to find pharmacies (/pharmacies), labs (/labs) and scan centres (/scan-centres) by area, name, open now and home service, and see hours, call, WhatsApp and directions.
+- As a patient with a lab or imaging request from my doctor, I want to see which places do all the tests and the total price, cheapest first ("Find a lab for these tests" on the request). Nothing is sent to the lab.

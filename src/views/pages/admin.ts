@@ -7,6 +7,7 @@ import type { AdminReview } from '../../services/reviews.js';
 import { pick, formatDateTime, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { ReviewDetail, ReviewListItem } from '../../services/admin.js';
+import type { FacilityReviewDetail, FacilityReviewItem } from '../../services/facilities.js';
 import { experienceYears } from '../../domain/experience.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 
@@ -107,4 +108,66 @@ export function adminReviewsPage(ctx: Ctx, reviews: AdminReview[], o: { notice?:
         )}</ul>`
       : html`<p class="muted">${ctx.t('admin.reviewsNone')}</p>`}`;
   return adminShell(ctx, 'reviews', ctx.t('admin.reviewsTitle'), content);
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacies, labs and scan centres
+// ---------------------------------------------------------------------------
+
+export function adminFacilitiesPage(ctx: Ctx, data: { pending: FacilityReviewItem[]; recent: FacilityReviewItem[] }, notice?: MessageKey): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const list = (rows: FacilityReviewItem[]) =>
+    rows.length
+      ? html`<ul class="appt-list">${rows.map(
+          (f) => html`<li class="appt-row"><div class="stack-sm">
+              <a href="${href(ctx, `/admin/facilities/${f.user_id}`)}"><strong>${f.name}</strong></a>
+              <span class="muted small">${ctx.t(`fac.kind.${f.kind}` as MessageKey)} · ${f.contact_name} · ${formatDateTime(f.created_at, ctx.locale, tz)}</span>
+            </div>${vstatus(ctx, f.verification_status)}</li>`,
+        )}</ul>`
+      : html`<p class="muted">${ctx.t('adm.facNone')}</p>`;
+  const content = html`
+    <div><h1>${ctx.t('adm.nav.facilities')}</h1><p class="muted">${ctx.t('adm.facLead')}</p></div>
+    ${notice ? alert('success', ctx.t(notice)) : ''}
+    <section class="panel stack"><h2 class="h3">${ctx.t('admin.pending')} (${data.pending.length})</h2>${list(data.pending)}</section>
+    <section class="panel stack"><h2 class="h3">${ctx.t('admin.recent')}</h2>${list(data.recent)}</section>`;
+  return adminShell(ctx, 'facilities', `${ctx.t('adm.nav.facilities')} — ${ctx.t('admin.title')}`, content);
+}
+
+export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityReviewDetail, error?: MessageKey): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const action = (decision: string, label: MessageKey, withNote: boolean, primary = false) => html`<form method="post" action="${href(ctx, `/admin/facilities/${f.user_id}/${decision}`)}" class="stack-sm">
+    ${csrfField(ctx)}
+    ${withNote ? html`<div class="field"><label for="note-${decision}">${ctx.t('admin.rejectNote')}</label><textarea id="note-${decision}" name="note" rows="2" maxlength="500" required></textarea></div>` : ''}
+    <div><button type="submit" class="btn ${primary ? 'btn-primary' : 'btn-outline'}">${ctx.t(label)}</button></div></form>`;
+  const st = f.verification_status;
+  const content = html`
+    <a href="${href(ctx, '/admin/facilities')}">← ${ctx.t('common.back')}</a>
+    <div class="row-wrap"><h1>${f.name}</h1>${vstatus(ctx, st)}</div>
+    ${error ? alert('error', ctx.t(error)) : ''}
+    <section class="panel">
+      <dl class="summary">
+        <div><dt>${ctx.t('facjoin.kind')}</dt><dd>${ctx.t(`fac.kind.${f.kind}` as MessageKey)}</dd></div>
+        <div><dt>${ctx.t('facjoin.licenceNumber')}</dt><dd dir="ltr">${f.licence_number}</dd></div>
+        <div><dt>${ctx.t('facjoin.contactName')}</dt><dd>${f.contact_name}</dd></div>
+        <div><dt>${ctx.t('auth.phone')}</dt><dd dir="ltr">${formatEgyptMobile(f.phone_e164)}</dd></div>
+        <div><dt>${ctx.t('join.email')}</dt><dd>${f.email ?? '—'}</dd></div>
+        <div><dt>${ctx.t('admin.submitted')}</dt><dd>${formatDateTime(f.created_at, ctx.locale, tz)}</dd></div>
+        <div><dt>${ctx.t('fac.branches')}</dt><dd>${f.branches.length
+          ? f.branches.map((b) => { const d = ref.districtById.get(b.district_id); return html`<span class="block">${b.name} — ${d ? pick(ctx.locale, d) : ''}, ${b.address}</span>`; })
+          : '—'}</dd></div>
+      </dl>
+    </section>
+    <section class="panel stack">
+      <h2>${ctx.t('admin.documents')}</h2>
+      <p class="hint">${ctx.t('adm.facDocHint')}</p>
+      ${f.documents.map((doc) => html`<p><a class="btn btn-outline" href="${href(ctx, `/admin/facility-documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
+        <span class="muted"> ${doc.mime_type} · ${Math.round(doc.size_bytes / 1024)} KB</span></p>`)}
+    </section>
+    <section class="panel row-wrap align-start">
+      ${st === 'pending' || st === 'rejected' ? action('approve', 'admin.approve', false, true) : ''}
+      ${st === 'pending' ? action('reject', 'admin.reject', true) : ''}
+      ${st === 'approved' || st === 'pending' ? action('suspend', 'admin.suspend', true) : ''}
+      ${st === 'suspended' ? action('reinstate', 'admin.reinstate', false, true) : ''}
+    </section>`;
+  return adminShell(ctx, 'facilities', `${f.name} — ${ctx.t('admin.title')}`, content);
 }

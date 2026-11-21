@@ -99,6 +99,14 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
       <a class="btn btn-primary btn-lg" href="${href(ctx, '/symptom-checker')}">${ctx.t('sc.promoCta')}</a>
     </div>
   </section>` : ''}
+  <section class="container section-tight" aria-labelledby="near-title">
+    <h2 id="near-title" class="h3">${ctx.t('home.nearTitle')}</h2>
+    <div class="near-grid">
+      <a class="trust-item near-card" href="${href(ctx, '/pharmacies')}">${icon.pill}<div><strong>${ctx.t('fac.list.pharmacy')}</strong><p>${ctx.t('home.nearPharmacy')}</p></div></a>
+      <a class="trust-item near-card" href="${href(ctx, '/labs')}">${icon.flask}<div><strong>${ctx.t('fac.list.lab')}</strong><p>${ctx.t('home.nearLab')}</p></div></a>
+      <a class="trust-item near-card" href="${href(ctx, '/scan-centres')}">${icon.scan}<div><strong>${ctx.t('fac.list.radiology')}</strong><p>${ctx.t('home.nearScan')}</p></div></a>
+    </div>
+  </section>
   <section class="container trust-grid" aria-label="${ctx.t('brand')}">
     <div class="trust-item">${icon.shieldOutline}<div><strong>${ctx.t('home.trust1Title')}</strong><p>${ctx.t('home.trust1Body')}</p></div></div>
     <div class="trust-item">${icon.calendar}<div><strong>${ctx.t('home.trust2Title')}</strong><p>${ctx.t('home.trust2Body')}</p></div></div>

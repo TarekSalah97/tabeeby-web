@@ -15,6 +15,8 @@ const NOTICES: Record<string, MessageKey> = {
   cancelled: 'appts.cancelled',
   saved: 'common.saved',
   done: 'admin.done',
+  deleted: 'common.deleted',
+  facilityJoined: 'facdash.joined',
   fileCreated: 'records.createdNotice',
   linked: 'records.linked',
   visitSaved: 'visit.saved',
@@ -59,7 +61,7 @@ export async function startSession(ctx: Ctx, userId: string, role: Role): Promis
 }
 
 export function homeFor(ctx: Ctx, role: Role): string {
-  return href(ctx, role === 'doctor' ? '/dashboard' : role === 'admin' ? '/admin' : '/');
+  return href(ctx, role === 'doctor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'facility' ? '/facility' : '/');
 }
 
 /** Turn a stored locale-less path ("/dashboard") into the current-locale URL. */

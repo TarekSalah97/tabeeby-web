@@ -53,3 +53,13 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 | Message text (may contain health information) | `messages` | The doctor and the patient only (not admins) | Patient–doctor questions between visits |
 
 Text alerts and emails about new messages never contain the message text.
+
+## Pharmacies, labs and scan centres (migration 009)
+
+| Data | Where | Who can see it | Why |
+|---|---|---|---|
+| Owner name, mobile, email, password hash | `users` (role `facility`) | The owner; admins | Sign-in and contact |
+| Place name, description, public phone/WhatsApp, branches, hours, test prices | `facilities`, `facility_branches`, `facility_tests` | Public once approved | Listing |
+| Licence number and licence document | `facilities.licence_number`, `facility_documents` | Admins only (every view audited) | Verification |
+
+No patient data is shared with places: comparing labs for a request happens on the patient's own screen.

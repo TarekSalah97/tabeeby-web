@@ -28,6 +28,8 @@ const NOTICES: Record<string, MessageKey> = {
   waitlistLeft: 'waitlist.left',
   bookedGuest: 'guest.booked',
   clinicBooked: 'cbook.done',
+  paid: 'pay.paidDone',
+  refunded: 'pay.refundedDone',
   msgBlocked: 'msg.blockedDone',
   msgUnblocked: 'msg.unblockedDone',
   noShowsCleared: 'adm.noShowsClearedDone',

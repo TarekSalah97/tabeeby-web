@@ -10,6 +10,8 @@ import { startSession } from './helpers.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { book, resolveSlot, changeStatus, listPatientAppointments, quote } from '../services/booking.js';
 import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage } from '../views/pages/booking.js';
+import { getReceipt } from '../services/payments.js';
+import { receiptPage } from '../views/pages/payments.js';
 import { getReviewTarget, parseRating, submitReview } from '../services/reviews.js';
 import { joinWaitlist, leaveWaitlist, listPatientWaitlist } from '../services/waitlist.js';
 import { DomainError, badRequest } from '../http/errors.js';
@@ -166,6 +168,12 @@ export function patientRoutes(r: Router): void {
       const slug = await doctorSlugForClinic(ctx, req.clinicId);
       redirect(ctx, slug ? href(ctx, `/doctors/${slug}`, { clinic: req.clinicId, error: 'guest.slotTakenSignedIn' }) : href(ctx, '/appointments', { error: key }));
     }
+  });
+
+  r.get('/appointments/:id/receipt', async (ctx) => {
+    if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
+    const receipt = await getReceipt(ctx.deps.db, ctx.user, uuidParam(ctx, 'id'));
+    sendHtml(ctx, 200, receiptPage(ctx, receipt, href(ctx, '/appointments')));
   });
 
   r.get('/appointments', async (ctx) => {

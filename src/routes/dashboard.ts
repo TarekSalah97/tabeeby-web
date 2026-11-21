@@ -16,6 +16,9 @@ import { ratingsFor } from '../services/reviews.js';
 import { todayPage, clinicsPage, hoursPage, profileEditPage, clinicBookPage, type HoursFormValues, type ClinicBookView } from '../views/pages/dashboard.js';
 import { bookByClinic, clampClinicDate, clinicSlots, followUpSource, noShowCounts, ownActiveClinics, CLINIC_BOOKING_DAYS, type ClinicBookingInput } from '../services/clinicBooking.js';
 import type { FieldErrors } from '../services/accounts.js';
+import { recordPayment, refundPayment, paymentsFor, incomeReport, getReceipt, toCsv } from '../services/payments.js';
+import { incomePage, receiptPage } from '../views/pages/payments.js';
+import { formatDateTime } from '../i18n/index.js';
 import { experienceYears } from '../domain/experience.js';
 import { addDays, isValidDate, todayIn } from '../domain/time.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -97,12 +100,94 @@ export function dashboardRoutes(r: Router): void {
       listOwnClinics(db, user.id),
       listOwnRules(db, user.id),
     ]);
-    const [ratings, noShows] = await Promise.all([
+    const [ratings, noShows, payments] = await Promise.all([
       ratingsFor(db, [user.id]),
       noShowCounts(db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS, user.id, appointments.map((a) => ({ patientId: a.patient_id, phone: a.patient_phone }))),
+      paymentsFor(db, appointments.map((a) => a.id)),
     ]);
     const rating = ratings.get(user.id) ?? null;
-    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, notice: ok(ctx) }));
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, payments, notice: ok(ctx) }));
+  });
+
+  // --- Payments ------------------------------------------------------------
+  r.post('/dashboard/appointments/:id/pay', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const id = uuidParam(ctx, 'id');
+    const date = formValue(ctx, 'date');
+    const fromIncome = formValue(ctx, 'back') === 'income';
+    const back = (q: Record<string, string>) =>
+      fromIncome
+        ? href(ctx, '/dashboard/income', { from: formValue(ctx, 'from'), to: formValue(ctx, 'to'), ...q })
+        : href(ctx, '/dashboard', { ...(isValidDate(date) ? { date } : {}), ...q });
+    try {
+      await recordPayment(ctx.deps, user, id, { method: formValue(ctx, 'method'), amount: formValue(ctx, 'amount'), note: formValue(ctx, 'note') }, ctx.ip);
+      redirect(ctx, back({ ok: 'paid' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, back({ error: isMessageKey(e.messageKey) ? e.messageKey : 'appt.notAllowed' }));
+    }
+  });
+
+  r.post('/dashboard/payments/:id/refund', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const range = { from: formValue(ctx, 'from'), to: formValue(ctx, 'to') };
+    try {
+      await refundPayment(ctx.deps, user, uuidParam(ctx, 'id'), formValue(ctx, 'reason'), ctx.ip);
+      redirect(ctx, href(ctx, '/dashboard/income', { ...range, ok: 'refunded' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/dashboard/income', { ...range, error: isMessageKey(e.messageKey) ? e.messageKey : 'appt.notAllowed' }));
+    }
+  });
+
+  /** Date range from ?from&to (local dates), defaulting to this month; at most one year. */
+  const incomeRange = (ctx: Ctx) => {
+    const today = todayIn(ctx.deps.cfg.TIME_ZONE, ctx.deps.now());
+    let from = ctx.query.get('from') ?? '';
+    let to = ctx.query.get('to') ?? '';
+    if (!isValidDate(from)) from = `${today.slice(0, 7)}-01`;
+    if (!isValidDate(to)) to = today;
+    if (from > to) [from, to] = [to, from];
+    if (addDays(from, 366) < to) from = addDays(to, -366);
+    return { today, from, to };
+  };
+
+  r.get('/dashboard/income', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const { today, from, to } = incomeRange(ctx);
+    const [doctor, report] = await Promise.all([getOwnDoctor(ctx.deps.db, user.id), incomeReport(ctx.deps.db, user.id, from, to, ctx.deps.cfg.TIME_ZONE)]);
+    sendHtml(ctx, 200, incomePage(ctx, doctor, report, { today, notice: ok(ctx) }));
+  });
+
+  r.get('/dashboard/income.csv', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const { from, to } = incomeRange(ctx);
+    const tz = ctx.deps.cfg.TIME_ZONE;
+    const report = await incomeReport(ctx.deps.db, user.id, from, to, tz);
+    const t = ctx.t;
+    const csv = toCsv([
+      [t('pay.paidAt'), t('pay.receiptPatient'), t('pay.visit'), t('dash.clinic'), t('pay.method'), t('pay.amount'), t('dash.status'), t('pay.refundReason')],
+      ...report.rows.map((p) => [
+        formatDateTime(p.paid_at, ctx.locale, tz), p.patient_name, formatDateTime(p.visit_at, ctx.locale, tz), p.clinic_name,
+        t(`pay.method.${p.method}` as MessageKey), p.amount_egp, t(p.status === 'paid' ? 'pay.paid' : 'pay.refunded'), p.refund_reason ?? '',
+      ]),
+    ]);
+    ctx.res.statusCode = 200;
+    ctx.res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    ctx.res.setHeader('Content-Disposition', `attachment; filename="tabeeby-income-${from}-to-${to}.csv"`);
+    ctx.res.setHeader('Cache-Control', 'no-store');
+    ctx.res.end(csv);
+  });
+
+  r.get('/dashboard/appointments/:id/receipt', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const receipt = await getReceipt(ctx.deps.db, user, uuidParam(ctx, 'id'));
+    sendHtml(ctx, 200, receiptPage(ctx, receipt, href(ctx, '/dashboard/income')));
   });
 
   /** Booking by the clinic: a phone call, a walk-in, or a follow-up from today's list. */

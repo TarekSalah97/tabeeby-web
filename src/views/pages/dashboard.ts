@@ -13,15 +13,18 @@ import { nextDoctorAction } from '../../domain/appointmentStatus.js';
 import { addDays, todayIn } from '../../domain/time.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { money } from './public.js';
+import { markPaidForm, paidChip } from './payments.js';
+import type { PaymentMethod } from '../../services/payments.js';
 import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
 import type { Slot } from '../../domain/availability.js';
 
-export type Section = 'today' | 'messages' | 'patients' | 'clinics' | 'hours' | 'profile';
+export type Section = 'today' | 'messages' | 'income' | 'patients' | 'clinics' | 'hours' | 'profile';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: Section; path: string; label: MessageKey }[] = [
     { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
     { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
+    { key: 'income', path: '/dashboard/income', label: 'pay.incomeTitle' },
     ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
     { key: 'clinics', path: '/dashboard/clinics', label: 'dash.nav.clinics' },
     { key: 'hours', path: '/dashboard/hours', label: 'dash.nav.hours' },
@@ -66,13 +69,16 @@ export function todayPage(
     rating?: { avg: number; count: number } | null;
     /** By patient id (accounts) or phone (walk-ins). */
     noShows?: Map<string, number>;
+    /** Live payment per appointment id. */
+    payments?: Map<string, { id: string; amount: number; method: PaymentMethod }>;
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const live = o.appointments.filter((a) => a.status !== 'cancelled');
   const done = live.filter((a) => a.status === 'completed').length;
-  const collected = live.filter((a) => a.status === 'completed').reduce((sum, a) => sum + a.fee_egp, 0);
+  const paidOf = (a: DoctorDayAppointment) => o.payments?.get(a.id);
+  const collected = live.reduce((sum, a) => sum + (paidOf(a)?.amount ?? 0), 0);
   const canBook = doctor.verification_status === 'approved' && o.clinics.some((c) => c.is_active) && o.rules.length > 0;
   const noShowsOf = (a: DoctorDayAppointment) => o.noShows?.get(a.patient_id ?? a.patient_phone) ?? 0;
   const waiting = live.filter((a) => a.status === 'arrived').length;
@@ -138,6 +144,11 @@ export function todayPage(
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
                   ${a.status === 'confirmed' || a.status === 'arrived' ? actionForm(a, 'cancelled', 'action.cancel', false) : ''}
+                  ${paidOf(a)
+                    ? paidChip(ctx, paidOf(a)!, href(ctx, `/dashboard/appointments/${a.id}/receipt`))
+                    : a.status === 'arrived' || a.status === 'in_consultation' || a.status === 'completed'
+                      ? markPaidForm(ctx, a.id, a.fee_egp, { date: o.date }, { big: a.status === 'completed' })
+                      : ''}
                   ${canBook && (a.status === 'completed' || a.status === 'in_consultation') ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard/book', { from: a.id, date: addDays(todayIn(tz, ctx.deps.now()), 7) })}">${ctx.t('cbook.bookFollowUp')}</a>` : ''}
                   ${doctor.records_enabled && a.status !== 'cancelled' ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
                 </div></td>

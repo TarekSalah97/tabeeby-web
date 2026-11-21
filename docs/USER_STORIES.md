@@ -157,3 +157,13 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - As a place, I want to edit my description, public phone, WhatsApp and home service (delivery / home samples), add branches (area, address, phone, days, hours, 24 hours or closing after midnight), and — for labs and scan centres — set prices for tests from the built-in list.
 - As a patient, I want to find pharmacies (/pharmacies), labs (/labs) and scan centres (/scan-centres) by area, name, open now and home service, and see hours, call, WhatsApp and directions.
 - As a patient with a lab or imaging request from my doctor, I want to see which places do all the tests and the total price, cheapest first ("Find a lab for these tests" on the request). Nothing is sent to the lab.
+
+## Payments (paid at the clinic)
+
+- As a doctor, I want to mark a visit as paid with one tap (cash, card, InstaPay, mobile wallet, insurance, other), so that I know what was collected.
+  - The amount defaults to the visit price; it can be changed (0–100,000). One live payment per visit; cancelled or missed visits cannot be paid. Other doctors' visits are "not found".
+- As a doctor, I want an Income page for any date range (today / 7 days / this month / custom): total, per method, payments list, finished visits not paid yet, and a download for Excel.
+  - The download quotes every cell and neutralises spreadsheet formulas (CSV injection).
+- As a doctor, I want to mark a payment as refunded with a reason; payments are never deleted (database-enforced) and every record/refund is audited.
+- As a patient, I want to see "Paid" on my visits and open a printable receipt; only the patient and the doctor can open it.
+- Online card / Fawry payment is not connected yet: it needs a merchant account (Paymob or Fawry) and keys. The `payments.provider` column is ready for it.

@@ -292,3 +292,32 @@ test('pharmacy and lab pages fit a phone in Arabic; a lab owner saves prices by 
   if (shots) await owner.screenshot({ path: `${shots}/lab-prices-phone.png` });
   await owner.close();
 });
+
+test('doctor records a payment on a phone (Arabic) and opens the income page', async () => {
+  const d = await createApprovedDoctor(h.db);
+  await h.db.query(
+    `insert into appointments (doctor_id, clinic_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, fee_egp, status)
+     values ($1, $2, 'منى سامي', '+201012345678', 'doctor', now() - interval '40 minutes', now() - interval '10 minutes', 'new', 450, 'completed')`,
+    [d.id, d.clinicId],
+  );
+  const shots = process.env['SHOTS_DIR'];
+  const wide = async (page: import('playwright').Page) => (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(h.baseUrl + '/login');
+  await page.locator('input[name=phone]').fill('0' + d.phone.slice(3));
+  await page.locator('input[name=password]').fill(d.password);
+  await page.locator('form button[type=submit]').first().click();
+  await page.waitForLoadState('load');
+  await page.goto(h.baseUrl + '/dashboard');
+  assert.ok((await wide(page)) <= 1, 'day view fits');
+  await page.locator('.pay-form select').selectOption('instapay');
+  await page.getByRole('button', { name: 'تسجيل الدفع' }).click();
+  await page.waitForLoadState('load');
+  assert.match(await page.content(), /تم تسجيل الدفع/);
+  assert.match(await page.content(), /إنستاباي/);
+  if (shots) await page.screenshot({ path: `${shots}/pay-day-phone.png`, fullPage: true });
+  await page.goto(h.baseUrl + '/dashboard/income');
+  assert.ok((await wide(page)) <= 1, 'income page fits');
+  if (shots) await page.screenshot({ path: `${shots}/income-phone.png`, fullPage: true });
+  await page.close();
+});

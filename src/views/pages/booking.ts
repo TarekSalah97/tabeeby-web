@@ -11,6 +11,7 @@ import type { ReviewTarget } from '../../services/reviews.js';
 import { MAX_REVIEW_COMMENT } from '../../services/reviews.js';
 import { zonedToUtc } from '../../domain/time.js';
 import { money } from './public.js';
+import { paidChip } from './payments.js';
 import type { VisitType } from '../../domain/visitPricing.js';
 
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
@@ -72,6 +73,7 @@ export function appointmentsPage(
     <div class="stack-sm">
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto"><strong>${a.doctor_name}</strong></a> · <span dir="auto">${a.clinic_name}</span></span>
       <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${a.visit_type === 'follow_up' ? html`${ctx.t('book.followUp')} · ` : ''}${money(ctx, a.fee_egp)}</span>
+      ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
       <div>${statusChip(ctx, a.status)}</div>
     </div>
     <div class="appt-actions">
@@ -89,6 +91,7 @@ export function appointmentsPage(
       <strong>${formatDate(a.starts_at, ctx.locale, tz)} · ${formatTime(a.starts_at, ctx.locale, tz)}</strong>
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto">${a.doctor_name}</a> · <span dir="auto">${a.clinic_name}</span></span>
       <div class="row-wrap">${statusChip(ctx, a.status)}${a.my_rating ? starRow(ctx, a.my_rating) : ''}</div>
+      ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
     </div>
     <div class="appt-actions">
       ${a.status === 'completed'

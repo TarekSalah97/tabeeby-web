@@ -1,5 +1,6 @@
 import type { Deps } from '../http/context.js';
 import type { Config } from '../config.js';
+import type { PaymentMethod } from './payments.js';
 import { visitForOnlineBooking, type ClinicPrices, type VisitType } from '../domain/visitPricing.js';
 import { smsEnabled } from '../config.js';
 import type { Queryable } from '../db/db.js';
@@ -184,6 +185,9 @@ export interface PatientAppointment {
   doctor_slug: string;
   /** The patient's own rating of this visit, if they left one. */
   my_rating: number | null;
+  /** Recorded payment for this visit, if any. */
+  paid_amount: number | null;
+  paid_method: PaymentMethod | null;
 }
 
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
@@ -191,10 +195,12 @@ export async function listPatientAppointments(db: Queryable, patientId: string):
     await db.query<PatientAppointment>(
       `select a.id, a.starts_at, a.status, a.visit_type, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
               c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
-              u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating
+              u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
+              pay.amount_egp as paid_amount, pay.method as paid_method
          from appointments a join clinics c on c.id = a.clinic_id join districts dist on dist.id = c.district_id
          join doctors d on d.user_id = a.doctor_id join users u on u.id = a.doctor_id
          left join reviews r on r.appointment_id = a.id
+         left join payments pay on pay.appointment_id = a.id and pay.status = 'paid'
         where a.patient_id = $1 order by a.starts_at desc limit 100`,
       [patientId],
     )

@@ -662,3 +662,16 @@ details.panel[open] > summary { margin-block-end: 12px; }
 .near-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); margin-block-start: 12px; }
 .near-card { color: inherit; text-decoration: none; min-height: 88px; transition: border-color .15s; }
 .near-card:hover { border-color: var(--primary); }
+/* Payments */
+.pay-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pay-form select { min-height: 40px; max-width: 150px; }
+.pay-form .pay-amount { width: 90px; min-height: 40px; text-align: end; }
+.appt-list.padded { padding-inline: 18px; }
+.muted-row { opacity: .7; }
+.align-end { align-items: flex-end; }
+details.refund > summary { list-style: none; cursor: pointer; }
+details.refund > summary::-webkit-details-marker { display: none; }
+details.refund[open] { padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.receipt .summary dd { overflow-wrap: anywhere; }
+.receipt-total { border-block-start: 2px solid var(--ink); padding-block-start: 8px; font-size: 1.15rem; }
+@media print { .no-print, .site-header, .site-footer, .tabbar { display: none !important; } .receipt { border: 0; box-shadow: none; } }

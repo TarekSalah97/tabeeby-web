@@ -4,6 +4,7 @@ import { href } from '../http/context.js';
 import type { MessageKey } from '../i18n/index.js';
 import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
+import { displayYears } from '../domain/experience.js';
 
 export const icon = {
   pill: trusted(
@@ -226,4 +227,10 @@ export function errorSummary(ctx: Ctx, errors: FieldErrors | undefined, o: { idP
     <ul>${entries.map(([name, key]) => html`<li><a href="#${o.idPrefix ?? ''}${name}">${ctx.t(key)}</a></li>`)}</ul>
     ${reenter.length ? html`<p class="small">${ctx.t(reenter.includes('file') ? 'common.reenterFile' : 'common.reenterPassword')}</p>` : ''}
   </div>`;
+}
+
+/** "2015 – 2019" or "2021 – Present" for a doctor's position. */
+export function yearsLabel(ctx: Ctx, p: { start: string; end: string | null }): string {
+  const y = displayYears(p, ctx.deps.now());
+  return y.to === null ? `${y.from} – ${ctx.t('common.present')}` : y.from === y.to ? y.from : `${y.from} – ${y.to}`;
 }

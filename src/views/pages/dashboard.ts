@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -369,7 +369,7 @@ export function profileEditPage(
       <p class="pill small">${ctx.t('profile.experienceTotal', { n: formatNumber(o.years, ctx.locale) })}</p>
       ${o.positions.length
         ? html`<ul class="appt-list">${o.positions.map(
-            (p) => html`<li class="appt-row"><span class="stack-sm"><strong>${p.title}</strong><span class="muted">${p.workplace} · <span dir="ltr">${p.start} – ${p.end ?? ctx.t('common.present')}</span></span></span>
+            (p) => html`<li class="appt-row"><span class="stack-sm"><strong>${p.title}</strong><span class="muted">${p.workplace} · <span dir="ltr">${yearsLabel(ctx, p)}</span></span></span>
               <form method="post" action="${href(ctx, `/dashboard/profile/positions/${p.id}/delete`)}">${csrfField(ctx)}<button class="btn btn-ghost btn-sm" type="submit">${ctx.t('common.delete')}</button></form></li>`,
           )}</ul>`
         : ''}
@@ -379,8 +379,8 @@ export function profileEditPage(
         <div class="position-row">
           <div class="field"><label for="p-title">${ctx.t('join.position')}</label><input id="p-title" name="posTitle" maxlength="120" required></div>
           <div class="field"><label for="p-place">${ctx.t('join.workplace')}</label><input id="p-place" name="posWorkplace" maxlength="160" required></div>
-          <div class="field"><label for="p-start">${ctx.t('join.from')}</label><input id="p-start" name="posStart" type="month" max="${maxMonth}" placeholder="YYYY-MM" required></div>
-          <div class="field"><label for="p-end">${ctx.t('join.to')}</label><input id="p-end" name="posEnd" type="month" max="${maxMonth}" placeholder="YYYY-MM"></div>
+          <div class="field"><label for="p-start">${ctx.t('join.from')}</label><input id="p-start" name="posStart" type="text" inputmode="numeric" maxlength="7" placeholder="${ctx.t('join.yearPlaceholder')}" required></div>
+          <div class="field"><label for="p-end">${ctx.t('join.to')}</label><input id="p-end" name="posEnd" type="text" inputmode="numeric" maxlength="7" placeholder="${ctx.t('join.yearPlaceholder')}"></div>
         </div>
         <p class="hint">${ctx.t('join.toHint')}</p>
         <div><button type="submit" class="btn btn-outline">${ctx.t('profile.addPosition')}</button></div>

@@ -292,7 +292,8 @@ export const en = {
   'join.specialtyInvalid': 'Choose your specialty.',
   'join.positionIncomplete': 'Fill in the position, workplace and start month, or leave the whole row empty.',
 
-  'experience.invalidMonth': 'Enter the month as shown, e.g. 2021-09.',
+  'experience.invalidMonth': 'Enter a year, e.g. 2019.',
+  'join.yearPlaceholder': 'Year, e.g. 2019',
   'experience.startInFuture': 'The start date can’t be in the future.',
   'experience.endInFuture': 'The end date can’t be in the future. Leave it empty for a current job.',
   'experience.endBeforeStart': 'The end date must be after the start date.',

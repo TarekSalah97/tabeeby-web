@@ -1,5 +1,6 @@
 import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
+import { displayYears } from '../../domain/experience.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
 import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary } from '../components.js';
@@ -128,8 +129,8 @@ export function joinPage(ctx: Ctx, ref: ReferenceData, o: { values?: Record<stri
           (p, i) => html`<div class="position-row">
             <div class="field"><label for="pos-title-${i}">${ctx.t('join.position')}</label><input id="pos-title-${i}" name="posTitle" value="${p.title}" maxlength="120"></div>
             <div class="field"><label for="pos-place-${i}">${ctx.t('join.workplace')}</label><input id="pos-place-${i}" name="posWorkplace" value="${p.workplace}" maxlength="160"></div>
-            <div class="field"><label for="pos-start-${i}">${ctx.t('join.from')}</label><input id="pos-start-${i}" name="posStart" type="month" value="${p.start}" max="${maxMonth}" placeholder="YYYY-MM"></div>
-            <div class="field"><label for="pos-end-${i}">${ctx.t('join.to')}</label><input id="pos-end-${i}" name="posEnd" type="month" value="${p.end}" max="${maxMonth}" placeholder="YYYY-MM" aria-describedby="pos-end-hint"></div>
+            <div class="field"><label for="pos-start-${i}">${ctx.t('join.from')}</label><input id="pos-start-${i}" name="posStart" type="text" inputmode="numeric" maxlength="7" value="${p.start.slice(0, 4)}" placeholder="${ctx.t('join.yearPlaceholder')}"></div>
+            <div class="field"><label for="pos-end-${i}">${ctx.t('join.to')}</label><input id="pos-end-${i}" name="posEnd" type="text" inputmode="numeric" maxlength="7" value="${p.end ? displayYears({ start: p.start, end: p.end }, ctx.deps.now()).to ?? '' : ''}" placeholder="${ctx.t('join.yearPlaceholder')}" aria-describedby="pos-end-hint"></div>
           </div>`,
         )}
         <p class="hint" id="pos-end-hint">${ctx.t('join.toHint')}</p>

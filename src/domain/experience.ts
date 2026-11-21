@@ -19,6 +19,27 @@ export function currentMonth(now: Date): string {
   return now.toISOString().slice(0, 7);
 }
 
+/**
+ * Doctors enter years only ("2015" to "2019"). Stored as months with an exclusive end:
+ * start 2015 → 2015-01, end 2019 → 2020-01 (so 2015–2019 counts as 5 years), and an end in
+ * the current year → the current month. 'YYYY-MM' is still accepted as is. Anything else is
+ * returned unchanged so validation reports it.
+ */
+export function yearToMonth(raw: string, which: 'start' | 'end', now: Date): string {
+  const v = raw.trim().replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  if (!/^\d{4}$/.test(v)) return v;
+  const year = Number(v);
+  if (which === 'start') return `${year}-01`;
+  const current = currentMonth(now);
+  return year >= Number(current.slice(0, 4)) ? (year === Number(current.slice(0, 4)) ? current : `${year + 1}-01`) : `${year + 1}-01`;
+}
+
+/** The years to show for a stored range: "2015 – 2019" (end is exclusive, so January belongs to the year before). */
+export function displayYears(p: PositionRange, now: Date): { from: string; to: string | null } {
+  const to = p.end === null ? null : p.end === currentMonth(now) ? p.end.slice(0, 4) : String(Math.floor((monthIndex(p.end) - 1) / 12));
+  return { from: p.start.slice(0, 4), to: to !== null && Number(to) < Number(p.start.slice(0, 4)) ? p.start.slice(0, 4) : to };
+}
+
 export type PositionError = 'experience.invalidMonth' | 'experience.startInFuture' | 'experience.endInFuture' | 'experience.endBeforeStart';
 
 export function validatePosition(p: PositionRange, now: Date): PositionError | null {

@@ -1,5 +1,6 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
+import { yearToMonth } from '../domain/experience.js';
 import { href, requireUser } from '../http/context.js';
 import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
@@ -379,8 +380,8 @@ export function dashboardRoutes(r: Router): void {
     const problem = await addPosition(ctx.deps, user.id, {
       title: formValue(ctx, 'posTitle'),
       workplace: formValue(ctx, 'posWorkplace'),
-      start: formValue(ctx, 'posStart'),
-      end: formValue(ctx, 'posEnd'),
+      start: yearToMonth(formValue(ctx, 'posStart'), 'start', ctx.deps.now()),
+      end: formValue(ctx, 'posEnd') ? yearToMonth(formValue(ctx, 'posEnd'), 'end', ctx.deps.now()) : '',
     });
     if (problem) return renderProfile(ctx, user, { positionError: problem }, 422);
     redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));

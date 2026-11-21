@@ -1,5 +1,6 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
+import { yearToMonth } from '../domain/experience.js';
 import { href, requireUser, safeNext, setCookie } from '../http/context.js';
 import { smsEnabled, emailEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
@@ -198,8 +199,8 @@ export function authRoutes(r: Router): void {
     const positions: PositionInput[] = titles.slice(0, 10).map((_, i) => ({
       title: (f['posTitle']?.[i] ?? '').trim(),
       workplace: (f['posWorkplace']?.[i] ?? '').trim(),
-      start: (f['posStart']?.[i] ?? '').trim(),
-      end: (f['posEnd']?.[i] ?? '').trim(),
+      start: yearToMonth(f['posStart']?.[i] ?? '', 'start', ctx.deps.now()),
+      end: f['posEnd']?.[i]?.trim() ? yearToMonth(f['posEnd'][i]!, 'end', ctx.deps.now()) : '',
     }));
     const values = {
       fullName: field(f, 'fullName'),

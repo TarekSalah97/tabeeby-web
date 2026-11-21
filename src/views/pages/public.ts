@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow } from '../components.js';
+import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -422,7 +422,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
         ? html`<section class="panel stack">
             <h2>${ctx.t('doctor.experienceSection')}</h2>
             <ol class="timeline">${d.positions.map(
-              (p) => html`<li><span class="muted" dir="ltr">${p.start} – ${p.end ?? ctx.t('common.present')}</span><span dir="auto"><strong>${p.title}</strong><span class="muted">${p.workplace}</span></span></li>`,
+              (p) => html`<li><span class="muted" dir="ltr">${yearsLabel(ctx, p)}</span><span dir="auto"><strong>${p.title}</strong><span class="muted">${p.workplace}</span></span></li>`,
             )}</ol>
           </section>`
         : ''}

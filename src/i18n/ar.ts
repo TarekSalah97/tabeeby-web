@@ -295,7 +295,8 @@ export const ar: Record<keyof typeof en, string> = {
   'join.specialtyInvalid': 'اختر تخصصك.',
   'join.positionIncomplete': 'أكمل الوظيفة وجهة العمل وشهر البداية، أو اترك الصف كله فارغًا.',
 
-  'experience.invalidMonth': 'أدخل الشهر بالشكل الموضح، مثال: 2021-09.',
+  'experience.invalidMonth': 'أدخل السنة، مثال: 2019.',
+  'join.yearPlaceholder': 'السنة، مثال: 2019',
   'experience.startInFuture': 'لا يمكن أن يكون تاريخ البداية في المستقبل.',
   'experience.endInFuture': 'لا يمكن أن يكون تاريخ النهاية في المستقبل. اتركه فارغًا للوظيفة الحالية.',
   'experience.endBeforeStart': 'يجب أن يكون تاريخ النهاية بعد تاريخ البداية.',

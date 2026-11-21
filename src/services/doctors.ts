@@ -12,6 +12,7 @@ import { isValidDate, isValidTime, zonedToUtc, addDays } from '../domain/time.js
 import { sniffDocumentType } from '../storage/files.js';
 import type { UploadedFile } from '../http/body.js';
 import { audit } from './audit.js';
+import { stripImageMetadata } from '../storage/imageClean.js';
 import { getReference } from './reference.js';
 import { validateName, type FieldErrors } from './accounts.js';
 import { tooManyRequests, notFound } from '../http/errors.js';
@@ -177,6 +178,8 @@ export interface OwnDoctor {
   verification_note: string | null;
   /** The doctor chose to use the Income section and payment buttons. */
   show_income: boolean;
+  /** Set when the doctor has a photo (its last change, for cache-busting). */
+  photo_version: number | null;
 }
 
 export async function setShowIncome(deps: Deps, doctorId: string, show: boolean, ip: string): Promise<void> {
@@ -189,7 +192,8 @@ export async function setShowIncome(deps: Deps, doctorId: string, show: boolean,
 export async function getOwnDoctor(db: Queryable, userId: string): Promise<OwnDoctor> {
   const { rows } = await db.query<OwnDoctor>(
     `select d.user_id, d.slug, d.kind, u.full_name, d.title_en, d.title_ar, d.bio, d.specialty_id, d.graduation_year,
-            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income
+            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income,
+            case when d.photo_key is not null then floor(extract(epoch from d.photo_updated_at) * 1000)::float8 end as photo_version
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [userId],
   );
@@ -492,3 +496,55 @@ export async function getOwnSelections(db: Queryable, doctorId: string): Promise
   return { subspecialtyIds: subs.rows.map((r) => r.id), insurerIds: ins.rows.map((r) => r.id) };
 }
 
+
+// ---------------------------------------------------------------------------
+// Profile photo
+// ---------------------------------------------------------------------------
+
+export const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
+
+/** Replace the doctor's photo. Hidden metadata (GPS location, device) is removed before storing. */
+export async function setDoctorPhoto(deps: Deps, doctorId: string, file: UploadedFile | undefined, ip: string): Promise<MessageKey | null> {
+  if (!file || !file.data.length) return 'photo.required';
+  if (file.data.length > MAX_PHOTO_BYTES) return 'photo.tooLarge';
+  const type = sniffDocumentType(file.data);
+  if (!type || type.ext === 'pdf') return 'photo.invalid';
+  const clean = stripImageMetadata(file.data);
+  if (!clean) return 'photo.invalid';
+  const key = await deps.storage.put(clean, type.ext);
+  try {
+    const old = await deps.db.transaction(async (tx) => {
+      const prev = await tx.query<{ photo_key: string | null }>('select photo_key from doctors where user_id = $1 for update', [doctorId]);
+      await tx.query('update doctors set photo_key = $2, photo_mime = $3, photo_updated_at = now(), updated_at = now() where user_id = $1', [doctorId, key, type.mime]);
+      await audit(tx, { actorId: doctorId, action: 'doctor.photo', entityType: 'doctor', entityId: doctorId, ip });
+      return prev.rows[0]?.photo_key ?? null;
+    });
+    if (old) await deps.storage.remove(old).catch(() => undefined);
+    return null;
+  } catch (e) {
+    await deps.storage.remove(key).catch(() => undefined);
+    throw e;
+  }
+}
+
+export async function removeDoctorPhoto(deps: Deps, doctorId: string, ip: string): Promise<void> {
+  const old = await deps.db.transaction(async (tx) => {
+    const prev = await tx.query<{ photo_key: string | null }>('select photo_key from doctors where user_id = $1 for update', [doctorId]);
+    await tx.query('update doctors set photo_key = null, photo_mime = null, photo_updated_at = now(), updated_at = now() where user_id = $1', [doctorId]);
+    await audit(tx, { actorId: doctorId, action: 'doctor.photo_remove', entityType: 'doctor', entityId: doctorId, ip });
+    return prev.rows[0]?.photo_key ?? null;
+  });
+  if (old) await deps.storage.remove(old).catch(() => undefined);
+}
+
+/** The photo for a public page: approved, active doctors only (or the doctor themself, for preview). */
+export async function readDoctorPhoto(deps: Deps, slug: string, viewerId: string | null): Promise<{ data: Buffer; mime: string } | null> {
+  const { rows } = await deps.db.query<{ user_id: string; photo_key: string | null; photo_mime: string | null; ok: boolean }>(
+    `select d.user_id, d.photo_key, d.photo_mime, (d.verification_status = 'approved' and u.status = 'active') as ok
+       from doctors d join users u on u.id = d.user_id where d.slug = $1`,
+    [slug],
+  );
+  const d = rows[0];
+  if (!d?.photo_key || !d.photo_mime || (!d.ok && d.user_id !== viewerId)) return null;
+  return { data: await deps.storage.get(d.photo_key), mime: d.photo_mime };
+}

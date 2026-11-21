@@ -30,6 +30,8 @@ const NOTICES: Record<string, MessageKey> = {
   clinicBooked: 'cbook.done',
   paid: 'pay.paidDone',
   incomeOn: 'dash.incomeOnDone',
+  photoSaved: 'photo.savedDone',
+  photoRemoved: 'photo.removedDone',
   incomeOff: 'dash.incomeOffDone',
   dayCancelled: 'dayoff.done',
   issueReported: 'issue.done',

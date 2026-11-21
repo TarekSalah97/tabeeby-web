@@ -12,6 +12,7 @@ import { listDoctorReviews } from '../services/reviews.js';
 import { fullDays, waitingDates } from '../services/waitlist.js';
 import { messageButtonState } from '../services/messaging.js';
 import { pausedDoctors } from '../services/reliability.js';
+import { readDoctorPhoto } from '../services/doctors.js';
 import { recentDoctors, nextVisit } from '../services/patientHome.js';
 
 export function publicRoutes(r: Router): void {
@@ -43,6 +44,20 @@ export function publicRoutes(r: Router): void {
     };
     const result = await searchDoctors(ctx.deps, filters);
     sendHtml(ctx, 200, searchPage(ctx, ref, { ...filters, page: Math.min(filters.page, Math.max(1, result.pages)) }, result));
+  });
+
+  // Doctor photos: public for approved doctors (the doctor can always see their own).
+  r.get('/photos/doctors/:slug', async (ctx) => {
+    const slug = ctx.params['slug'] ?? '';
+    if (!/^[a-z0-9-]{3,80}$/.test(slug)) throw notFound();
+    const photo = await readDoctorPhoto(ctx.deps, slug, ctx.user?.id ?? null);
+    if (!photo) throw notFound();
+    ctx.res.statusCode = 200;
+    ctx.res.setHeader('Content-Type', photo.mime);
+    ctx.res.setHeader('X-Content-Type-Options', 'nosniff');
+    ctx.res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    ctx.res.setHeader('Cache-Control', 'public, max-age=86400');
+    ctx.res.end(photo.data);
   });
 
   r.get('/doctors/:slug', async (ctx) => {

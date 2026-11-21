@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel } from '../components.js';
+import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -192,7 +192,7 @@ function doctorCard(ctx: Ctx, ref: ReferenceData, d: DoctorCard): SafeHtml {
   const districts = [...new Set(d.clinics.map((c) => ref.districtById.get(c.districtId)).filter((x) => !!x).map((x) => pick(ctx.locale, x!)))];
   return html`<article class="doctor-card">
     <div class="doctor-main">
-      <div class="avatar" aria-hidden="true">${initials(d.fullName)}</div>
+      ${doctorAvatar(ctx, d)}
       <div class="stack-sm">
         <h2 class="doctor-name"><a href="${href(ctx, `/doctors/${d.slug}`)}">${d.fullName}</a>
           <span class="verified" title="${ctx.t('search.verified')}">${icon.shield}<span class="sr-only">${ctx.t('search.verified')}</span></span></h2>
@@ -366,10 +366,17 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
   const langName = (l: string) => ctx.t.dynamic(`lang.${l}`);
 
   const body = html`
+  ${ctx.user?.id === d.id
+    ? html`<div class="container owner-bar"><div class="alert alert-info row-between">
+        <span>${ctx.t('doctor.ownerPreview')}</span>
+        <span class="row-wrap tight"><a class="btn btn-primary btn-sm" href="${href(ctx, '/dashboard')}">${icon.chevronStart}${ctx.t('doctor.backToDashboard')}</a>
+          <a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard/profile')}">${ctx.t('doctor.editProfile')}</a></span>
+      </div></div>`
+    : ''}
   <div class="container page profile-layout has-sticky">
     <div class="stack-lg profile-main">
       <section class="panel profile-head">
-        <div class="avatar xl" aria-hidden="true">${initials(d.fullName)}</div>
+        ${doctorAvatar(ctx, d, 'xl')}
         <div class="stack-sm">
           <div class="row-wrap"><h1 dir="auto">${d.fullName}</h1><span class="badge-verified">${icon.shield}${ctx.t('doctor.verifiedBadge')}</span></div>
           <p class="lead-sm">${title}</p>

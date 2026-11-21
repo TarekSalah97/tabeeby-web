@@ -31,6 +31,8 @@ export interface DoctorCard {
   nextSlots: Slot[];
   /** Average of verified reviews; null until the doctor has one. */
   rating: RatingSummary | null;
+  /** Changes when the photo changes (cache-busting); null = no photo, show initials. */
+  photoVersion: number | null;
 }
 
 export const PAGE_SIZE = 10;
@@ -109,8 +111,8 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
 export async function loadCards(db: Queryable, ids: string[], now: Date): Promise<DoctorCard[]> {
   if (!ids.length) return [];
   const [docs, clinics, subs, positions, ratings] = await Promise.all([
-    db.query<{ user_id: string; slug: string; full_name: string; title_en: string; title_ar: string; specialty_id: number }>(
-      `select d.user_id, d.slug, u.full_name, d.title_en, d.title_ar, d.specialty_id
+    db.query<{ user_id: string; slug: string; full_name: string; title_en: string; title_ar: string; specialty_id: number; photo_updated_at: Date | null }>(
+      `select d.user_id, d.slug, u.full_name, d.title_en, d.title_ar, d.specialty_id, case when d.photo_key is not null then d.photo_updated_at end as photo_updated_at
          from doctors d join users u on u.id = d.user_id where d.user_id = any($1::uuid[])`,
       [ids],
     ),
@@ -141,6 +143,7 @@ export async function loadCards(db: Queryable, ids: string[], now: Date): Promis
         clinics: own.map((c) => ({ id: c.id, name: c.name, districtId: c.district_id, address: c.address, fee: c.fee_egp, followUpFee: c.follow_up_fee_egp, followUpDays: c.follow_up_days, phone: c.phone_e164 })),
         nextSlots: [],
         rating: ratings.get(d.user_id) ?? null,
+        photoVersion: d.photo_updated_at ? d.photo_updated_at.getTime() : null,
       };
     });
 }

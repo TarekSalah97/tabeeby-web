@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -332,12 +332,29 @@ export function profileEditPage(
   ctx: Ctx,
   doctor: OwnDoctor,
   ref: ReferenceData,
-  o: { subspecialtyIds: number[]; insurerIds: number[]; positions: PositionRow[]; years: number; errors?: FieldErrors; positionError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { subspecialtyIds: number[]; insurerIds: number[]; positions: PositionRow[]; years: number; errors?: FieldErrors; positionError?: MessageKey; photoError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey } },
 ): SafeHtml {
   const spec = ref.specialtyById.get(doctor.specialty_id);
   const maxMonth = ctx.deps.now().toISOString().slice(0, 7);
   const content = html`
     <div><h1>${ctx.t('profile.title')}</h1><p class="muted">${ctx.t('profile.lead')}</p></div>
+    <section class="panel photo-panel">
+      ${doctorAvatar(ctx, { slug: doctor.slug, fullName: doctor.full_name, photoVersion: doctor.photo_version }, 'xl')}
+      <div class="stack-sm">
+        <strong>${ctx.t('photo.title')}</strong>
+        <span class="muted small">${ctx.t('photo.hint')}</span>
+        ${o.photoError ? html`<p class="field-error" role="alert">${ctx.t(o.photoError)}</p>` : ''}
+        <form method="post" action="${href(ctx, '/dashboard/photo')}" enctype="multipart/form-data" class="row-wrap">
+          ${csrfField(ctx)}
+          <label class="sr-only" for="photo">${ctx.t('photo.title')}</label>
+          <input id="photo" name="photo" type="file" accept="image/jpeg,image/png" required>
+          <button type="submit" class="btn btn-primary btn-sm">${ctx.t(doctor.photo_version ? 'photo.change' : 'photo.upload')}</button>
+        </form>
+        ${doctor.photo_version
+          ? html`<form method="post" action="${href(ctx, '/dashboard/photo/delete')}">${csrfField(ctx)}<button type="submit" class="btn btn-ghost btn-sm danger">${ctx.t('photo.remove')}</button></form>`
+          : ''}
+      </div>
+    </section>
     <form method="post" action="${href(ctx, '/dashboard/settings/income')}" class="panel row-between">
       ${csrfField(ctx)}
       <div class="stack-sm"><strong>${ctx.t('pay.incomeTitle')} — ${ctx.t(doctor.show_income ? 'msgset.on' : 'msgset.off')}</strong>

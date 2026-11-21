@@ -234,3 +234,10 @@ export function yearsLabel(ctx: Ctx, p: { start: string; end: string | null }): 
   const y = displayYears(p, ctx.deps.now());
   return y.to === null ? `${y.from} – ${ctx.t('common.present')}` : y.from === y.to ? y.from : `${y.from} – ${y.to}`;
 }
+
+/** The doctor's photo when they added one, otherwise their initials. */
+export function doctorAvatar(ctx: Ctx, d: { slug: string; fullName: string; photoVersion: number | null }, size: '' | 'xl' = ''): SafeHtml {
+  return d.photoVersion
+    ? html`<img class="avatar${size ? ` ${size}` : ''} photo" src="${href(ctx, `/photos/doctors/${d.slug}`, { v: String(d.photoVersion) })}" alt="${ctx.t('photo.alt', { name: d.fullName })}" width="${size ? 128 : 84}" height="${size ? 128 : 84}" loading="lazy">`
+    : html`<div class="avatar${size ? ` ${size}` : ''}" aria-hidden="true">${initials(d.fullName)}</div>`;
+}

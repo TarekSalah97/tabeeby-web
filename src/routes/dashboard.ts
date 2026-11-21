@@ -9,7 +9,7 @@ import type { SessionUser } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
   getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
-  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem, setShowIncome,
+  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem, setShowIncome, setDoctorPhoto, removeDoctorPhoto,
 } from '../services/doctors.js';
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
@@ -76,7 +76,7 @@ async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: Rul
   sendHtml(ctx, status, hoursPage(ctx, doctor, clinics, rules, blocks, { notice: ok(ctx), ...extra }));
 }
 
-async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Record<string, MessageKey>; positionError?: MessageKey } = {}, status = 200): Promise<void> {
+async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Record<string, MessageKey>; positionError?: MessageKey; photoError?: MessageKey } = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const [doctor, ref, sel, positions] = await Promise.all([getOwnDoctor(db, user.id), getReference(db), getOwnSelections(db, user.id), listPositions(db, [user.id])]);
   const own = positions.get(user.id) ?? [];
@@ -172,6 +172,21 @@ export function dashboardRoutes(r: Router): void {
     if (addDays(from, 366) < to) from = addDays(to, -366);
     return { today, from, to };
   };
+
+  r.post('/dashboard/photo', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const problem = await setDoctorPhoto(ctx.deps, user.id, ctx.files.find((f) => f.field === 'photo'), ctx.ip);
+    if (problem) return renderProfile(ctx, user, { photoError: problem }, 422);
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'photoSaved' }));
+  });
+
+  r.post('/dashboard/photo/delete', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    await removeDoctorPhoto(ctx.deps, user.id, ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'photoRemoved' }));
+  });
 
   r.post('/dashboard/settings/income', async (ctx) => {
     const user = requireDoctor(ctx);

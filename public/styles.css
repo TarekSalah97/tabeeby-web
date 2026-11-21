@@ -687,3 +687,9 @@ details.day-off > summary::-webkit-details-marker { display: none; }
 .error-summary a { color: inherit; font-weight: 600; }
 .error-summary p { margin: 8px 0 0; }
 .sub-tabs { margin-block-end: -8px; }
+img.avatar.photo { object-fit: cover; display: block; background: var(--primary-tint); }
+.photo-panel { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.photo-panel > .stack-sm { flex: 1; min-width: 220px; }
+.photo-panel input[type=file] { max-width: 100%; }
+.owner-bar { padding-block-start: 16px; }
+.owner-bar .alert { align-items: center; flex-wrap: wrap; gap: 10px; }

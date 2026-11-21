@@ -7,14 +7,14 @@ import { emailEnabled } from '../../config.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { MessageKey } from '../../i18n/index.js';
 import { maskEgyptMobile } from '../../domain/phone.js';
-import { DEMO_PASSWORD, DEMO_PATIENT_PHONE, DEMO_DOCTOR_PHONE } from '../../demo.js';
+import { DEMO_PASSWORD, DEMO_PATIENT_RANGE, DEMO_DOCTOR_RANGE } from '../../demo.js';
 
 export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; next?: string | null }): SafeHtml {
   const body = html`<div class="container page auth-page">
     <div class="auth-card">
       <h1>${ctx.t('auth.signInTitle')}</h1>
       ${ctx.deps.cfg.DEMO_MODE
-        ? alert('info', html`${ctx.t('demo.patient')}: <span dir="ltr">${DEMO_PATIENT_PHONE}</span> · ${ctx.t('demo.doctor')}: <span dir="ltr">${DEMO_DOCTOR_PHONE}</span>`, ctx.t('demo.logins', { password: DEMO_PASSWORD }))
+        ? alert('info', html`${ctx.t('demo.patient')}: <span dir="ltr">${DEMO_PATIENT_RANGE}</span><br>${ctx.t('demo.doctor')}: <span dir="ltr">${DEMO_DOCTOR_RANGE}</span>`, ctx.t('demo.logins', { password: DEMO_PASSWORD }))
         : ''}
       ${o.error ? alert('error', ctx.t(o.error)) : ''}
       <form method="post" action="${href(ctx, '/login')}" class="stack" novalidate>

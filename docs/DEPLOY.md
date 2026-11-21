@@ -174,3 +174,22 @@ Migrations are forward-only. To roll back code, check out the previous commit an
 ### Optional: no-show protection
 
 `NO_SHOW_LIMIT` (default 3) and `NO_SHOW_WINDOW_DAYS` (default 180): after that many missed appointments in the window, a patient can no longer book online until an admin allows it again. The defaults need no setting.
+
+## Separate test (demo) website
+
+A second copy of the site with fictional doctors, patients and a year of visit history, for trying
+features without touching real data. It must use its **own database** — never the live one.
+
+1. **Neon** (console.neon.tech → project `tabeeby`): *Databases → New database*, name `tabeeby_demo`.
+   Copy its connection string (direct connection, `sslmode=require`).
+2. **Render** (dashboard.render.com): *New → Web Service* → repository `TarekSalah97/tabeeby-web`,
+   branch `main`, runtime **Docker**, plan **Free**, name e.g. `tabeeby-demo`.
+   Docker Command: `sh deploy/start.sh`. Health check path: `/healthz`.
+3. Environment variables:
+   `NODE_ENV=production`, `DEMO_MODE=true`, `SEED_DEMO=true`, `SMS_PROVIDER=console`,
+   `STORAGE_DRIVER=db`, `TRUST_PROXY=true`, `DATABASE_POOL_SIZE=5`,
+   `PUBLIC_ORIGIN=https://<your-demo-name>.onrender.com`, and `DATABASE_URL` = the **demo** connection string.
+
+On start it migrates and loads the demo data (safe to repeat). Every page shows a "Demo site" banner,
+search engines are told not to index it, and the sign-in page lists the logins:
+doctors 01000000101–109, patients 01000000201–224, password `demo-password-2026`.

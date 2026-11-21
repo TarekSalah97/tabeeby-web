@@ -25,7 +25,7 @@ export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; nex
         <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('auth.submitSignIn')}</button>
       </form>
       ${emailEnabled(ctx.deps.cfg) ? html`<a class="btn btn-ghost btn-block" href="${href(ctx, '/login/email', { next: o.next ?? undefined })}">${ctx.t('loginEmail.link')}</a>` : ''}
-      <p class="center muted">${ctx.t('auth.noAccount')} <a href="${href(ctx, '/signup', { next: o.next ?? undefined })}">${ctx.t('nav.signUp')}</a></p>
+      <p class="center muted">${ctx.t('auth.noAccount')} <a href="${href(ctx, '/join', { next: o.next ?? undefined })}">${ctx.t('nav.signUp')}</a></p>
     </div>
   </div>`;
   return layout(ctx, { title: `${ctx.t('auth.signInTitle')} — ${ctx.t('brand')}`, body, noindex: true });
@@ -158,4 +158,24 @@ export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions'
     </div>
   </div>`;
   return layout(ctx, { title: `${ctx.t(title)} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/** "Create account": choose patient or doctor first (pharmacies and labs have a smaller link). */
+export function joinChoicePage(ctx: Ctx, next: string | null): SafeHtml {
+  const body = html`<div class="container page narrow stack-lg">
+    <div class="center stack-sm"><h1>${ctx.t('joinChoice.title')}</h1><p class="muted">${ctx.t('joinChoice.lead')}</p></div>
+    <div class="join-choices">
+      <a class="panel join-choice" href="${href(ctx, '/signup', { next: next ?? undefined })}">
+        ${icon.user}<strong>${ctx.t('joinChoice.patient')}</strong><span class="muted">${ctx.t('joinChoice.patientLead')}</span>
+        <span class="btn btn-primary btn-block">${ctx.t('joinChoice.patientCta')}</span>
+      </a>
+      <a class="panel join-choice" href="${href(ctx, '/for-doctors/join')}">
+        ${icon.stethoscope}<strong>${ctx.t('joinChoice.doctor')}</strong><span class="muted">${ctx.t('joinChoice.doctorLead')}</span>
+        <span class="btn btn-outline btn-block">${ctx.t('joinChoice.doctorCta')}</span>
+      </a>
+    </div>
+    <p class="center muted">${ctx.t('joinChoice.facility')} <a href="${href(ctx, '/facilities/join')}">${ctx.t('joinChoice.facilityLink')}</a></p>
+    <p class="center muted">${ctx.t('joinChoice.haveAccount')} <a href="${href(ctx, '/login', { next: next ?? undefined })}">${ctx.t('nav.signIn')}</a></p>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('joinChoice.title')} — ${ctx.t('brand')}`, body });
 }

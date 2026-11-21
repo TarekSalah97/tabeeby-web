@@ -9,7 +9,7 @@ import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPrefer
 import { registerDoctor, type PositionInput } from '../services/doctors.js';
 import { getReference } from '../services/reference.js';
 import { destroySession, SESSION_COOKIE, type Role } from '../auth/sessions.js';
-import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage } from '../views/pages/auth.js';
+import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage, joinChoicePage } from '../views/pages/auth.js';
 import { requestLoginCode, confirmLoginCode, setFirstPassword, hasPassword } from '../services/guestBooking.js';
 import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { notFound } from '../http/errors.js';
@@ -139,6 +139,11 @@ export function authRoutes(r: Router): void {
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
     setCookie(ctx, SESSION_COOKIE, '', { httpOnly: true, sameSite: 'Lax', maxAgeSeconds: 0 });
     redirect(ctx, href(ctx, '/'));
+  });
+
+  r.get('/join', async (ctx) => {
+    if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
+    sendHtml(ctx, 200, joinChoicePage(ctx, nextParam(ctx)));
   });
 
   r.get('/signup', async (ctx) => {

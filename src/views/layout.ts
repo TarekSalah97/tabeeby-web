@@ -16,7 +16,7 @@ function userMenu(ctx: Ctx): SafeHtml {
   const u = ctx.user;
   if (!u) {
     return html`<a class="btn btn-ghost" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>
-      <a class="btn btn-primary" href="${href(ctx, '/signup')}">${ctx.t('nav.signUp')}</a>`;
+      <a class="btn btn-primary" href="${href(ctx, '/join')}">${ctx.t('nav.signUp')}</a>`;
   }
   const home =
     u.role === 'doctor'

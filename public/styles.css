@@ -696,3 +696,9 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .dictate-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-block-start: 6px; }
 .dictate-bar [aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: #fff; }
 .dictate-live { font-style: italic; }
+.join-choices { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
+.join-choice { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; color: inherit; text-decoration: none; border: 2px solid var(--line); transition: border-color .15s; }
+.join-choice:hover, .join-choice:focus-visible { border-color: var(--primary); }
+.join-choice > svg { color: var(--primary); }
+.join-choice strong { font-size: 1.25rem; }
+.join-choice .btn { margin-block-start: auto; }

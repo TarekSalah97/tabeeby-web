@@ -86,3 +86,20 @@ export function localized(ctx: Ctx, path: string): string {
   if (path.startsWith('/en/') || path === '/en') return path;
   return href(ctx, path);
 }
+
+/**
+ * Demo site only: the newest emailed code for this address (from the outbox), shown on screen
+ * because the demo does not really send email. Never used when DEMO_MODE is off.
+ */
+export async function demoEmailCode(ctx: Ctx, email: string): Promise<string | null> {
+  if (!ctx.deps.cfg.DEMO_MODE || !email) return null;
+  const { rows } = await ctx.deps.db.query<{ body: string }>(
+    `select body from notification_outbox where channel = 'email' and to_email = $1 and created_at > now() - interval '15 minutes' order by id desc limit 3`,
+    [email],
+  );
+  for (const r of rows) {
+    const m = /\b(\d{6})\b/.exec(r.body);
+    if (m) return m[1]!;
+  }
+  return null;
+}

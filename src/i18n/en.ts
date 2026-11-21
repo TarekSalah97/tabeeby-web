@@ -1383,4 +1383,5 @@ export const en = {
   'svc.followUpNote': "Follow-up price, because you saw this doctor recently.",
   'svc.publicTitle': "Other services ({n})",
   'svc.publicHint': "Choose the service when you confirm the booking.",
+  'demo.emailCode': "Demo site: no email is really sent. Your code is {code}.",
 } as const;

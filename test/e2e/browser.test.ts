@@ -1,5 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { toZoned } from '../../src/domain/time.js';
 import { chromium, type Browser } from 'playwright';
 import { startHarness, createApprovedDoctor, createPatient, type Harness } from '../helpers.js';
 
@@ -121,7 +122,8 @@ test('on a phone, the main buttons are on screen: patient tab bar, profile actio
   const ctxD = await browser.newContext({ viewport: { width: 375, height: 800 } });
   const dpage = await ctxD.newPage();
   await signIn(dpage, doctor.phone, doctor.password);
-  await dpage.goto(h.baseUrl + '/en/dashboard');
+  // The visit's own day (late in the evening, "in an hour" is already tomorrow).
+  await dpage.goto(h.baseUrl + `/en/dashboard?date=${toZoned(soon, 'Africa/Cairo').date}`);
   const overflow = await dpage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(overflow <= 1, `dashboard overflows by ${overflow}px`);
   const arrived = dpage.getByRole('button', { name: 'Mark arrived' }).first();

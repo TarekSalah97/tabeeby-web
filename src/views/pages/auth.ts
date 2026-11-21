@@ -82,12 +82,13 @@ export function verifyPage(ctx: Ctx, o: { error?: MessageKey; notice?: MessageKe
 /** "Enter the 6-digit code we emailed to a•••@gmail.com" — for booking without an account and for email sign-in. */
 export function emailCodePage(
   ctx: Ctx,
-  o: { action: string; maskedEmail: string; title: MessageKey; lead: MessageKey; error?: MessageKey; next?: string | null; startOver: string },
+  o: { action: string; maskedEmail: string; title: MessageKey; lead: MessageKey; error?: MessageKey; next?: string | null; startOver: string; demoCode?: string | null },
 ): SafeHtml {
   const body = html`<div class="container page auth-page">
     <div class="auth-card">
       <h1>${ctx.t(o.title)}</h1>
       <p class="muted">${ctx.t(o.lead, { email: o.maskedEmail })}</p>
+      ${o.demoCode ? alert('warning', ctx.t('demo.emailCode', { code: o.demoCode })) : ''}
       ${o.error ? alert('error', ctx.t(o.error)) : ''}
       <form method="post" action="${o.action}" class="stack" novalidate>
         ${csrfField(ctx)}

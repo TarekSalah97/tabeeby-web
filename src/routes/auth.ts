@@ -13,7 +13,7 @@ import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPa
 import { requestLoginCode, confirmLoginCode, setFirstPassword, hasPassword } from '../services/guestBooking.js';
 import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { notFound } from '../http/errors.js';
-import { uuidParam } from './helpers.js';
+import { uuidParam, demoEmailCode } from './helpers.js';
 import type { MessageKey } from '../i18n/index.js';
 import { joinPage } from '../views/pages/forDoctors.js';
 import { HttpError } from '../http/errors.js';
@@ -100,6 +100,7 @@ export function authRoutes(r: Router): void {
         error: pending ? error : (error ?? 'emailCode.expired'),
         next,
         startOver: href(ctx, '/login/email', { next: next ?? undefined }),
+        demoCode: pending ? await demoEmailCode(ctx, pending.email) : null,
       }),
     );
   };

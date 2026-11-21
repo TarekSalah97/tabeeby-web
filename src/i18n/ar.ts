@@ -1386,4 +1386,5 @@ export const ar: Record<keyof typeof en, string> = {
   'svc.followUpNote': "سعر الاستشارة لأنك زرت الطبيب مؤخرًا.",
   'svc.publicTitle': "خدمات أخرى ({n})",
   'svc.publicHint': "اختر الخدمة عند تأكيد الحجز.",
+  'demo.emailCode': "موقع تجريبي: لا يتم إرسال بريد فعلًا. الكود الخاص بك هو {code}.",
 };

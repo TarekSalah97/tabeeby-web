@@ -214,3 +214,20 @@ test('without an email service, visitors are asked to sign in to book and email 
     h.deps.email = original.email;
   }
 });
+
+test('the code is shown on screen only on the demo site (the demo sends no real email)', async () => {
+  const doctor = await createApprovedDoctor(h.db);
+  const live = new Client(h.baseUrl);
+  const { res, email } = await startGuest(live, doctor);
+  const page = await live.get(res.location!);
+  assert.doesNotMatch(page.body, /Your code is/);
+  const original = h.deps.cfg.DEMO_MODE;
+  h.deps.cfg.DEMO_MODE = true;
+  try {
+    const demo = await live.get(res.location!);
+    const code = await lastEmailCode(h, email);
+    assert.match(demo.body, new RegExp(`Your code is ${code}`));
+  } finally {
+    h.deps.cfg.DEMO_MODE = original;
+  }
+});

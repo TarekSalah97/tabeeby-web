@@ -6,7 +6,7 @@ import { sendHtml, redirect } from '../http/respond.js';
 import { startGuestBooking, confirmGuestCode, hasPassword } from '../services/guestBooking.js';
 import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { emailCodePage, patientGatePage } from '../views/pages/auth.js';
-import { startSession } from './helpers.js';
+import { startSession, demoEmailCode } from './helpers.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { book, resolveSlot, changeStatus, listPatientAppointments, quote } from '../services/booking.js';
 import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage, issuePage } from '../views/pages/booking.js';
@@ -144,6 +144,7 @@ export function patientRoutes(r: Router): void {
         lead: 'guest.codeLead',
         error: pending ? error : (error ?? 'emailCode.expired'),
         startOver: slug ? href(ctx, `/doctors/${slug}`, { clinic: clinicId }) : href(ctx, '/search'),
+        demoCode: pending ? await demoEmailCode(ctx, pending.email) : null,
       }),
     );
   };

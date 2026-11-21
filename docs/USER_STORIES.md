@@ -109,3 +109,16 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - With SMS on, the new account also verifies its mobile before the booking is made (I).
 
 **P-GT — Patient-only pages explain how to get in.** Visitors who open My appointments or My prescriptions & tests see a page with "Sign in as a patient" and "Create a patient account" that brings them back afterwards; staff are pointed to their dashboard (I).
+
+## Admin console (modelled on the old app's admin dashboard)
+
+- As an admin, I want one dashboard with counts of doctors, patients and activity for a date range I pick, so that I can see how the platform is doing at a glance.
+  - Given I am an admin, When I open `/admin`, Then I see active/pending/suspended doctors, registered patients, and bookings, completed visits, waitlist joins, cancellations, no-shows, new patients and reviews.
+  - Given I pick "Today", "7 days", "30 days", "This month" or a custom from–to, Then only the activity counts change; people counts stay totals. A backwards custom range is swapped; an invalid one falls back to "All time".
+  - Given messages failed to send, Then a warning links to Messages & settings and the quick-action tile shows a count.
+- As an admin, I want to find any account by name, email or mobile and suspend or reactivate it with a reason, so that I can stop abuse quickly.
+  - Given I suspend an account, Then a reason (3+ characters) is required, the person is signed out at once, cannot sign in, a suspended doctor disappears from search, and the action is recorded in the audit log. Existing bookings are kept.
+  - Given the account is an admin, Then suspension is refused.
+- As an admin, I want to search the audit log by action, record and who did it, within a date range, so that I can answer "who changed this and when".
+- As an admin, I want to see which services are connected (SMS, email, AI assistant), this week's message counts and the latest failed messages with masked recipients, and retry failures from the last 7 days, so that patients get their confirmations.
+- Every admin page is admin-only (patients and doctors get 403; visitors are sent to sign in) and fits a phone screen.

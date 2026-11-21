@@ -508,7 +508,7 @@ details[open] > summary { margin-block-end: 12px; }
 /* Doctor dashboard on phones: tabs across the top instead of a tall menu, and the day's visits as cards with the
    main action button full width, so nothing needs sideways scrolling. */
 @media (max-width: 720px) {
-  .dash { flex-direction: column; min-height: 0; }
+  .dash { flex-direction: column; flex-wrap: nowrap; min-height: 0; }
   .dash-nav { flex: none; position: sticky; top: 0; z-index: 15; padding: 8px; gap: 6px; }
   .dash-nav ul { flex-direction: row; overflow-x: auto; gap: 6px; scrollbar-width: none; }
   .dash-nav ul::-webkit-scrollbar { display: none; }
@@ -544,3 +544,49 @@ details[open] > summary { margin-block-end: 12px; }
 .gate-icon { align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 18px;
   background: var(--primary-tint); color: var(--primary); }
 .gate-icon svg { width: 30px; height: 30px; }
+
+/* ---------------------------------------------------------------------------
+   Admin area
+   --------------------------------------------------------------------------- */
+.dash-nav-title { margin: 0 12px; font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; color: #fff; }
+.dash.admin .dash-nav a svg { flex-shrink: 0; opacity: .9; }
+.kpi { position: relative; }
+.kpi-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: var(--bg); color: var(--primary); margin-block-end: 6px; }
+.kpi-icon.ok { background: var(--primary-tint); color: var(--primary); }
+.kpi-icon.warn { background: #fdf1dc; color: #8a5a00; }
+.kpi-icon.danger { background: var(--danger-tint); color: var(--danger); }
+.kpi-icon.info { background: #e3eefc; color: #1f5fb8; }
+.kpi-link { text-decoration: none; color: var(--ink); }
+.kpi-link:hover { border-color: var(--primary-line); color: var(--ink); }
+.admin-quick { grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); }
+.admin-quick .quick-tile { position: relative; align-items: center; justify-content: center; text-align: center; background: var(--surface); }
+.count-badge { position: absolute; top: 10px; inset-inline-end: 10px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: .8rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.range-picker { padding: 0; }
+.range-picker summary { display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; list-style: none; }
+.range-picker summary::-webkit-details-marker { display: none; }
+.range-picker summary::after { content: '▾'; margin-inline-start: auto; color: var(--muted); }
+.range-picker[open] summary::after { content: '▴'; }
+.range-picker > div { padding: 0 18px 16px; }
+.chip-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--ink);
+  text-decoration: none; font-size: .9rem; font-weight: 600; background: var(--surface); }
+.chip-link.selected { background: var(--primary); border-color: var(--primary); color: #fff; }
+.range-form { align-items: flex-end; }
+.field-inline { display: inline-flex; flex-direction: column; gap: 4px; font-size: .85rem; font-weight: 600; }
+.field-inline input { min-height: 40px; }
+.search-row { align-items: center; padding: 14px; }
+.search-row input { flex: 1 1 240px; min-height: 48px; }
+.audit-filters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: end; }
+.service-grid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.service-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.account-actions { min-width: min(260px, 100%); }
+.account-actions input { min-height: 40px; }
+.btn.danger { color: var(--danger); border-color: #eab8af; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--bg); padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .dash-nav-title { display: none; }
+  .dash.admin .dash-nav a span { white-space: nowrap; }
+}
+.table.table-fit { min-width: 0; }
+.service-card { min-width: 0; overflow-wrap: anywhere; }
+.table.table-fit th, .table.table-fit td { white-space: normal; padding-inline: 8px; }

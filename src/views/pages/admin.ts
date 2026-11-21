@@ -1,7 +1,7 @@
 import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
-import { layout } from '../layout.js';
+import { adminShell } from './adminConsole.js';
 import { alert, csrfField, starRow } from '../components.js';
 import type { AdminReview } from '../../services/reviews.js';
 import { pick, formatDateTime, type MessageKey } from '../../i18n/index.js';
@@ -21,13 +21,12 @@ export function adminListPage(ctx: Ctx, ref: ReferenceData, data: { pending: Rev
       return html`<tr><td><strong>${r.full_name}</strong></td><td>${s ? pick(ctx.locale, s) : ''}</td><td>${formatDateTime(r.created_at, ctx.locale, tz)}</td>
         <td>${vstatus(ctx, r.verification_status)}</td><td><a class="btn btn-outline btn-sm" href="${href(ctx, `/admin/doctors/${r.user_id}`)}">${ctx.t('admin.review')}</a></td></tr>`;
     })}</tbody></table></div>`;
-  const body = html`<div class="container page stack-lg">
-    <div class="row-between"><h1>${ctx.t('admin.title')}</h1><a class="btn btn-outline" href="${href(ctx, '/admin/reviews')}">${ctx.t('admin.reviewsLink')}</a></div>
+  const content = html`
+    <h1>${ctx.t('admin.title')}</h1>
     ${notice ? alert('success', ctx.t(notice)) : ''}
     <section class="panel stack"><h2>${ctx.t('admin.pending')}</h2>${data.pending.length ? table(data.pending) : html`<p class="muted">${ctx.t('admin.none')}</p>`}</section>
-    ${data.recent.length ? html`<section class="panel stack"><h2>${ctx.t('admin.recent')}</h2>${table(data.recent)}</section>` : ''}
-  </div>`;
-  return layout(ctx, { title: `${ctx.t('admin.title')} — ${ctx.t('brand')}`, body, variant: 'app', noindex: true });
+    ${data.recent.length ? html`<section class="panel stack"><h2>${ctx.t('admin.recent')}</h2>${table(data.recent)}</section>` : ''}`;
+  return adminShell(ctx, 'doctors', ctx.t('admin.title'), content);
 }
 
 export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, error?: MessageKey, notice?: MessageKey): SafeHtml {
@@ -39,8 +38,8 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
     ${withNote ? html`<div class="field"><label for="note-${decision}">${ctx.t('admin.rejectNote')}</label><textarea id="note-${decision}" name="note" rows="2" maxlength="500" required></textarea></div>` : ''}
     <div><button type="submit" class="btn ${primary ? 'btn-primary' : 'btn-outline'}">${ctx.t(label)}</button></div></form>`;
   const st = d.verification_status;
-  const body = html`<div class="container page stack-lg">
-    <a href="${href(ctx, '/admin')}">← ${ctx.t('common.back')}</a>
+  const content = html`
+    <a href="${href(ctx, '/admin/doctors')}">← ${ctx.t('common.back')}</a>
     <div class="row-wrap"><h1>${d.full_name}</h1>${vstatus(ctx, st)}</div>
     ${error ? alert('error', ctx.t(error)) : ''}
     ${notice ? alert('success', ctx.t(notice)) : ''}
@@ -76,15 +75,14 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
       ${st === 'pending' ? action('reject', 'admin.reject', true) : ''}
       ${st === 'approved' || st === 'pending' ? action('suspend', 'admin.suspend', true) : ''}
       ${st === 'suspended' ? action('reinstate', 'admin.reinstate', false, true) : ''}
-    </section>
-  </div>`;
-  return layout(ctx, { title: `${d.full_name} — ${ctx.t('admin.title')}`, body, variant: 'app', noindex: true });
+    </section>`;
+  return adminShell(ctx, 'doctors', `${d.full_name} — ${ctx.t('admin.title')}`, content);
 }
 
 export function adminReviewsPage(ctx: Ctx, reviews: AdminReview[], o: { notice?: MessageKey; error?: MessageKey }): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
-  const body = html`<div class="container page stack-lg">
-    <a href="${href(ctx, '/admin')}">← ${ctx.t('common.back')}</a>
+  const content = html`
+    <a href="${href(ctx, '/admin/doctors')}">← ${ctx.t('common.back')}</a>
     <div><h1>${ctx.t('admin.reviewsTitle')}</h1><p class="muted">${ctx.t('admin.reviewsLead')}</p></div>
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
@@ -107,7 +105,6 @@ export function adminReviewsPage(ctx: Ctx, reviews: AdminReview[], o: { notice?:
             </form>
           </li>`,
         )}</ul>`
-      : html`<p class="muted">${ctx.t('admin.reviewsNone')}</p>`}
-  </div>`;
-  return layout(ctx, { title: `${ctx.t('admin.reviewsTitle')} — ${ctx.t('brand')}`, body, variant: 'app', noindex: true });
+      : html`<p class="muted">${ctx.t('admin.reviewsNone')}</p>`}`;
+  return adminShell(ctx, 'reviews', ctx.t('admin.reviewsTitle'), content);
 }

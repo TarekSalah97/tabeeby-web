@@ -104,12 +104,14 @@ test('doctor joins, is hidden until approved, sets up hours, then runs a visit',
   const admin = await createAdmin(h.db);
   const a = new Client(h.baseUrl);
   await login(a, admin.phone, admin.password);
-  const list = await a.get('/en/admin');
+  const adminHome = await a.get('/en/admin');
+  assert.match(adminHome.body, /Pending applications/);
+  const list = await a.get('/en/admin/doctors');
   assert.match(list.body, /Hana Ortho/);
   await a.get(`/en/admin/doctors/${d[0]!.user_id}`);
   const noNote = await a.post(`/en/admin/doctors/${d[0]!.user_id}/reject`, { note: '' });
   assert.match(noNote.location!, /error=admin\.noteRequired/);
-  assert.equal((await a.post(`/en/admin/doctors/${d[0]!.user_id}/approve`, {})).location, '/en/admin?ok=done');
+  assert.equal((await a.post(`/en/admin/doctors/${d[0]!.user_id}/approve`, {})).location, '/en/admin/doctors?ok=done');
 
   const found = await anon.get('/en/search?q=knee%20pain&district=louran');
   assert.match(found.body, /Hana Ortho/);

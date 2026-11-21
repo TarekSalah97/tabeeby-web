@@ -132,3 +132,37 @@ test('on a phone, the main buttons are on screen: patient tab bar, profile actio
   await ctxD.close();
   assert.deepEqual(problems, []);
 });
+
+test('admin pages fit a phone screen in Arabic and English and on desktop', async () => {
+  const { createAdmin } = await import('../helpers.js');
+  const admin = await createAdmin(h.db);
+  const d = await createApprovedDoctor(h.db);
+  const p = await createPatient(h.db);
+  await h.db.query(
+    `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, fee_egp)
+     values ($1, $2, $3, now() + interval '2 days', now() + interval '2 days 30 minutes', 'new', 400)`,
+    [d.id, d.clinicId, p.id],
+  );
+  await h.db.query(
+    `insert into notification_outbox (channel, to_phone, body, status, attempts, last_error)
+     values ('sms', '+201011112222', 'x', 'failed', 6, 'gateway 500: upstream timed out while connecting to provider')`,
+  );
+  const shots = process.env['SHOTS_DIR'];
+  for (const [w, hgt, name, lang] of [[1280, 900, 'desk', '/en'], [390, 844, 'phone', ''], [390, 844, 'phone-en', '/en']] as const) {
+    const page = await browser.newPage({ viewport: { width: w, height: hgt } });
+    await page.goto(h.baseUrl + lang + '/login');
+    await page.locator('input[name=phone]').fill('0' + admin.phone.slice(3));
+    await page.locator('input[name=password]').fill(admin.password);
+    await page.locator('form button[type=submit]').first().click();
+    await page.waitForLoadState('load');
+    for (const path of ['/admin', '/admin/accounts?q=a', '/admin/audit', '/admin/messages', '/admin/doctors', '/admin/reviews', `/admin/doctors/${d.id}`]) {
+      await page.goto(h.baseUrl + lang + path);
+      const overflow = await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth');
+      assert.ok((overflow as number) <= 1, `${name} ${path} is ${String(overflow)}px too wide`);
+      if (shots && (path === '/admin' || path === '/admin/messages')) {
+        await page.screenshot({ path: `${shots}/admin-${name}${path.replace(/\//g, '-')}.png`, fullPage: true });
+      }
+    }
+    await page.close();
+  }
+});

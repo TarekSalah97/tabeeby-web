@@ -26,6 +26,9 @@ const NOTICES: Record<string, MessageKey> = {
   waitlistLeft: 'waitlist.left',
   bookedGuest: 'guest.booked',
   passwordSet: 'password.setDone',
+  accountSuspended: 'adm.suspendedDone',
+  accountReactivated: 'adm.reactivatedDone',
+  retried: 'adm.retriedDone',
 };
 
 export function noticeFrom(ctx: Ctx): MessageKey | undefined {

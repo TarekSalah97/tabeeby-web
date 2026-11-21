@@ -44,7 +44,13 @@ export interface PgOptions {
 }
 
 export function parseConnectionString(url: string): Omit<PgOptions, 'ssl'> & { sslmode: string | null } {
-  const u = new URL(url);
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    // The URL holds the password: report the problem without the value.
+    throw new Error('DATABASE_URL is not a valid postgresql:// connection string');
+  }
   if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') {
     throw new Error('DATABASE_URL must start with postgres://');
   }

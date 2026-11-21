@@ -17,7 +17,13 @@ const schema = z
       .default('false')
       .transform((v) => v === 'true'),
 
-    DATABASE_URL: z.string().min(1),
+    // Never echo the value in errors: it contains the database password.
+    DATABASE_URL: z
+      .string()
+      .trim()
+      .refine((v) => /^postgres(ql)?:\/\/\S+$/.test(v) && URL.canParse(v), {
+        message: 'must be the database connection string, starting with postgresql:// (one line, no spaces)',
+      }),
     DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
     /** 'disable' | 'require' (verify cert) | 'no-verify' (encrypt, do not verify — avoid) */
     DATABASE_SSL: z.enum(['disable', 'require', 'no-verify']).default('disable'),

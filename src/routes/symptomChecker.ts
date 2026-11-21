@@ -8,18 +8,12 @@ import { symptomCheckerPage, type SymptomFormValues } from '../views/pages/sympt
 import { formValue } from './helpers.js';
 
 /** The page exists only when an AI provider is configured. */
-function requireAi(ctx: Ctx): void {
-  if (!ctx.deps.ai) throw notFound();
-}
-
 export function symptomCheckerRoutes(r: Router): void {
   r.get('/symptom-checker', async (ctx) => {
-    requireAi(ctx);
     sendHtml(ctx, 200, symptomCheckerPage(ctx, {}));
   });
 
   r.post('/symptom-checker', async (ctx) => {
-    requireAi(ctx);
     const values: SymptomFormValues = {
       description: formValue(ctx, 'description').slice(0, 2000),
       ageGroup: formValue(ctx, 'ageGroup'),

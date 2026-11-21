@@ -1281,4 +1281,10 @@ export const en = {
   'ai.high': "Likely",
   'ai.medium': "Possible",
   'ai.low': "Less likely",
+  'sc.badgeGuide': "Symptom guide",
+  'sc.leadGuide': "Describe what you are feeling in your own words, and we suggest the most suitable specialist to book, following common medical referral practice. It is a guide to choosing a doctor, not a diagnosis.",
+  'sc.promoBodyGuide': "Describe your symptoms and we suggest the right specialist.",
+  'sc.promoCtaGuide': "Find the right doctor",
+  'sc.guideNote': "Suggested by Tabeeby's built-in symptom guide, which follows common medical referral practice.",
+  'sc.guidePrivacy': "Your description stays on Tabeeby: it is used for this suggestion only and not saved.",
 } as const;

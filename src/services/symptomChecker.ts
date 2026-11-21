@@ -4,6 +4,7 @@ import type { Locale, MessageKey } from '../i18n/index.js';
 import type { ReferenceData, Specialty } from './reference.js';
 import { hitRateLimit } from '../auth/rateLimit.js';
 import { log } from '../log.js';
+import { guideMatches } from '../domain/specialtyGuide.js';
 
 /*
  * "Which specialist do I need?" — a patient describes their symptoms and gets the most suitable
@@ -117,6 +118,17 @@ export function hasRedFlag(description: string): boolean {
 
 function keywordSuggestion(input: SymptomInput, ref: ReferenceData): AdvisorSuggestion {
   const text = normalizeText(input.description);
+  // 1. The built-in referral guide (most presentations, with reasons and urgency).
+  const guided = guideMatches(text, { ageGroup: input.ageGroup, sex: input.sex, normalise: normalizeText });
+  if (guided.length) {
+    return {
+      notHealth: false,
+      urgency: guided.some((g) => g.urgency === 'soon') ? 'soon' : 'routine',
+      specialties: guided.map((g) => ({ specialty: g.specialty, subspecialty: g.subspecialty, reason: g.reason[input.locale === 'ar' ? 1 : 0] })),
+      advice: '',
+    };
+  }
+  // 2. The condition keywords from the reference data.
   const seen = new Set<number>();
   const specialties: AdvisorSuggestion['specialties'] = [];
   for (const c of ref.conditions) {
@@ -128,7 +140,16 @@ function keywordSuggestion(input: SymptomInput, ref: ReferenceData): AdvisorSugg
     if (spec) specialties.push({ specialty: spec.slug, subspecialty: sub?.slug ?? '', reason: '' });
     if (specialties.length === 3) break;
   }
-  if (!specialties.length) specialties.push({ specialty: input.ageGroup === 'child' ? 'pediatrics' : 'internal-medicine', subspecialty: '', reason: '' });
+  // 3. Nothing specific: the doctor who sees everything first.
+  if (!specialties.length) {
+    specialties.push({
+      specialty: input.ageGroup === 'child' ? 'pediatrics' : 'internal-medicine',
+      subspecialty: '',
+      reason: input.locale === 'ar'
+        ? 'لم نتعرف على تخصص محدد من الوصف، فابدأ بطبيب يكشف على كل الحالات ويحولك للتخصص المناسب.'
+        : 'We could not tell a specific specialty from the description, so start with a doctor who sees everything first and can refer you.',
+    });
+  }
   return { notHealth: false, urgency: 'routine', specialties, advice: '' };
 }
 
@@ -260,7 +281,8 @@ export async function checkSymptoms(
   const description = input.description.trim();
   if (description.length < DESCRIPTION_MIN) return { error: 'sc.err.short', field: 'description' };
   if (description.length > DESCRIPTION_MAX) return { error: 'sc.err.long', field: 'description' };
-  if (!o.consent) return { error: 'sc.err.consent', field: 'consent' };
+  // Consent is only about sending the text to the AI provider; the built-in guide keeps it on Tabeeby.
+  if (deps.ai && !o.consent) return { error: 'sc.err.consent', field: 'consent' };
   if (!(await hitRateLimit(deps.db, `sc:ip:${o.ip}`, LIMIT_PER_IP.limit, LIMIT_PER_IP.window))) return { error: 'sc.err.tooMany' };
 
   const redFlag = hasRedFlag(description);

@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startHarness, Client, createApprovedDoctor, createPatient, createAdmin, login, firstSlotStart, type Harness } from '../helpers.js';
-import { addDays, todayIn } from '../../src/domain/time.js';
+import { addDays, todayIn, toZoned } from '../../src/domain/time.js';
 
 let h: Harness;
 before(async () => {
@@ -39,7 +39,9 @@ test('cancelling: the clinic cancelling an online booking is a strike; "patient 
   const a1 = await appt(d, { patientId: p.id, hoursFromNow: 30 });
   const a2 = await appt(d, { patientId: p.id, hoursFromNow: 50 });
   const a3 = await appt(d, { walkIn: true, hoursFromNow: 70 });
-  const day = await c.get(`/en/dashboard?date=${addDays(todayIn(TZ, new Date()), 1)}`);
+  // The schedule of the day a1 falls on (30 hours ahead is two days away after 6 pm Cairo time).
+  const a1Start = (await h.db.query<{ starts_at: Date }>('select starts_at from appointments where id = $1', [a1])).rows[0]!.starts_at;
+  const day = await c.get(`/en/dashboard?date=${toZoned(a1Start, TZ).date}`);
   assert.match(day.body, /The patient asked to cancel/);
 
   await c.post(`/en/dashboard/appointments/${a1}/status`, { to: 'cancelled', cancelKind: 'patient_request' });

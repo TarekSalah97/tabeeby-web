@@ -54,7 +54,7 @@ function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null):
         <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/prescriptions')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
-        ${ctx.deps.ai ? html`<a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>` : ''}
+        <a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>
       </div>
       ${p?.next
         ? html`<a class="next-visit" href="${href(ctx, '/appointments')}"><span class="label">${ctx.t('home.nextVisit')}</span>
@@ -93,12 +93,12 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
     </div>
   </section>
 
-  ${ctx.deps.ai ? html`<section class="container">
+  <section class="container">
     <div class="sc-promo">
-      <div class="stack-sm"><span class="pill small">${ctx.t('sc.badge')}</span><h2>${ctx.t('sc.promoTitle')}</h2><p class="lead-sm">${ctx.t('sc.promoBody')}</p></div>
-      <a class="btn btn-primary btn-lg" href="${href(ctx, '/symptom-checker')}">${ctx.t('sc.promoCta')}</a>
+      <div class="stack-sm"><span class="pill small">${ctx.t(ctx.deps.ai ? 'sc.badge' : 'sc.badgeGuide')}</span><h2>${ctx.t('sc.promoTitle')}</h2><p class="lead-sm">${ctx.t(ctx.deps.ai ? 'sc.promoBody' : 'sc.promoBodyGuide')}</p></div>
+      <a class="btn btn-primary btn-lg" href="${href(ctx, '/symptom-checker')}">${ctx.t(ctx.deps.ai ? 'sc.promoCta' : 'sc.promoCtaGuide')}</a>
     </div>
-  </section>` : ''}
+  </section>
   <section class="container section-tight" aria-labelledby="near-title">
     <h2 id="near-title" class="h3">${ctx.t('home.nearTitle')}</h2>
     <div class="near-grid">

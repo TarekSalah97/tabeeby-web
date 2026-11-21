@@ -139,6 +139,7 @@ export function appointmentsPage(
   const body = html`<div class="container page narrow stack-lg">
     <div class="row-between"><h1>${ctx.t('appts.title')}</h1>
       <div class="row-wrap"><a class="btn btn-primary" href="${href(ctx, '/search')}">${icon.search}${ctx.t('appts.findDoctor')}</a>
+      <a class="btn btn-outline" href="${href(ctx, '/symptom-checker')}">${ctx.t('nav.symptomChecker')}</a>
       <a class="btn btn-outline" href="${href(ctx, '/prescriptions')}">${ctx.t('appts.myDocs')}</a></div></div>
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}

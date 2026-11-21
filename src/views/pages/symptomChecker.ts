@@ -34,7 +34,7 @@ function resultPanel(ctx: Ctx, r: SymptomResult): SafeHtml {
         )}</ol>`
       : ''}
     ${r.advice ? html`<p class="lead-sm" dir="auto">${r.advice}</p>` : ''}
-    ${r.source === 'keywords' ? html`<p class="hint">${ctx.t('sc.keywordsNote')}</p>` : ''}
+    ${r.source === 'keywords' ? html`<p class="hint">${ctx.t(ctx.deps.ai ? 'sc.keywordsNote' : 'sc.guideNote')}</p>` : ''}
     <p class="disclaimer">${ctx.t('sc.disclaimer')}</p>
   </section>`;
 }
@@ -46,9 +46,9 @@ export function symptomCheckerPage(ctx: Ctx, o: { values?: SymptomFormValues; re
     html`<label class="sc-choice"><input type="radio" name="${name}" value="${value}"${attrIf(current === value, 'checked')}><span>${ctx.t(label)}</span></label>`;
   const body = html`<div class="container page narrow stack-lg">
     <div class="stack-sm">
-      <span class="pill">${ctx.t('sc.badge')}</span>
+      <span class="pill">${ctx.t(ctx.deps.ai ? 'sc.badge' : 'sc.badgeGuide')}</span>
       <h1>${ctx.t('sc.title')}</h1>
-      <p class="lead">${ctx.t('sc.lead')}</p>
+      <p class="lead">${ctx.t(ctx.deps.ai ? 'sc.lead' : 'sc.leadGuide')}</p>
     </div>
     ${o.result ? resultPanel(ctx, o.result) : ''}
     <form method="post" action="${href(ctx, '/symptom-checker')}" class="panel stack" novalidate>
@@ -67,10 +67,12 @@ export function symptomCheckerPage(ctx: Ctx, o: { values?: SymptomFormValues; re
       <fieldset class="stack-sm"><legend class="label">${ctx.t('sc.sex')} <span class="muted">(${ctx.t('common.optional')})</span></legend>
         <div class="segmented">${radio('sex', 'female', 'records.sex.female', v.sex)}${radio('sex', 'male', 'records.sex.male', v.sex)}</div>
       </fieldset>
-      <div class="field${err?.field === 'consent' ? ' has-error' : ''}">
-        <label class="check"><input type="checkbox" name="consent" value="yes" required${attrIf(v.consent, 'checked')}><span>${ctx.t('sc.consent')}</span></label>
-        ${err?.field === 'consent' ? html`<p class="field-error">${ctx.t(err.key)}</p>` : ''}
-      </div>
+      ${ctx.deps.ai
+        ? html`<div class="field${err?.field === 'consent' ? ' has-error' : ''}">
+            <label class="check"><input type="checkbox" name="consent" value="yes" required${attrIf(v.consent, 'checked')}><span>${ctx.t('sc.consent')}</span></label>
+            ${err?.field === 'consent' ? html`<p class="field-error">${ctx.t(err.key)}</p>` : ''}
+          </div>`
+        : html`<p class="hint">${ctx.t('sc.guidePrivacy')}</p>`}
       <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('sc.submit')}</button></div>
       <p class="hint">${ctx.t('sc.emergencyNote')}</p>
     </form>

@@ -175,12 +175,21 @@ export interface OwnDoctor {
   verification_status: 'pending' | 'approved' | 'rejected' | 'suspended';
   records_enabled: boolean;
   verification_note: string | null;
+  /** The doctor chose to use the Income section and payment buttons. */
+  show_income: boolean;
+}
+
+export async function setShowIncome(deps: Deps, doctorId: string, show: boolean, ip: string): Promise<void> {
+  await deps.db.transaction(async (tx) => {
+    await tx.query('update doctors set show_income = $2, updated_at = now() where user_id = $1', [doctorId, show]);
+    await audit(tx, { actorId: doctorId, action: 'doctor.show_income', entityType: 'doctor', entityId: doctorId, metadata: { show }, ip });
+  });
 }
 
 export async function getOwnDoctor(db: Queryable, userId: string): Promise<OwnDoctor> {
   const { rows } = await db.query<OwnDoctor>(
     `select d.user_id, d.slug, d.kind, u.full_name, d.title_en, d.title_ar, d.bio, d.specialty_id, d.graduation_year,
-            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled
+            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [userId],
   );

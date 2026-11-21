@@ -9,7 +9,7 @@ import type { SessionUser } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
   getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
-  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem,
+  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem, setShowIncome,
 } from '../services/doctors.js';
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
@@ -173,9 +173,18 @@ export function dashboardRoutes(r: Router): void {
     return { today, from, to };
   };
 
+  r.post('/dashboard/settings/income', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const show = formValue(ctx, 'show') === 'yes';
+    await setShowIncome(ctx.deps, user.id, show, ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/profile', { ok: show ? 'incomeOn' : 'incomeOff' }));
+  });
+
   r.get('/dashboard/income', async (ctx) => {
     const user = requireDoctor(ctx);
     if (!user) return;
+    if (!(await getOwnDoctor(ctx.deps.db, user.id)).show_income) return redirect(ctx, href(ctx, '/dashboard/profile', { error: 'dash.incomeIsOff' }));
     const { today, from, to } = incomeRange(ctx);
     const [doctor, report] = await Promise.all([getOwnDoctor(ctx.deps.db, user.id), incomeReport(ctx.deps.db, user.id, from, to, ctx.deps.cfg.TIME_ZONE)]);
     sendHtml(ctx, 200, incomePage(ctx, doctor, report, { today, notice: ok(ctx) }));

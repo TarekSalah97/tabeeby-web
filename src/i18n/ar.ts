@@ -1202,4 +1202,11 @@ export const ar: Record<keyof typeof en, string> = {
   'strike.waivedDone': "تم إلغاء الإنذار.",
   'common.reenterFile': "حفاظًا على أمانك، اكتب كلمة المرور واختر الملف مرة أخرى.",
   'common.reenterPassword': "حفاظًا على أمانك، اكتب كلمة المرور مرة أخرى.",
+  'dash.tab.details': "البيانات",
+  'dash.incomeToggleHint': "سجّل المدفوعات واعرف ما حصّلته ونزّله لملف Excel. أخفِه إن لم تحتجه؛ لن يُحذف شيء.",
+  'dash.incomeTurnOff': "إخفاء الإيرادات",
+  'dash.incomeTurnOn': "إظهار الإيرادات",
+  'dash.incomeOnDone': "الإيرادات تظهر في قائمتك.",
+  'dash.incomeOffDone': "تم إخفاء الإيرادات. المدفوعات المسجّلة محفوظة.",
+  'dash.incomeIsOff': "الإيرادات مخفية. أظهرها من الأسفل لاستخدامها.",
 };

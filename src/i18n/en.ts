@@ -1199,4 +1199,11 @@ export const en = {
   'strike.waivedDone': "Strike waived.",
   'common.reenterFile': "For your security, please type your password and choose your file again.",
   'common.reenterPassword': "For your security, please type your password again.",
+  'dash.tab.details': "Details",
+  'dash.incomeToggleHint': "Record payments, see what you collected and download it for Excel. Turn it off if you do not need it; nothing is deleted.",
+  'dash.incomeTurnOff': "Hide Income",
+  'dash.incomeTurnOn': "Show Income",
+  'dash.incomeOnDone': "Income is shown in your menu.",
+  'dash.incomeOffDone': "Income is hidden. Payments you recorded are kept.",
+  'dash.incomeIsOff': "Income is hidden. Turn it on below to use it.",
 } as const;

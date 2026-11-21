@@ -21,14 +21,19 @@ import type { Slot } from '../../domain/availability.js';
 export type Section = 'today' | 'messages' | 'income' | 'patients' | 'clinics' | 'hours' | 'profile';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  // Menu: Schedule, Patients, Messages, Income (if the doctor uses it), Profile (which holds clinics and hours).
   const items: { key: Section; path: string; label: MessageKey }[] = [
     { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
-    { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
-    { key: 'income', path: '/dashboard/income', label: 'pay.incomeTitle' },
     ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
+    { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
+    ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
+    { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
+  ];
+  const inProfile = section === 'profile' || section === 'clinics' || section === 'hours';
+  const profileTabs: { key: Section; path: string; label: MessageKey }[] = [
+    { key: 'profile', path: '/dashboard/profile', label: 'dash.tab.details' },
     { key: 'clinics', path: '/dashboard/clinics', label: 'dash.nav.clinics' },
     { key: 'hours', path: '/dashboard/hours', label: 'dash.nav.hours' },
-    { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
   ];
   const status = doctor.verification_status;
   const banner =
@@ -42,7 +47,7 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
   const body = html`<div class="dash">
     <nav class="dash-nav" aria-label="${ctx.t('dash.nav')}">
       <ul>${items.map(
-        (i) => html`<li><a href="${href(ctx, i.path)}"${attrIf(i.key === section, 'aria-current="page"')}>${ctx.t(i.label)}${
+        (i) => html`<li><a href="${href(ctx, i.path)}"${attrIf(i.key === section || (i.key === 'profile' && inProfile), 'aria-current="page"')}>${ctx.t(i.label)}${
           i.key === 'messages' && ctx.unreadMessages ? html` <span class="count-badge inline" aria-label="${ctx.t('msg.unreadCount', { n: ctx.unreadMessages })}">${ctx.unreadMessages}</span>` : ''
         }</a></li>`,
       )}</ul>
@@ -50,6 +55,11 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
     </nav>
     <div class="dash-content stack-lg">
       ${banner}
+      ${inProfile
+        ? html`<nav class="row-wrap sub-tabs" aria-label="${ctx.t('dash.nav.profile')}">${profileTabs.map(
+            (t) => html`<a class="chip-link" href="${href(ctx, t.path)}"${attrIf(t.key === section, 'aria-current="true"')}>${ctx.t(t.label)}</a>`,
+          )}</nav>`
+        : ''}
       ${notice ? alert(notice.kind, ctx.t(notice.key)) : ''}
       ${content}
     </div>
@@ -142,7 +152,7 @@ export function todayPage(
       <div class="kpi"><span>${ctx.t('dash.kpiToday')}</span><strong>${n(live.length)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiCompleted')}</span><strong>${n(done)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiWaiting')}</span><strong>${n(waiting)}</strong></div>
-      <div class="kpi"><span>${ctx.t('dash.kpiCollected')}</span><strong>${money(ctx, collected)}</strong></div>
+      ${doctor.show_income ? html`<div class="kpi"><span>${ctx.t('dash.kpiCollected')}</span><strong>${money(ctx, collected)}</strong></div>` : ''}
       <div class="kpi"><span>${ctx.t('dash.kpiWeek')}</span><strong>${n(o.weekCount)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiRating')}</span>${o.rating ? html`<strong>${ratingBadge(ctx, o.rating)}</strong>` : html`<span class="muted">${ctx.t('dash.noRatingYet')}</span>`}</div>
     </div>
@@ -177,7 +187,9 @@ export function todayPage(
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
                   ${a.status === 'confirmed' || a.status === 'arrived' ? (a.booked_by === 'patient' ? cancelChoice(a) : actionForm(a, 'cancelled', 'action.cancel', false)) : ''}
-                  ${paidOf(a)
+                  ${!doctor.show_income
+                    ? ''
+                    : paidOf(a)
                     ? paidChip(ctx, paidOf(a)!, href(ctx, `/dashboard/appointments/${a.id}/receipt`))
                     : a.status === 'arrived' || a.status === 'in_consultation' || a.status === 'completed'
                       ? markPaidForm(ctx, a.id, a.fee_egp, { date: o.date }, { big: a.status === 'completed' })
@@ -326,6 +338,13 @@ export function profileEditPage(
   const maxMonth = ctx.deps.now().toISOString().slice(0, 7);
   const content = html`
     <div><h1>${ctx.t('profile.title')}</h1><p class="muted">${ctx.t('profile.lead')}</p></div>
+    <form method="post" action="${href(ctx, '/dashboard/settings/income')}" class="panel row-between">
+      ${csrfField(ctx)}
+      <div class="stack-sm"><strong>${ctx.t('pay.incomeTitle')} — ${ctx.t(doctor.show_income ? 'msgset.on' : 'msgset.off')}</strong>
+        <span class="muted small">${ctx.t('dash.incomeToggleHint')}</span></div>
+      <input type="hidden" name="show" value="${doctor.show_income ? 'no' : 'yes'}">
+      <button type="submit" class="btn ${doctor.show_income ? 'btn-outline' : 'btn-primary'}">${ctx.t(doctor.show_income ? 'dash.incomeTurnOff' : 'dash.incomeTurnOn')}</button>
+    </form>
     <form method="post" action="${href(ctx, '/dashboard/profile')}" class="panel stack">
       ${csrfField(ctx)}
       <div class="form-grid">

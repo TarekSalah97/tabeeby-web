@@ -45,6 +45,12 @@ const NOTICES: Record<string, MessageKey> = {
   accountSuspended: 'adm.suspendedDone',
   accountReactivated: 'adm.reactivatedDone',
   retried: 'adm.retriedDone',
+  orderSent: 'hr.done.sent',
+  orderCancelled: 'hr.done.cancelled',
+  orderReceived: 'hr.done.received',
+  resultAdded: 'hr.done.fileAdded',
+  resultRemoved: 'hr.done.fileRemoved',
+  resultsReleased: 'hr.done.released',
 };
 
 export function noticeFrom(ctx: Ctx): MessageKey | undefined {

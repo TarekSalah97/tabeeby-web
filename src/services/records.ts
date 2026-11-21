@@ -670,36 +670,6 @@ export async function getLabOrderForPrint(db: Queryable, viewer: Viewer, id: str
   return { header: rows[0]!, lab };
 }
 
-export interface PatientDocument {
-  kind: 'prescription' | 'lab_order';
-  id: string;
-  issued_at: Date;
-  doctor_name: string;
-  doctor_slug: string;
-  count: number;
-}
-
-/** A patient's own issued (not voided) prescriptions and lab orders, from every doctor. Never visit notes. */
-export async function listPatientDocuments(db: Queryable, patientId: string): Promise<PatientDocument[]> {
-  const { rows } = await db.query<PatientDocument>(
-    `select * from (
-       select 'prescription' as kind, p.id, p.issued_at, u.full_name as doctor_name, d.slug as doctor_slug,
-              (select count(*)::int from prescription_items i where i.prescription_id = p.id) as count
-         from prescriptions p join encounters e on e.id = p.encounter_id join patient_records r on r.id = e.record_id
-         join doctors d on d.user_id = p.doctor_id join users u on u.id = p.doctor_id
-        where r.patient_user_id = $1 and p.status = 'active'
-       union all
-       select 'lab_order', l.id, l.issued_at, u.full_name, d.slug,
-              (select count(*)::int from lab_order_items i where i.lab_order_id = l.id)
-         from lab_orders l join encounters e on e.id = l.encounter_id join patient_records r on r.id = e.record_id
-         join doctors d on d.user_id = l.doctor_id join users u on u.id = l.doctor_id
-        where r.patient_user_id = $1 and l.status = 'active'
-     ) x order by issued_at desc limit 200`,
-    [patientId],
-  );
-  return rows;
-}
-
 /** The doctor's own medicines, most used first, for the type-ahead list. */
 export async function listDoctorMedicines(db: Queryable, doctorId: string): Promise<{ name: string; form: string }[]> {
   const { rows } = await db.query<{ name: string; form: string }>(

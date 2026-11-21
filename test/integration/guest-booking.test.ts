@@ -36,19 +36,19 @@ async function startGuest(c: Client, doctor: { slug: string }, fields: { phone?:
 
 test('patient-only pages show a sign-in page to visitors, and point staff to their dashboard', async () => {
   const anon = new Client(h.baseUrl);
-  const rx = await anon.get('/en/prescriptions');
+  const rx = await anon.get('/en/health-record');
   assert.equal(rx.status, 200);
   assert.match(rx.body, /Sign in to see your prescriptions &amp; tests/);
-  assert.match(rx.body, /href="\/en\/login\?next=%2Fprescriptions"/);
+  assert.match(rx.body, /href="\/en\/login\?next=%2Fhealth-record"/);
   assert.match(rx.body, /Create a patient account/);
   const home = await anon.get('/en');
   assert.match(home.body, /What would you like to do\?/);
-  assert.match(home.body, /href="\/en\/prescriptions"/);
+  assert.match(home.body, /href="\/en\/health-record"/);
 
   const doctor = await createApprovedDoctor(h.db);
   const d = new Client(h.baseUrl);
   await login(d, doctor.phone, doctor.password);
-  const staff = await d.get('/en/prescriptions');
+  const staff = await d.get('/en/health-record');
   assert.match(staff.body, /This page is for patient accounts/);
   assert.match(staff.body, /href="\/en\/dashboard"/);
 });

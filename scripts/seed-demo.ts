@@ -15,6 +15,10 @@ import { hashPassword } from '../src/auth/password.js';
 import { clearReferenceCache } from '../src/services/reference.js';
 import { DEMO_PASSWORD } from '../src/demo.js';
 import { addDays, todayIn, weekdayOf, zonedToUtc } from '../src/domain/time.js';
+import { DbFileStorage, LocalFileStorage } from '../src/storage/files.js';
+import { sectionOf, type Section } from '../src/services/orderResults.js';
+import { labTest } from '../src/domain/clinical.js';
+import { textPdf } from './demo-pdf.js';
 import { DOCTORS, PATIENTS, TEMPLATES, REVIEW_COMMENTS, MESSAGES, FACILITIES, patientsFor, type DemoDoctor, type DemoFacility } from './demo-data.js';
 
 const cfg = loadConfig();
@@ -202,6 +206,72 @@ async function refreshTodayQueue(tx: Queryable, doctor: { userId: string; clinic
   }
 }
 
+
+/**
+ * Fictional results in the demo patients' health records: for the first six demo patients, every
+ * lab part goes to Alpha Labs and every imaging part to Delta Scan Center. Most are released with a
+ * one-page PDF; the newest of each kind stays "in progress" so both states can be seen.
+ * Only parts that were never sent are touched, so running this again changes nothing.
+ */
+async function seedDemoResults(tx: Queryable, patientPhones: string[]): Promise<number> {
+  const storage = cfg.STORAGE_DRIVER === 'db' ? new DbFileStorage(tx) : new LocalFileStorage(cfg.UPLOAD_DIR);
+  const centre = async (phone: string) => (await tx.query<{ user_id: string; name: string }>(
+    'select f.user_id, f.name from facilities f join users u on u.id = f.user_id where u.phone_e164 = $1', [phone])).rows[0];
+  const lab = await centre('+201000000311');
+  const scan = await centre('+201000000321');
+  if (!lab || !scan) return 0;
+  const { rows } = await tx.query<{ lab_order_id: string; patient_id: string; patient_name: string; doctor_name: string; issued_at: Date; test_code: string | null; test_name: string | null }>(
+    `select l.id as lab_order_id, u.id as patient_id, u.full_name as patient_name, du.full_name as doctor_name, l.issued_at, i.test_code, i.test_name
+       from lab_orders l join encounters e on e.id = l.encounter_id join patient_records r on r.id = e.record_id
+       join users u on u.id = r.patient_user_id join users du on du.id = l.doctor_id join lab_order_items i on i.lab_order_id = l.id
+      where u.phone_e164 = any(string_to_array($1, ',')) and l.status = 'active'
+        and not exists (select 1 from order_requests q where q.lab_order_id = l.id)
+      order by l.issued_at, i.position`,
+    [patientPhones.join(',')],
+  );
+  const parts = new Map<string, { orderId: string; section: Section; patientId: string; patientName: string; doctorName: string; issuedAt: Date; tests: string[] }>();
+  for (const r of rows) {
+    const section = sectionOf(r);
+    const key = `${r.lab_order_id}:${section}`;
+    const name = r.test_code ? (labTest(r.test_code)?.en ?? r.test_code) : (r.test_name ?? '');
+    const part = parts.get(key) ?? { orderId: r.lab_order_id, section, patientId: r.patient_id, patientName: r.patient_name, doctorName: r.doctor_name, issuedAt: r.issued_at, tests: [] };
+    part.tests.push(name);
+    parts.set(key, part);
+  }
+  const newest = new Map<string, number>();
+  for (const p of parts.values()) newest.set(`${p.patientId}:${p.section}`, Math.max(newest.get(`${p.patientId}:${p.section}`) ?? 0, p.issuedAt.getTime()));
+  const firstPatientId = (await tx.query<{ id: string }>('select id from users where phone_e164 = $1', [patientPhones[0]])).rows[0]?.id;
+  let n = 0;
+  for (const p of parts.values()) {
+    const c = p.section === 'imaging' ? scan : lab;
+    const isNewest = p.issuedAt.getTime() === newest.get(`${p.patientId}:${p.section}`);
+    // The first demo patient keeps their newest orders unsent, to try "Send to a lab" themselves.
+    if (isNewest && p.patientId === firstPatientId) continue;
+    const inProgress = isNewest && p.issuedAt.getTime() > Date.now() - 45 * 86400_000;
+    const sentAt = new Date(p.issuedAt.getTime() + 86400_000);
+    const readyAt = new Date(sentAt.getTime() + 2 * 86400_000);
+    const req = await tx.query<{ id: string }>(
+      `insert into order_requests (lab_order_id, section, patient_id, facility_id, status, facility_note, created_at, updated_at, received_at, ready_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $7, $7, $8) returning id`,
+      [p.orderId, p.section, p.patientId, c.user_id, inProgress ? 'received' : 'ready',
+        inProgress ? null : 'Please review these results with your doctor.', sentAt, inProgress ? null : readyAt],
+    );
+    if (!inProgress) {
+      const pdf = textPdf([
+        `${c.name} - DEMO RESULT (fictional, not a real report)`, '',
+        `Patient: ${p.patientName}`, `Requested by: ${p.doctorName}`, `Date: ${readyAt.toISOString().slice(0, 10)}`, '',
+        ...p.tests.map((t) => `- ${t}: ${p.section === 'imaging' ? 'No significant abnormality seen (demo)' : 'Within the reference range (demo)'}`),
+        '', 'This file was generated for the Tabeeby demo site.',
+      ]);
+      const key = await storage.put(pdf, 'pdf');
+      await tx.query('insert into order_results (request_id, storage_key, mime, size_bytes, uploaded_by, created_at) values ($1, $2, $3, $4, $5, $6)',
+        [req.rows[0]!.id, key, 'application/pdf', pdf.length, c.user_id, readyAt]);
+    }
+    n++;
+  }
+  return n;
+}
+
 const db = createDb(cfg);
 try {
   const hash = await hashPassword(DEMO_PASSWORD);
@@ -231,7 +301,8 @@ try {
     const already = await tx.query('select 1 from patient_records where doctor_id = $1 limit 1', [doctors[0]!.userId]);
     if (already.rows.length) {
       const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
-      return `Accounts refreshed; visit history already present; ${q} visits in today's demo queue.`;
+      const res = await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
+      return `Accounts refreshed; visit history already present; ${q} visits in today's demo queue; ${res} new demo results.`;
     }
 
     let visits = 0;
@@ -350,6 +421,7 @@ try {
       }
     }
     const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
+    await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
     return `Added ${visits} completed visits with notes across ${DOCTORS.length} doctors; ${q} visits in today's demo queue.`;
   });
   clearReferenceCache();

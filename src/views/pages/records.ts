@@ -1,15 +1,16 @@
+import type { OrderPart } from '../../services/orderResults.js';
 import { html, attrIf, type SafeHtml, type HtmlValue } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href, alternateHref } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, input, select, fieldError, errorSummary } from '../components.js';
+import { alert, csrfField, input, select, fieldError, errorSummary, icon } from '../components.js';
 import { formatFullDate as formatDate, formatFullDateTime as formatDateTime, formatNumber, pick, type MessageKey } from '../../i18n/index.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { OwnDoctor } from '../../services/doctors.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type {
   RecordListItem, PatientRecord, VisitSummary, VisitDetail, PrescriptionView, LabOrderView, PrintHeader,
-  OrderProblem, VisitErrors, PatientDocument, AppointmentFile,
+  OrderProblem, VisitErrors, AppointmentFile,
 } from '../../services/records.js';
 import { MAX_RX_LINES } from '../../services/records.js';
 import {
@@ -418,6 +419,8 @@ export function visitPage(
     labError?: OrderProblem;
     notice?: Notice;
     error?: MessageKey;
+    /** Where the patient sent each order part ("<labOrderId>:lab|imaging") and the released results. */
+    orderResults?: Map<string, OrderPart['request']>;
   },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
@@ -475,6 +478,15 @@ export function visitPage(
           ${voidedNote(ctx, l)}
           <ul class="lab-print-list">${l.items.map((it) => html`<li><bdi>${labItemName(ctx, it)}</bdi></li>`)}</ul>
           ${l.notes ? html`<p class="prose">${l.notes}</p>` : ''}
+          ${(['lab', 'imaging'] as const).map((section) => {
+            const q = o.orderResults?.get(`${l.id}:${section}`);
+            if (!q) return '';
+            return html`<div class="hr-request stack-sm" data-testid="doctor-results">
+              <span class="small">${ctx.t('hr.doctor.sentTo', { centre: q.facilityName })}${sep(ctx)}<strong>${ctx.t(q.status === 'ready' ? 'hr.status.ready' : q.status === 'received' ? 'hr.status.received' : 'hr.status.sent')}</strong></span>
+              ${q.status === 'ready' ? html`${q.facilityNote ? html`<p class="hr-note" dir="auto">${q.facilityNote}</p>` : ''}
+                <ul class="result-files">${q.results.map((f, n) => html`<li><a href="${href(ctx, `/results/${f.id}`)}" target="_blank" rel="noopener">${icon.upload}${ctx.t('hr.resultFile', { n: formatNumber(n + 1, ctx.locale) })} (${f.mime === 'application/pdf' ? 'PDF' : ctx.t('hr.image')})</a></li>`)}</ul>` : ''}
+            </div>`;
+          })}
         </article>`) : html`<p class="muted">${ctx.t('lab.none')}</p>`}
       <details${attrIf(!!o.labError, 'open')}><summary class="btn btn-primary btn-sm">${ctx.t('lab.add')}</summary>
         <form method="post" action="${href(ctx, `/dashboard/visits/${v.id}/lab-orders`)}" class="stack" novalidate>${csrfField(ctx)}
@@ -486,7 +498,7 @@ export function visitPage(
   return shell(ctx, doctor, 'patients', content, o.notice);
 }
 
-function labItemName(ctx: Ctx, it: { test_code: string | null; test_name: string | null }): string {
+export function labItemName(ctx: Ctx, it: { test_code: string | null; test_name: string | null }): string {
   if (it.test_code) {
     const t = labTest(it.test_code);
     return t ? pick(ctx.locale, { name_en: t.en, name_ar: t.ar }) : it.test_code;
@@ -582,24 +594,4 @@ export function labOrderPrintPage(ctx: Ctx, ref: ReferenceData, h: PrintHeader, 
           ${scanCodes.length ? html`<a class="btn btn-outline" href="${href(ctx, '/scan-centres', { tests: scanCodes.join(',') })}">${ctx.t('lab.findScan')}</a>` : ''}`
       : html``;
   return printDocument(ctx, `${ctx.t('lab.sheetTitle')} — ${h.patient_name}`, back, body, find);
-}
-
-// ---------------------------------------------------------------- patient's own view
-
-export function patientDocumentsPage(ctx: Ctx, docs: PatientDocument[]): SafeHtml {
-  const tz = ctx.deps.cfg.TIME_ZONE;
-  const body = html`<div class="container page narrow stack-lg">
-    <a href="${href(ctx, '/appointments')}">← ${ctx.t('appts.title')}</a>
-    <div><h1>${ctx.t('mydocs.title')}</h1><p class="muted">${ctx.t('mydocs.lead')}</p></div>
-    ${docs.length
-      ? html`<ul class="appt-list">${docs.map(
-          (d) => html`<li class="appt-row">
-            <div class="stack-sm"><strong>${ctx.t(d.kind === 'prescription' ? 'rx.sheetTitle' : 'lab.sheetTitle')}${sep(ctx)}${formatDate(d.issued_at, ctx.locale, tz)}</strong>
-              <span><a href="${href(ctx, `/doctors/${d.doctor_slug}`)}"><bdi>${d.doctor_name}</bdi></a>${sep(ctx)}<span class="muted">${ctx.t(d.kind === 'prescription' ? 'mydocs.medicines' : 'mydocs.tests', { n: formatNumber(d.count, ctx.locale) })}</span></span></div>
-            <a class="btn btn-outline" href="${href(ctx, d.kind === 'prescription' ? `/prescriptions/${d.id}` : `/lab-orders/${d.id}`)}">${ctx.t('mydocs.open')}</a>
-          </li>`,
-        )}</ul>`
-      : html`<div class="empty"><p>${ctx.t('mydocs.none')}</p></div>`}
-  </div>`;
-  return layout(ctx, { title: `${ctx.t('mydocs.title')} — ${ctx.t('brand')}`, body, variant: 'app', noindex: true });
 }

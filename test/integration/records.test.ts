@@ -195,21 +195,23 @@ test('booked patient: file from the appointment, prescription in the patient acc
 
   const p = new Client(h.baseUrl);
   await login(p, patient.phone, patient.password);
-  const docs = await p.get('/en/prescriptions');
+  const docs = await p.get('/en/health-record');
   assert.equal(docs.status, 200);
-  assert.match(docs.body, /Prescription ·/);
-  assert.match(docs.body, /Lab and imaging request ·/);
+  assert.match(docs.body, /Nexium 40 mg/);
   assert.doesNotMatch(docs.body, /SECRET/);
+  const labs = await p.get('/en/health-record?tab=lab');
+  assert.match(labs.body, /Send to a lab on Tabeeby/);
+  assert.doesNotMatch(labs.body, /SECRET/);
   const rxId = (await h.db.query<{ id: string }>(`select p.id from prescriptions p join encounters e on e.id = p.encounter_id where e.appointment_id = $1`, [apptId])).rows[0]!.id;
   const sheet = await p.get(`/en/prescriptions/${rxId}`);
   assert.equal(sheet.status, 200);
   assert.match(sheet.body, /Nexium 40 mg/);
   assert.doesNotMatch(sheet.body, /SECRET/);
-  assert.match((await p.get('/en/appointments')).body, /\/en\/prescriptions/);
+  assert.match((await p.get('/en/appointments')).body, /\/en\/health-record/);
 
   // Once cancelled, it disappears from the patient's account.
   await doc.c.post(`/en/dashboard/prescriptions/${rxId}/void`, { reason: 'Replaced' });
-  assert.doesNotMatch((await p.get('/en/prescriptions')).body, /Prescription ·/);
+  assert.doesNotMatch((await p.get('/en/health-record')).body, /Nexium 40 mg/);
   assert.equal((await p.get(`/en/prescriptions/${rxId}`)).status, 404);
 });
 
@@ -260,15 +262,15 @@ test('access control: other doctors and other patients get nothing', async () =>
   await login(p2, stranger.phone, stranger.password);
   assert.equal((await p2.get(`/en/prescriptions/${rxId}`)).status, 404);
   assert.equal((await p2.get(`/en/lab-orders/${labId}`)).status, 404);
-  assert.doesNotMatch((await p2.get('/en/prescriptions')).body, /Cataflam/);
+  assert.doesNotMatch((await p2.get('/en/health-record')).body, /Cataflam/);
   assert.equal((await p2.get(`/en/dashboard/patients/${recordId}`)).status, 403);
   const anon = new Client(h.baseUrl);
   assert.equal((await anon.get(`/en/dashboard/patients/${recordId}`)).status, 303);
   assert.equal((await anon.get(`/en/prescriptions/${rxId}`)).status, 303);
-  const gate = await anon.get('/en/prescriptions');
+  const gate = await anon.get('/en/health-record');
   assert.equal(gate.status, 200, 'visitors get the sign-in page');
   assert.doesNotMatch(gate.body, /Cataflam/);
-  assert.match(gate.body, /href="\/en\/login\?next=%2Fprescriptions"/);
+  assert.match(gate.body, /href="\/en\/login\?next=%2Fhealth-record"/);
 
   // Bad ids are "not found", not errors.
   assert.equal((await owner.c.get('/en/dashboard/patients/not-a-uuid')).status, 404);

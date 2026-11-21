@@ -1,0 +1,210 @@
+import { html, attrIf, type SafeHtml } from '../html.js';
+import type { Ctx } from '../../http/context.js';
+import { href } from '../../http/context.js';
+import { layout } from '../layout.js';
+import { alert, csrfField, icon } from '../components.js';
+import { formatFullDate, formatFullDateTime, formatNumber, type MessageKey } from '../../i18n/index.js';
+import { labItemName } from './records.js';
+import { facilityShell } from './facilities.js';
+import type { OwnFacility } from '../../services/facilities.js';
+import {
+  MAX_FACILITY_NOTE,
+  type CentreChoice, type CentreRequest, type HealthRecord, type OrderPart, type RequestStatus, type ResultFile, type Section,
+} from '../../services/orderResults.js';
+
+export type HealthTab = 'prescriptions' | 'lab' | 'imaging';
+export const HEALTH_TABS: readonly HealthTab[] = ['prescriptions', 'lab', 'imaging'];
+
+const sep = (ctx: Ctx) => (ctx.locale === 'ar' ? ' – ' : ' · ');
+
+const STATUS_KEY: Record<Exclude<RequestStatus, 'cancelled'>, MessageKey> = {
+  sent: 'hr.status.sent',
+  received: 'hr.status.received',
+  ready: 'hr.status.ready',
+};
+
+function fileLabel(ctx: Ctx, f: ResultFile, i: number): string {
+  const kind = f.mime === 'application/pdf' ? 'PDF' : ctx.t('hr.image');
+  const kb = Math.max(1, Math.round(f.size_bytes / 1024));
+  // The size part is isolated left-to-right so it reads correctly inside Arabic.
+  return `${ctx.t('hr.resultFile', { n: formatNumber(i + 1, ctx.locale) })} \u2066(${kind}, ${kb} KB)\u2069`;
+}
+
+/** The result files as links that open in a new tab. */
+export function resultLinks(ctx: Ctx, files: ResultFile[]): SafeHtml {
+  return html`<ul class="result-files">${files.map(
+    (f, i) => html`<li><a href="${href(ctx, `/results/${f.id}`)}" target="_blank" rel="noopener">${icon.upload}${fileLabel(ctx, f, i)}</a></li>`,
+  )}</ul>`;
+}
+
+function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const r = p.request;
+  const centreWord: MessageKey = p.section === 'imaging' ? 'hr.scanCentre' : 'hr.lab';
+  return html`<li class="hr-card" data-testid="hr-${p.section}">
+    <div class="row-between">
+      <div class="stack-sm">
+        <strong>${formatFullDate(p.issuedAt, ctx.locale, tz)}</strong>
+        <span class="muted small">${ctx.t('hr.orderedBy')} <a href="${href(ctx, `/doctors/${p.doctorSlug}`)}"><bdi>${p.doctorName}</bdi></a></span>
+      </div>
+      ${r ? html`<span class="chip hr-status hr-${r.status}">${ctx.t(STATUS_KEY[r.status as Exclude<RequestStatus, 'cancelled'>])}</span>` : html`<span class="chip">${ctx.t('hr.status.notSent')}</span>`}
+    </div>
+    <ul class="hr-tests">${p.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
+    ${p.notes ? html`<p class="small muted" dir="auto">${ctx.t('hr.doctorNotes')}: ${p.notes}</p>` : ''}
+    ${r
+      ? html`<div class="hr-request stack-sm">
+          <span>${ctx.t(r.status === 'ready' ? 'hr.resultsFrom' : 'hr.sentToLabel')} <a href="${href(ctx, `${r.facilityKind === 'radiology' ? '/scan-centres' : '/labs'}/${r.facilitySlug}`)}"><bdi>${r.facilityName}</bdi></a>${
+            r.readyAt ? html`${sep(ctx)}<span class="muted">${formatFullDateTime(r.readyAt, ctx.locale, tz)}</span>` : ''
+          }</span>
+          ${r.status === 'ready'
+            ? html`${r.facilityNote ? html`<p class="hr-note" dir="auto">${r.facilityNote}</p>` : ''}${resultLinks(ctx, r.results)}`
+            : html`<p class="small muted">${ctx.t(r.status === 'sent' ? 'hr.waitingReceive' : 'hr.waitingResults')}</p>`}
+          ${r.status === 'sent'
+            ? html`<form method="post" action="${href(ctx, `/health-record/requests/${r.id}/cancel`)}" class="inline-form">${csrfField(ctx)}
+                <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('hr.cancelSend')}</button></form>`
+            : ''}
+        </div>`
+      : html`<div class="row-wrap">
+          <a class="btn btn-primary btn-sm" href="${href(ctx, `/health-record/orders/${p.labOrderId}/${p.section}/send`)}">${ctx.t('hr.sendTo', { centre: ctx.t(centreWord) })}</a>
+          <a class="btn btn-ghost btn-sm" href="${href(ctx, `/lab-orders/${p.labOrderId}`)}">${ctx.t('hr.printOrder')}</a>
+        </div>`}
+  </li>`;
+}
+
+export function healthRecordPage(ctx: Ctx, rec: HealthRecord, tab: HealthTab, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const counts: Record<HealthTab, number> = { prescriptions: rec.prescriptions.length, lab: rec.lab.length, imaging: rec.imaging.length };
+  const label: Record<HealthTab, MessageKey> = { prescriptions: 'hr.tab.prescriptions', lab: 'hr.tab.lab', imaging: 'hr.tab.imaging' };
+  const lead: Record<HealthTab, MessageKey> = { prescriptions: 'hr.lead.prescriptions', lab: 'hr.lead.lab', imaging: 'hr.lead.imaging' };
+  const tabs = html`<nav class="hr-tabs" aria-label="${ctx.t('hr.title')}">${HEALTH_TABS.map(
+    (t) => html`<a href="${href(ctx, '/health-record', { tab: t })}"${attrIf(t === tab, 'aria-current="page"')}>${ctx.t(label[t])} <span class="hr-count">${formatNumber(counts[t], ctx.locale)}</span></a>`,
+  )}</nav>`;
+
+  const prescriptions = rec.prescriptions.length
+    ? html`<ul class="appt-list">${rec.prescriptions.map(
+        (p) => html`<li class="hr-card">
+          <div class="row-between"><strong>${formatFullDate(p.issued_at, ctx.locale, tz)}</strong>
+            <a class="btn btn-outline btn-sm" href="${href(ctx, `/prescriptions/${p.id}`)}">${ctx.t('mydocs.open')}</a></div>
+          <span class="muted small">${ctx.t('hr.prescribedBy')} <a href="${href(ctx, `/doctors/${p.doctor_slug}`)}"><bdi>${p.doctor_name}</bdi></a></span>
+          <ul class="hr-tests">${p.medicines.map((m) => html`<li dir="auto">${m}</li>`)}</ul>
+        </li>`,
+      )}</ul>`
+    : html`<div class="empty"><p>${ctx.t('hr.none.prescriptions')}</p></div>`;
+  const parts = (list: OrderPart[], empty: MessageKey) =>
+    list.length ? html`<ul class="appt-list">${list.map((p) => partCard(ctx, p))}</ul>` : html`<div class="empty"><p>${ctx.t(empty)}</p></div>`;
+
+  const body = html`<div class="container page narrow stack-lg">
+    <div><h1>${ctx.t('hr.title')}</h1><p class="muted">${ctx.t('hr.lead')}</p></div>
+    ${notice ? alert(notice.kind, ctx.t(notice.key)) : ''}
+    ${tabs}
+    <section class="stack" aria-labelledby="hr-section">
+      <h2 id="hr-section" class="sr-only">${ctx.t(label[tab])}</h2>
+      <p class="small muted">${ctx.t(lead[tab])}</p>
+      ${tab === 'prescriptions' ? prescriptions : tab === 'lab' ? parts(rec.lab, 'hr.none.lab') : parts(rec.imaging, 'hr.none.imaging')}
+    </section>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('hr.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+export function sendOrderPage(ctx: Ctx, part: OrderPart, choices: CentreChoice[], error?: MessageKey): SafeHtml {
+  const total = part.items.filter((i) => i.test_code).length;
+  const centreWord: MessageKey = part.section === 'imaging' ? 'hr.scanCentre' : 'hr.lab';
+  const body = html`<div class="container page narrow stack-lg">
+    <a href="${href(ctx, '/health-record', { tab: part.section })}">← ${ctx.t('hr.title')}</a>
+    <div><h1>${ctx.t('hr.sendTo', { centre: ctx.t(centreWord) })}</h1><p class="muted">${ctx.t('hr.sendLead')}</p></div>
+    <ul class="hr-tests">${part.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
+    ${error ? alert('error', ctx.t(error)) : ''}
+    ${choices.length
+      ? html`<form method="post" action="${href(ctx, `/health-record/orders/${part.labOrderId}/${part.section}/send`)}" class="stack">
+          ${csrfField(ctx)}
+          <fieldset class="stack-sm"><legend class="label">${ctx.t('hr.chooseCentre', { centre: ctx.t(centreWord) })}</legend>
+            ${choices.map(
+              (c, i) => html`<label class="hr-choice"><input type="radio" name="facility" value="${c.user_id}"${attrIf(i === 0, 'checked')} required>
+                <span class="stack-sm"><strong><bdi>${c.name}</bdi></strong>
+                  <span class="small muted">${[
+                    ctx.locale === 'ar' ? c.district_ar : c.district_en,
+                    total ? ctx.t('hr.offers', { n: formatNumber(c.offered, ctx.locale), total: formatNumber(total, ctx.locale) }) : null,
+                    c.total_egp !== null ? ctx.t('hr.priceFrom', { price: formatNumber(c.total_egp, ctx.locale) }) : null,
+                    c.home_service ? ctx.t('hr.homeService') : null,
+                  ].filter(Boolean).join(sep(ctx))}</span></span></label>`,
+            )}
+          </fieldset>
+          <p class="hint">${ctx.t('hr.sendPrivacy')}</p>
+          <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('hr.sendButton')}</button></div>
+        </form>`
+      : html`<div class="empty"><p>${ctx.t('hr.noCentres')}</p><a class="btn btn-outline" href="${href(ctx, `/lab-orders/${part.labOrderId}`)}">${ctx.t('hr.printOrder')}</a></div>`}
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('hr.sendTo', { centre: ctx.t(centreWord) })} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+// ---------------------------------------------------------------- lab / scan centre side
+
+const CENTRE_STATUS: Record<Exclude<RequestStatus, 'cancelled'>, MessageKey> = {
+  sent: 'hr.centre.status.sent',
+  received: 'hr.centre.status.received',
+  ready: 'hr.centre.status.ready',
+};
+
+export function centreRequestsPage(ctx: Ctx, f: OwnFacility, list: CentreRequest[], notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const content = html`<div class="stack-sm"><h1>${ctx.t('hr.centre.title')}</h1><p class="muted">${ctx.t('hr.centre.lead')}</p></div>
+    ${list.length
+      ? html`<ul class="appt-list">${list.map(
+          (r) => html`<li class="appt-row">
+            <div class="stack-sm">
+              <strong><bdi>${r.patient_name}</bdi></strong>
+              <span class="small muted">${formatFullDateTime(r.created_at, ctx.locale, tz)}${sep(ctx)}${ctx.t('hr.centre.tests', { n: formatNumber(r.items.length, ctx.locale) })}</span>
+              <span class="chip hr-status hr-${r.status}">${ctx.t(CENTRE_STATUS[r.status as Exclude<RequestStatus, 'cancelled'>])}</span>
+            </div>
+            <a class="btn ${r.status === 'ready' ? 'btn-ghost' : 'btn-primary'}" href="${href(ctx, `/facility/requests/${r.id}`)}">${ctx.t('mydocs.open')}</a>
+          </li>`,
+        )}</ul>`
+      : html`<div class="empty"><p>${ctx.t('hr.centre.none')}</p></div>`}`;
+  return facilityShell(ctx, f, 'requests', content, notice);
+}
+
+export function centreRequestPage(ctx: Ctx, f: OwnFacility, r: CentreRequest, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const content = html`<a href="${href(ctx, '/facility/requests')}">← ${ctx.t('hr.centre.title')}</a>
+    <div class="stack-sm"><h1><bdi>${r.patient_name}</bdi></h1>
+      <p class="muted"><a href="tel:${r.patient_phone}" dir="ltr">${r.patient_phone}</a>${sep(ctx)}${ctx.t('hr.orderedBy')} <bdi>${r.doctor_name}</bdi>${sep(ctx)}${formatFullDate(r.issued_at, ctx.locale, tz)}</p>
+      <span class="chip hr-status hr-${r.status}">${ctx.t(CENTRE_STATUS[r.status as Exclude<RequestStatus, 'cancelled'>])}</span></div>
+    ${r.order_voided ? alert('warning', ctx.t('hr.centre.voided')) : ''}
+    <section class="panel stack"><h2>${ctx.t('hr.centre.requested')}</h2>
+      <ul class="hr-tests">${r.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
+      ${r.notes ? html`<p class="small" dir="auto"><strong>${ctx.t('hr.doctorNotes')}:</strong> ${r.notes}</p>` : ''}
+    </section>
+    ${r.status === 'sent'
+      ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/received`)}">${csrfField(ctx)}
+          <button class="btn btn-primary btn-lg" type="submit">${ctx.t('hr.centre.markReceived')}</button>
+          <p class="hint">${ctx.t('hr.centre.markReceivedHint')}</p></form>`
+      : html`<section class="panel stack"><h2>${ctx.t('hr.centre.results')}</h2>
+          ${r.results.length
+            ? html`<ul class="result-files">${r.results.map(
+                (file, i) => html`<li><a href="${href(ctx, `/results/${file.id}`)}" target="_blank" rel="noopener">${icon.upload}${fileLabel(ctx, file, i)}</a>
+                  ${r.status === 'received'
+                    ? html`<form method="post" action="${href(ctx, `/facility/results/${file.id}/remove`)}" class="inline-form">${csrfField(ctx)}
+                        <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('hr.centre.removeFile')}</button></form>`
+                    : ''}</li>`,
+              )}</ul>`
+            : html`<p class="muted">${ctx.t('hr.centre.noFiles')}</p>`}
+          <form method="post" action="${href(ctx, `/facility/requests/${r.id}/results`)}" enctype="multipart/form-data" class="stack-sm">${csrfField(ctx)}
+            <div class="field"><label for="result-file">${ctx.t('hr.centre.addFile')}</label>
+              <input id="result-file" type="file" name="file" accept="application/pdf,image/jpeg,image/png" required>
+              <p class="hint">${ctx.t('hr.centre.fileHint')}</p></div>
+            <div><button class="btn btn-outline" type="submit">${ctx.t('hr.centre.upload')}</button></div>
+          </form>
+        </section>
+        ${r.status === 'received'
+          ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/ready`)}" class="panel stack">${csrfField(ctx)}
+              <div class="field"><label for="note">${ctx.t('hr.centre.note')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+                <textarea id="note" name="note" rows="3" maxlength="${MAX_FACILITY_NOTE}"></textarea>
+                <p class="hint">${ctx.t('hr.centre.noteHint')}</p></div>
+              <div><button class="btn btn-primary btn-lg" type="submit"${attrIf(!r.results.length, 'disabled')}>${ctx.t('hr.centre.markReady')}</button></div>
+            </form>`
+          : html`${r.facility_note ? html`<p class="hr-note" dir="auto">${r.facility_note}</p>` : ''}<p class="muted">${ctx.t('hr.centre.released')}</p>`}`}`;
+  return facilityShell(ctx, f, 'requests', content, notice);
+}
+
+export const isHealthTab = (s: string): s is HealthTab => (HEALTH_TABS as readonly string[]).includes(s);
+export type { Section };

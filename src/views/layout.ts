@@ -45,7 +45,7 @@ function patientTabBar(ctx: Ctx): SafeHtml {
     ${item('/search', ctx.t('nav.findShort'), icon.search)}
     ${item('/appointments', ctx.t('nav.appointmentsShort'), icon.calendar)}
     ${item('/messages', ctx.t('nav.messagesShort'), icon.chat, ctx.unreadMessages)}
-    ${item('/prescriptions', ctx.t('nav.docsShort'), icon.check)}
+    ${item('/health-record', ctx.t('nav.docsShort'), icon.check)}
   </nav>`;
 }
 

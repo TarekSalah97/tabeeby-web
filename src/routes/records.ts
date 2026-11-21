@@ -4,6 +4,7 @@ import { href, requireUser } from '../http/context.js';
 import { sendHtml, sendJson, redirect } from '../http/respond.js';
 import { hitRateLimit } from '../auth/rateLimit.js';
 import { assist } from '../services/demoAssistant.js';
+import { doctorOrderResults } from '../services/orderResults.js';
 import { fieldAll } from '../http/body.js';
 import { notFound, tooManyRequests } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
@@ -13,11 +14,11 @@ import { getReference } from '../services/reference.js';
 import {
   listRecords, getRecord, createRecord, updateRecord, linkRecord, fileForAppointment, auditRecordView, listVisits, getVisit,
   createVisit, updateVisitNotes, addPrescription, addLabOrder, voidOrder, getPrescriptionForPrint, getLabOrderForPrint,
-  listPatientDocuments, listDoctorMedicines, type RecordInput, type RxInput, type LabInput, type VisitNotesInput,
+  listDoctorMedicines, type RecordInput, type RxInput, type LabInput, type VisitNotesInput,
 } from '../services/records.js';
 import {
   patientsListPage, newRecordPage, editRecordPage, recordPage, recordValuesFrom, newVisitPage, visitPage,
-  prescriptionPrintPage, labOrderPrintPage, patientDocumentsPage, type RxFormValues, type LabFormValues,
+  prescriptionPrintPage, labOrderPrintPage, type RxFormValues, type LabFormValues,
 } from '../views/pages/records.js';
 import { requireDoctor } from './dashboard.js';
 import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
@@ -76,9 +77,13 @@ function optionalUuid(v: string | null | undefined): string | null {
 async function renderVisit(ctx: Ctx, d: { user: SessionUser; doctor: OwnDoctor }, encounterId: string, extra: Partial<Parameters<typeof visitPage>[4]> = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const visit = await getVisit(db, d.user.id, encounterId);
-  const [record, medicines] = await Promise.all([getRecord(db, d.user.id, visit.record_id), listDoctorMedicines(db, d.user.id)]);
+  const [record, medicines, orderResults] = await Promise.all([
+    getRecord(db, d.user.id, visit.record_id),
+    listDoctorMedicines(db, d.user.id),
+    doctorOrderResults(db, d.user.id, visit.labOrders.map((l) => l.id)),
+  ]);
   const notice = noticeFrom(ctx);
-  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
+  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, orderResults, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
 }
 
 /** Whole years between a YYYY-MM-DD birth date and now. */
@@ -283,23 +288,17 @@ export function recordsRoutes(r: Router): void {
   });
 
   // ---- patient: their own prescriptions and lab orders (never the doctor's notes)
-  r.get('/prescriptions', async (ctx) => {
-    if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'prescriptions', ctx.path));
-    const user = ctx.user;
-    sendHtml(ctx, 200, patientDocumentsPage(ctx, await listPatientDocuments(ctx.deps.db, user.id)));
-  });
-
   r.get('/prescriptions/:id', async (ctx) => {
     const user = requireUser(ctx, 'patient');
     const { header, rx } = await getPrescriptionForPrint(ctx.deps.db, { patientId: user.id }, uuidParam(ctx, 'id'));
     if (rx.status !== 'active') throw notFound();
-    sendHtml(ctx, 200, prescriptionPrintPage(ctx, await getReference(ctx.deps.db), header, rx, href(ctx, '/prescriptions')));
+    sendHtml(ctx, 200, prescriptionPrintPage(ctx, await getReference(ctx.deps.db), header, rx, href(ctx, '/health-record')));
   });
 
   r.get('/lab-orders/:id', async (ctx) => {
     const user = requireUser(ctx, 'patient');
     const { header, lab } = await getLabOrderForPrint(ctx.deps.db, { patientId: user.id }, uuidParam(ctx, 'id'));
     if (lab.status !== 'active') throw notFound();
-    sendHtml(ctx, 200, labOrderPrintPage(ctx, await getReference(ctx.deps.db), header, lab, href(ctx, '/prescriptions'), true));
+    sendHtml(ctx, 200, labOrderPrintPage(ctx, await getReference(ctx.deps.db), header, lab, href(ctx, '/health-record'), true));
   });
 }

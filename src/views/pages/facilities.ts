@@ -82,13 +82,18 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'branches' | 'prices';
+export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests';
 
-function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
     { key: 'profile', path: '/facility', label: 'facdash.nav.profile' },
     { key: 'branches', path: '/facility/branches', label: 'facdash.nav.branches' },
-    ...(offersTests(f.kind) ? [{ key: 'prices' as const, path: '/facility/prices', label: 'facdash.nav.prices' as const }] : []),
+    ...(offersTests(f.kind)
+      ? [
+          { key: 'requests' as const, path: '/facility/requests', label: 'facdash.nav.requests' as const },
+          { key: 'prices' as const, path: '/facility/prices', label: 'facdash.nav.prices' as const },
+        ]
+      : []),
   ];
   const status = f.verification_status;
   const banner =

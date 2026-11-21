@@ -53,7 +53,7 @@ function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null):
       <div class="quick-grid">
         <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
-        <a class="quick-tile" href="${href(ctx, '/prescriptions')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/health-record')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>
       </div>
       ${p?.next

@@ -9,8 +9,9 @@ import { emailCodePage, patientGatePage } from '../views/pages/auth.js';
 import { startSession } from './helpers.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { book, resolveSlot, changeStatus, listPatientAppointments, quote } from '../services/booking.js';
-import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage } from '../views/pages/booking.js';
+import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage, issuePage } from '../views/pages/booking.js';
 import { getReceipt } from '../services/payments.js';
+import { issueTarget, patientIssues, reportIssue } from '../services/reliability.js';
 import { receiptPage } from '../views/pages/payments.js';
 import { getReviewTarget, parseRating, submitReview } from '../services/reviews.js';
 import { joinWaitlist, leaveWaitlist, listPatientWaitlist } from '../services/waitlist.js';
@@ -170,6 +171,33 @@ export function patientRoutes(r: Router): void {
     }
   });
 
+  r.get('/appointments/:id/issue', async (ctx) => {
+    if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
+    try {
+      const target = await issueTarget(ctx.deps, ctx.user.id, uuidParam(ctx, 'id'));
+      if (target.open_issue) return redirect(ctx, href(ctx, '/appointments', { error: 'issue.alreadyOpen' }));
+      sendHtml(ctx, 200, issuePage(ctx, target, {}));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/appointments', { error: domainKey(e) }));
+    }
+  });
+
+  r.post('/appointments/:id/issue', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const id = uuidParam(ctx, 'id');
+    const values = { category: formValue(ctx, 'category'), description: formValue(ctx, 'description') };
+    try {
+      await reportIssue(ctx.deps, user, id, values, ctx.ip);
+      redirect(ctx, href(ctx, '/appointments', { ok: 'issueReported' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      const key = domainKey(e);
+      if (key === 'issue.windowClosed' || key === 'issue.alreadyOpen') return redirect(ctx, href(ctx, '/appointments', { error: key }));
+      sendHtml(ctx, 422, issuePage(ctx, await issueTarget(ctx.deps, user.id, id), { values, error: key }));
+    }
+  });
+
   r.get('/appointments/:id/receipt', async (ctx) => {
     if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
     const receipt = await getReceipt(ctx.deps.db, ctx.user, uuidParam(ctx, 'id'));
@@ -179,12 +207,13 @@ export function patientRoutes(r: Router): void {
   r.get('/appointments', async (ctx) => {
     if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
     const user = ctx.user;
-    const [list, waitlist, pw] = await Promise.all([
+    const [list, waitlist, pw, issues] = await Promise.all([
       listPatientAppointments(ctx.deps.db, user.id),
       listPatientWaitlist(ctx.deps, user.id),
       hasPassword(ctx.deps, user.id),
+      patientIssues(ctx.deps.db, user.id),
     ]);
-    sendHtml(ctx, 200, appointmentsPage(ctx, list, waitlist, { notice: noticeFrom(ctx), error: errorFrom(ctx), needsPassword: !pw }));
+    sendHtml(ctx, 200, appointmentsPage(ctx, list, waitlist, { notice: noticeFrom(ctx), error: errorFrom(ctx), needsPassword: !pw, issues }));
   });
 
   // Verified reviews: only the patient of a completed visit can rate it.

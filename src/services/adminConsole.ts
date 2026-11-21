@@ -63,6 +63,7 @@ export interface AdminStats {
   patients: number;
   facilitiesActive: number;
   facilitiesPending: number;
+  openIssues: number;
   /** Activity in the chosen range. */
   bookings: number;
   completed: number;
@@ -85,6 +86,7 @@ export async function adminStats(db: Queryable, range: DayRange, tz: string): Pr
        (select count(*)::int from users where role = 'patient') as patients,
        (select count(*)::int from facilities f join users u on u.id = f.user_id where f.verification_status = 'approved' and u.status = 'active') as "facilitiesActive",
        (select count(*)::int from facilities where verification_status = 'pending') as "facilitiesPending",
+       (select count(*)::int from visit_issues where status = 'open') as "openIssues",
        (select count(*)::int from appointments where ${inRange('created_at', 1, 2)}) as bookings,
        (select count(*)::int from appointments where status = 'completed' and ${inRange('starts_at', 1, 2)}) as completed,
        (select count(*)::int from appointments where status = 'cancelled' and ${inRange('cancelled_at', 1, 2)}) as cancellations,
@@ -127,7 +129,7 @@ export async function searchAccounts(db: Queryable, rawQuery: string, noShowWind
       `select u.id, u.role, u.full_name, u.phone_e164, u.email, u.status, u.created_at, d.verification_status,
               (select count(*)::int from appointments a where (a.patient_id = u.id or a.doctor_id = u.id)
                   and a.status in ('confirmed', 'arrived') and a.starts_at > now()) as upcoming,
-              (select count(*)::int from appointments a where a.patient_id = u.id and a.status = 'no_show'
+              (select count(*)::int from appointments a where a.patient_id = u.id and a.status = 'no_show' and not a.no_show_waived
                   and a.starts_at > now() - make_interval(days => $4)
                   and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)) as no_shows
          from users u left join doctors d on d.user_id = u.id

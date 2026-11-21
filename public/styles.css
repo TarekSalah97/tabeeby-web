@@ -675,3 +675,11 @@ details.refund[open] { padding: 10px; border: 1px solid var(--line); border-radi
 .receipt .summary dd { overflow-wrap: anywhere; }
 .receipt-total { border-block-start: 2px solid var(--ink); padding-block-start: 8px; font-size: 1.15rem; }
 @media print { .no-print, .site-header, .site-footer, .tabbar { display: none !important; } .receipt { border: 0; box-shadow: none; } }
+.cancel-choice > summary { list-style: none; }
+.cancel-choice > summary::-webkit-details-marker { display: none; }
+.cancel-choice[open] { flex-basis: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+details.day-off > summary { cursor: pointer; list-style: none; min-height: 44px; display: flex; align-items: center; }
+details.day-off > summary::-webkit-details-marker { display: none; }
+.plain-list { list-style: none; margin: 0; padding: 0; }
+.choice-list { display: grid; gap: 6px; }
+.choice-list .check { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; }

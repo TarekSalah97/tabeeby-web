@@ -8,6 +8,7 @@ import { pick, formatDateTime, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { ReviewDetail, ReviewListItem } from '../../services/admin.js';
 import type { FacilityReviewDetail, FacilityReviewItem } from '../../services/facilities.js';
+import type { AdminIssue, StrikeRow } from '../../services/reliability.js';
 import { experienceYears } from '../../domain/experience.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 
@@ -170,4 +171,61 @@ export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityRevie
       ${st === 'suspended' ? action('reinstate', 'admin.reinstate', false, true) : ''}
     </section>`;
   return adminShell(ctx, 'facilities', `${f.name} — ${ctx.t('admin.title')}`, content);
+}
+
+// ---------------------------------------------------------------------------
+// Patient issues and doctor strikes
+// ---------------------------------------------------------------------------
+
+export function adminIssuesPage(ctx: Ctx, data: { open: AdminIssue[]; recent: AdminIssue[] }, o: { notice?: MessageKey; error?: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const item = (i: AdminIssue, open: boolean) => html`<li class="panel stack-sm">
+    <div class="row-between"><strong>${ctx.t(`issue.cat.${i.category}` as MessageKey)}</strong><span class="muted small">${formatDateTime(i.created_at, ctx.locale, tz)}</span></div>
+    <p class="prose" dir="auto">${i.description}</p>
+    <p class="muted small"><bdi>${i.patient_name}</bdi> (<span dir="ltr">${formatEgyptMobile(i.patient_phone)}</span>) · ${ctx.t('issue.withDoctor')} <a href="${href(ctx, `/admin/doctors/${i.doctor_id}`)}"><bdi>${i.doctor_name}</bdi></a>
+      · ${ctx.t('pay.visit')} ${formatDateTime(i.visit_at, ctx.locale, tz)} · ${ctx.t.dynamic(`status.${i.visit_status}`)}${i.no_show_waived ? html` · ${ctx.t('issue.noShowWaived')}` : ''}</p>
+    ${open
+      ? html`<form method="post" action="${href(ctx, `/admin/issues/${i.id}/resolve`)}" class="stack-sm">${csrfField(ctx)}
+          <div class="field"><label for="note-${i.id}">${ctx.t('issue.resolutionNote')}</label><textarea id="note-${i.id}" name="note" rows="2" maxlength="500" required></textarea>
+            <p class="hint">${ctx.t('issue.resolutionHint')}</p></div>
+          ${i.visit_status === 'no_show' && !i.no_show_waived ? html`<label class="check"><input type="checkbox" name="waiveNoShow" value="yes"><span>${ctx.t('issue.waiveNoShow')}</span></label>` : ''}
+          <label class="check"><input type="checkbox" name="strikeDoctor" value="yes"><span>${ctx.t('issue.strikeDoctor')}</span></label>
+          <div><button type="submit" class="btn btn-primary">${ctx.t('issue.resolve')}</button></div>
+        </form>`
+      : html`<p class="small"><span class="chip status-confirmed">${ctx.t('issue.resolvedChip')}</span> <bdi>${i.resolution_note ?? ''}</bdi></p>`}
+  </li>`;
+  const content = html`
+    <div><h1>${ctx.t('adm.nav.issues')}</h1><p class="muted">${ctx.t('issue.adminLead')}</p></div>
+    ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
+    ${o.error ? alert('error', ctx.t(o.error)) : ''}
+    <section class="stack"><h2 class="h3">${ctx.t('issue.openTitle')} (${data.open.length})</h2>
+      ${data.open.length ? html`<ul class="stack plain-list">${data.open.map((i) => item(i, true))}</ul>` : html`<p class="muted">${ctx.t('adm.facNone')}</p>`}</section>
+    ${data.recent.length ? html`<section class="stack"><h2 class="h3">${ctx.t('admin.recent')}</h2><ul class="stack plain-list">${data.recent.map((i) => item(i, false))}</ul></section>` : ''}`;
+  return adminShell(ctx, 'issues', `${ctx.t('adm.nav.issues')} — ${ctx.t('admin.title')}`, content);
+}
+
+export function adminStrikesPage(ctx: Ctx, rows: StrikeRow[], limit: number, o: { notice?: MessageKey; error?: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const paused = [...new Map(rows.filter((r) => r.active_count >= limit).map((r) => [r.doctor_id, r])).values()];
+  const content = html`
+    <div><h1>${ctx.t('adm.nav.strikes')}</h1><p class="muted">${ctx.t('strike.adminLead', { limit })}</p></div>
+    ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
+    ${o.error ? alert('error', ctx.t(o.error)) : ''}
+    ${paused.length ? alert('warning', html`${ctx.t('strike.pausedDoctors')} ${paused.map((p) => html`<a href="${href(ctx, `/admin/doctors/${p.doctor_id}`)}"><bdi>${p.doctor_name}</bdi></a> `)}`) : ''}
+    ${rows.length
+      ? html`<ul class="appt-list panel">${rows.map(
+          (s) => html`<li class="appt-row${s.status === 'waived' ? ' muted-row' : ''}"><div class="stack-sm">
+              <strong><a href="${href(ctx, `/admin/doctors/${s.doctor_id}`)}"><bdi>${s.doctor_name}</bdi></a> · ${ctx.t(`strike.source.${s.source}` as MessageKey)}${s.day ? html` (${s.day})` : ''}</strong>
+              <span class="muted small">${formatDateTime(s.created_at, ctx.locale, tz)} · ${ctx.t('strike.activeOf', { n: s.active_count, limit })}${s.reason ? html` · <bdi>${s.reason}</bdi>` : ''}</span>
+              ${s.status === 'waived' ? html`<span class="small"><span class="chip">${ctx.t('strike.waived')}</span> <bdi>${s.review_note ?? ''}</bdi></span>` : ''}
+            </div>
+            ${s.status === 'active'
+              ? html`<details class="refund"><summary class="btn btn-outline btn-sm">${ctx.t('strike.waive')}</summary>
+                  <form method="post" action="${href(ctx, `/admin/strikes/${s.id}/waive`)}" class="stack-sm">${csrfField(ctx)}
+                    <label for="w-${s.id}">${ctx.t('strike.waiveNote')}</label><input id="w-${s.id}" name="note" maxlength="300" required>
+                    <button type="submit" class="btn btn-primary btn-sm">${ctx.t('strike.waive')}</button></form></details>`
+              : ''}</li>`,
+        )}</ul>`
+      : html`<p class="muted">${ctx.t('strike.none')}</p>`}`;
+  return adminShell(ctx, 'strikes', `${ctx.t('adm.nav.strikes')} — ${ctx.t('admin.title')}`, content);
 }

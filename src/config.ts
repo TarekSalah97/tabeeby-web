@@ -56,6 +56,9 @@ const schema = z
     // Online booking pauses after this many no-shows in the window (the clinic can still book them).
     NO_SHOW_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
     NO_SHOW_WINDOW_DAYS: z.coerce.number().int().min(7).max(730).default(180),
+    // Online booking with a doctor pauses at this many active strikes (doctor cancellations) in the window.
+    STRIKE_LIMIT: z.coerce.number().int().min(1).max(50).default(5),
+    STRIKE_WINDOW_DAYS: z.coerce.number().int().min(7).max(730).default(180),
 
     TIME_ZONE: z.string().default('Africa/Cairo'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

@@ -167,3 +167,13 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - As a doctor, I want to mark a payment as refunded with a reason; payments are never deleted (database-enforced) and every record/refund is audited.
 - As a patient, I want to see "Paid" on my visits and open a printable receipt; only the patient and the doctor can open it.
 - Online card / Fawry payment is not connected yet: it needs a merchant account (Paymob or Fawry) and keys. The `payments.provider` column is ready for it.
+
+## Reliability: doctor strikes, closing a day, patient reports
+
+- As a patient, I want doctors who cancel on me to be held to account, so that online bookings are reliable.
+  - A doctor cancelling a visit the patient booked online is a strike, unless the doctor marks "The patient asked to cancel" (recorded as a patient cancellation, no text, no strike). Clinic-made bookings never count.
+  - At `STRIKE_LIMIT` (default 5) active strikes in `STRIKE_WINDOW_DAYS` (180), online booking with the doctor pauses: profile shows a notice and no times, search shows no times, direct booking is refused. The doctor sees a warning from the first strike.
+  - Admins see all strikes (Doctor strikes) and waive one with a note; booking resumes below the limit.
+- As a doctor, I want to close a day in an emergency: confirmed bookings are cancelled, each patient is texted, the rest of the day is blocked, and it counts as one strike if any were online bookings (never more than one per day).
+- As a patient, I want to report a problem with a visit (doctor absent, long wait, overcharged, wrongly marked as missed, behaviour, other) within 3 days; one open report per visit.
+  - Admins review reports (Patient issues), close them with a note the patient sees, and may waive a wrongly recorded no-show (it stops counting) and/or add a strike to the doctor. All audited.

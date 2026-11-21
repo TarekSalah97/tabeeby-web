@@ -4,6 +4,7 @@ import type { Slot } from '../domain/availability.js';
 import { experienceYears } from '../domain/experience.js';
 import { getReference } from './reference.js';
 import { slotsForDoctors } from './availability.js';
+import { pausedDoctors } from './reliability.js';
 import { listPositions, toRanges } from './doctors.js';
 import { ratingsFor, type RatingSummary } from './reviews.js';
 
@@ -86,7 +87,9 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
   if (!ids.length) return { cards: [], total: 0, pages: 0 };
 
   const now = deps.now();
-  const slots = await slotsForDoctors(db, cfg, ids, { days: 7, now });
+  const [slots, paused] = await Promise.all([slotsForDoctors(db, cfg, ids, { days: 7, now }), pausedDoctors(db, cfg, ids)]);
+  // Doctors paused for too many cancellations stay listed (patients can still call) but offer no online times.
+  for (const id of paused) slots.set(id, []);
   // Sort all candidates by soonest availability, then paginate.
   const order = ids
     .map((id) => ({ id, first: slots.get(id)?.[0]?.startsAt.getTime() ?? Number.POSITIVE_INFINITY }))

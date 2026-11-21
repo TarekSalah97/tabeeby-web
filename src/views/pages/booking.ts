@@ -12,6 +12,7 @@ import { MAX_REVIEW_COMMENT } from '../../services/reviews.js';
 import { zonedToUtc } from '../../domain/time.js';
 import { money } from './public.js';
 import { paidChip } from './payments.js';
+import { canReport, ISSUE_CATEGORIES, type IssueTarget } from '../../services/reliability.js';
 import type { VisitType } from '../../domain/visitPricing.js';
 
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
@@ -60,7 +61,7 @@ export function appointmentsPage(
   ctx: Ctx,
   list: PatientAppointment[],
   waitlist: PatientWaitlistEntry[],
-  o: { notice?: MessageKey; error?: MessageKey; needsPassword?: boolean },
+  o: { notice?: MessageKey; error?: MessageKey; needsPassword?: boolean; issues?: Map<string, { status: 'open' | 'resolved'; note: string | null }> },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const now = ctx.deps.now().getTime();
@@ -86,12 +87,24 @@ export function appointmentsPage(
     </div>
   </li>`;
 
+  // Reporting a problem with a recent visit (doctor absent, overcharged, wrongly marked as missed…).
+  const issueLine = (a: PatientAppointment) => {
+    const issue = o.issues?.get(a.id);
+    if (issue) {
+      return issue.status === 'open'
+        ? html`<span class="chip">${ctx.t('issue.reportedChip')}</span>`
+        : html`<span class="small"><span class="chip status-confirmed">${ctx.t('issue.resolvedChip')}</span> <bdi class="muted">${issue.note ?? ''}</bdi></span>`;
+    }
+    return canReport(a, ctx.deps.now()) ? html`<a class="small" href="${href(ctx, `/appointments/${a.id}/issue`)}">${ctx.t('issue.report')}</a>` : '';
+  };
+
   const pastRow = (a: PatientAppointment) => html`<li class="appt-row">
     <div class="stack-sm">
       <strong>${formatDate(a.starts_at, ctx.locale, tz)} · ${formatTime(a.starts_at, ctx.locale, tz)}</strong>
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto">${a.doctor_name}</a> · <span dir="auto">${a.clinic_name}</span></span>
       <div class="row-wrap">${statusChip(ctx, a.status)}${a.my_rating ? starRow(ctx, a.my_rating) : ''}</div>
       ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
+      ${issueLine(a)}
     </div>
     <div class="appt-actions">
       ${a.status === 'completed'
@@ -219,4 +232,31 @@ export function guestConfirmPage(
     </div>
   </div>`;
   return layout(ctx, { title: `${ctx.t('book.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/** Report a problem with a recent visit; an admin reviews it. */
+export function issuePage(ctx: Ctx, t: IssueTarget, o: { values?: { category: string; description: string }; error?: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const v = o.values ?? { category: '', description: '' };
+  const body = html`<div class="container page narrow">
+    <form method="post" action="${href(ctx, `/appointments/${t.id}/issue`)}" class="panel stack" novalidate>
+      ${csrfField(ctx)}
+      <a class="back-link" href="${href(ctx, '/appointments')}">${ctx.t('appts.title')}</a>
+      <h1>${ctx.t('issue.title')}</h1>
+      <p class="muted"><bdi>${t.doctor_name}</bdi> · ${t.clinic_name} · ${formatDate(t.starts_at, ctx.locale, tz)} ${formatTime(t.starts_at, ctx.locale, tz)}</p>
+      ${o.error ? alert('error', ctx.t(o.error)) : ''}
+      <fieldset class="stack-sm"><legend class="label">${ctx.t('issue.what')}</legend>
+        <div class="choice-list">${ISSUE_CATEGORIES.map(
+          (c) => html`<label class="check"><input type="radio" name="category" value="${c}"${v.category === c ? html` checked` : ''} required><span>${ctx.t(`issue.cat.${c}` as MessageKey)}</span></label>`,
+        )}</div>
+      </fieldset>
+      <div class="field">
+        <label for="description">${ctx.t('issue.describeLabel')}</label>
+        <textarea id="description" name="description" rows="5" minlength="10" maxlength="1000" required>${v.description}</textarea>
+        <p class="hint">${ctx.t('issue.hint')}</p>
+      </div>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('issue.send')}</button>
+    </form>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('issue.title')} — ${ctx.t('brand')}`, body, noindex: true });
 }

@@ -5,7 +5,8 @@ import { applyDocumentHeaders } from '../http/security.js';
 import { getReference } from '../services/reference.js';
 import { listForReview, getForReview, decide, readDocument, type Decision } from '../services/admin.js';
 import { setRecordsEnabled } from '../services/records.js';
-import { adminListPage, adminDoctorPage, adminReviewsPage } from '../views/pages/admin.js';
+import { adminListPage, adminDoctorPage, adminReviewsPage, adminIssuesPage, adminStrikesPage } from '../views/pages/admin.js';
+import { listIssues, resolveIssue, listStrikes, waiveStrike } from '../services/reliability.js';
 import { listReviewsForAdmin, setReviewVisibility } from '../services/reviews.js';
 import { DomainError, notFound } from '../http/errors.js';
 import { isMessageKey } from '../i18n/index.js';
@@ -53,6 +54,42 @@ export function adminRoutes(r: Router): void {
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
       redirect(ctx, href(ctx, '/admin/accounts', { q, error: e.messageKey }));
+    }
+  });
+
+  r.get('/admin/issues', async (ctx) => {
+    requireUser(ctx, 'admin');
+    sendHtml(ctx, 200, adminIssuesPage(ctx, await listIssues(ctx.deps.db), { notice: noticeFrom(ctx) ?? undefined, error: errorFrom(ctx) ?? undefined }));
+  });
+
+  r.post('/admin/issues/:id/resolve', async (ctx) => {
+    const admin = requireUser(ctx, 'admin');
+    try {
+      await resolveIssue(ctx.deps, admin, uuidParam(ctx, 'id'), {
+        note: formValue(ctx, 'note'),
+        waiveNoShow: formValue(ctx, 'waiveNoShow') === 'yes',
+        strikeDoctor: formValue(ctx, 'strikeDoctor') === 'yes',
+      }, ctx.ip);
+      redirect(ctx, href(ctx, '/admin/issues', { ok: 'resolved' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/admin/issues', { error: e.messageKey }));
+    }
+  });
+
+  r.get('/admin/strikes', async (ctx) => {
+    requireUser(ctx, 'admin');
+    sendHtml(ctx, 200, adminStrikesPage(ctx, await listStrikes(ctx.deps.db, ctx.deps.cfg), ctx.deps.cfg.STRIKE_LIMIT, { notice: noticeFrom(ctx) ?? undefined, error: errorFrom(ctx) ?? undefined }));
+  });
+
+  r.post('/admin/strikes/:id/waive', async (ctx) => {
+    const admin = requireUser(ctx, 'admin');
+    try {
+      await waiveStrike(ctx.deps, admin, uuidParam(ctx, 'id'), formValue(ctx, 'note'), ctx.ip);
+      redirect(ctx, href(ctx, '/admin/strikes', { ok: 'waived' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/admin/strikes', { error: e.messageKey }));
     }
   });
 

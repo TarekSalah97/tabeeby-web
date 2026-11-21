@@ -303,6 +303,8 @@ export interface ProfileBooking {
   fullDays: string[];
   /** Of those, the days the signed-in patient is already waiting for. */
   waiting: string[];
+  /** Too many cancellations by the doctor: online booking is paused (patients can still call). */
+  paused?: boolean;
   /** "Message the doctor" for a signed-in patient who has booked with them (closed = outside messaging hours). */
   message?: 'hidden' | 'open' | 'closed';
 }
@@ -430,6 +432,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       <h2 id="book-title" tabindex="-1">${ctx.t('doctor.book')}</h2>
       ${booking.error ? alert('error', ctx.t(booking.error)) : ''}
       ${booking.notice ? alert('success', ctx.t(booking.notice)) : ''}
+      ${booking.paused ? alert('warning', ctx.t('booking.doctorPaused')) : ''}
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
       ${clinic && clinic.followUpFee !== null && clinic.followUpFee < clinic.fee
         ? html`<div class="fee-row"><span class="muted">${ctx.t('doctor.followUpFee', { days: clinic.followUpDays })}</span><strong>${money(ctx, clinic.followUpFee)}</strong></div>`

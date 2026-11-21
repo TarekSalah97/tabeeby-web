@@ -13,6 +13,7 @@ import { slotsForDoctors } from './availability.js';
 import { enqueueSms, enqueueEmail } from './outbox.js';
 import { audit } from './audit.js';
 import { closeOnBooking, notifyWaitlist } from './waitlist.js';
+import { addStrike, pausedDoctors } from './reliability.js';
 import { translator, formatDateTime, type Locale } from '../i18n/index.js';
 import { DomainError, notFound, tooManyRequests } from '../http/errors.js';
 
@@ -54,6 +55,7 @@ export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, s
   );
   const c = rows[0];
   if (!c) throw new DomainError('booking.doctorUnavailable');
+  if ((await pausedDoctors(db, deps.cfg, [c.doctor_id])).size) throw new DomainError('booking.doctorPaused');
   if (Number.isNaN(startsAt.getTime())) throw new DomainError('booking.slotUnavailable');
   const date = toZoned(startsAt, deps.cfg.TIME_ZONE).date;
   const slots = await slotsForDoctors(db, deps.cfg, [c.doctor_id], { fromDate: date, days: 1, now: deps.now(), clinicId });
@@ -90,7 +92,7 @@ export async function lastCompletedVisit(db: Queryable, patientId: string, docto
 export async function countedNoShows(db: Queryable, cfg: Pick<Config, 'NO_SHOW_WINDOW_DAYS'>, patientId: string): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
     `select count(*)::int as n from appointments a join users u on u.id = a.patient_id
-      where a.patient_id = $1 and a.status = 'no_show'
+      where a.patient_id = $1 and a.status = 'no_show' and not a.no_show_waived
         and a.starts_at > now() - make_interval(days => $2)
         and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)`,
     [patientId, cfg.NO_SHOW_WINDOW_DAYS],
@@ -188,6 +190,7 @@ export interface PatientAppointment {
   /** Recorded payment for this visit, if any. */
   paid_amount: number | null;
   paid_method: PaymentMethod | null;
+  cancelled_by: 'patient' | 'doctor' | 'admin' | null;
 }
 
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
@@ -196,7 +199,7 @@ export async function listPatientAppointments(db: Queryable, patientId: string):
       `select a.id, a.starts_at, a.status, a.visit_type, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
               c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
               u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
-              pay.amount_egp as paid_amount, pay.method as paid_method
+              pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by
          from appointments a join clinics c on c.id = a.clinic_id join districts dist on dist.id = c.district_id
          join doctors d on d.user_id = a.doctor_id join users u on u.id = a.doctor_id
          left join reviews r on r.appointment_id = a.id
@@ -214,6 +217,8 @@ export async function changeStatus(
   appointmentId: string,
   to: AppointmentStatus,
   ip: string,
+  /** Doctor cancelling: the patient asked (no strike) or the clinic cannot make it (a strike if the patient booked online). */
+  cancelKind: 'patient_request' | 'clinic' = 'clinic',
 ): Promise<void> {
   const scope = actor.role === 'patient' ? 'a.patient_id' : actor.role === 'doctor' ? 'a.doctor_id' : null;
   if (!scope) throw notFound();
@@ -225,11 +230,12 @@ export async function changeStatus(
       starts_at: Date;
       patient_phone: string | null;
       patient_locale: Locale;
+      booked_by: 'patient' | 'doctor';
       doctor_name: string;
       doctor_slug: string;
     }>(
       `select a.id, a.clinic_id, a.status, a.starts_at, coalesce(p.phone_e164, a.walk_in_phone) as patient_phone,
-              coalesce(p.preferred_locale, 'ar') as patient_locale, du.full_name as doctor_name, d.slug as doctor_slug
+              coalesce(p.preferred_locale, 'ar') as patient_locale, a.booked_by, du.full_name as doctor_name, d.slug as doctor_slug
          from appointments a left join users p on p.id = a.patient_id
          join doctors d on d.user_id = a.doctor_id join users du on du.id = a.doctor_id
         where a.id = $1 and ${scope} = $2 for update of a`,
@@ -238,6 +244,7 @@ export async function changeStatus(
     const appt = rows[0];
     if (!appt) throw notFound(); // also hides other people's appointments
     const actorKind = actor.role === 'patient' ? 'patient' : 'doctor';
+    const patientAsked = actorKind === 'doctor' && to === 'cancelled' && cancelKind === 'patient_request';
     const problem = checkTransition({
       from: appt.status,
       to,
@@ -252,11 +259,15 @@ export async function changeStatus(
               cancelled_by = case when $2 = 'cancelled' then $3 else cancelled_by end,
               cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
         where id = $1`,
-      [appt.id, to, actorKind],
+      [appt.id, to, patientAsked ? 'patient' : actorKind],
     );
+    // A doctor cancelling a visit the patient booked online is a strike (the patient can report it if it was unfair).
+    if (to === 'cancelled' && actorKind === 'doctor' && !patientAsked && appt.booked_by === 'patient') {
+      await addStrike(tx, { doctorId: actor.id, source: 'doctor_cancel', appointmentId: appt.id, reason: null, createdBy: actor.id });
+    }
     // A freed place goes to the people waiting for that day (patient or doctor cancellation alike).
     if (to === 'cancelled') await notifyWaitlist(deps, tx, appt);
-    if (to === 'cancelled' && actorKind === 'doctor' && appt.patient_phone) {
+    if (to === 'cancelled' && actorKind === 'doctor' && !patientAsked && appt.patient_phone) {
       const t = translator(appt.patient_locale);
       await enqueueSms(
         tx,
@@ -268,6 +279,6 @@ export async function changeStatus(
         }),
       );
     }
-    await audit(tx, { actorId: actor.id, action: `appointment.${to}`, entityType: 'appointment', entityId: appt.id, metadata: { from: appt.status }, ip });
+    await audit(tx, { actorId: actor.id, action: `appointment.${to}`, entityType: 'appointment', entityId: appt.id, metadata: { from: appt.status, ...(patientAsked ? { patientAsked } : {}) }, ip });
   });
 }

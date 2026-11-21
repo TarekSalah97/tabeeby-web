@@ -11,6 +11,7 @@ import { errorFrom, noticeFrom } from './helpers.js';
 import { listDoctorReviews } from '../services/reviews.js';
 import { fullDays, waitingDates } from '../services/waitlist.js';
 import { messageButtonState } from '../services/messaging.js';
+import { pausedDoctors } from '../services/reliability.js';
 import { recentDoctors, nextVisit } from '../services/patientHome.js';
 
 export function publicRoutes(r: Router): void {
@@ -52,7 +53,8 @@ export function publicRoutes(r: Router): void {
     if (!doctor) throw notFound();
     const ref = await getReference(ctx.deps.db);
 
-    const all = (await slotsForDoctors(ctx.deps.db, ctx.deps.cfg, [doctor.id], { days: ctx.deps.cfg.BOOKING_HORIZON_DAYS, now })).get(doctor.id) ?? [];
+    const paused = (await pausedDoctors(ctx.deps.db, ctx.deps.cfg, [doctor.id])).size > 0;
+    const all = paused ? [] : ((await slotsForDoctors(ctx.deps.db, ctx.deps.cfg, [doctor.id], { days: ctx.deps.cfg.BOOKING_HORIZON_DAYS, now })).get(doctor.id) ?? []);
     const requestedClinic = ctx.query.get('clinic');
     const clinicId =
       doctor.clinics.find((c) => c.id === requestedClinic)?.id ??
@@ -72,7 +74,7 @@ export function publicRoutes(r: Router): void {
     sendHtml(
       ctx,
       200,
-      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: full, waiting, message }, reviews),
+      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: paused ? [] : full, waiting, message, paused }, reviews),
     );
   });
 

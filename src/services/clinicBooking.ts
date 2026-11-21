@@ -181,12 +181,12 @@ export async function noShowCounts(
   if (!ids.length && !phones.length) return out;
   const { rows } = await db.query<{ key: string; n: number }>(
     `select a.patient_id::text as key, count(*)::int as n from appointments a join users u on u.id = a.patient_id
-      where a.patient_id = any($1::uuid[]) and a.status = 'no_show' and a.starts_at > now() - make_interval(days => $2)
+      where a.patient_id = any($1::uuid[]) and a.status = 'no_show' and not a.no_show_waived and a.starts_at > now() - make_interval(days => $2)
         and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)
       group by a.patient_id
      union all
      select a.walk_in_phone, count(*)::int from appointments a
-      where a.doctor_id = $3 and a.walk_in_phone = any($4::text[]) and a.status = 'no_show' and a.starts_at > now() - make_interval(days => $2)
+      where a.doctor_id = $3 and a.walk_in_phone = any($4::text[]) and a.status = 'no_show' and not a.no_show_waived and a.starts_at > now() - make_interval(days => $2)
       group by a.walk_in_phone`,
     [ids, windowDays, doctorId, phones],
   );

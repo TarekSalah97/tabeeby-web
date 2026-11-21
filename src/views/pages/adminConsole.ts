@@ -8,12 +8,14 @@ import { formatEgyptMobile } from '../../domain/phone.js';
 import { zonedToUtc } from '../../domain/time.js';
 import type { AccountRow, AdminStats, AuditFilters, AuditRow, DayRange, FailedMessage, OutboxCount, RangePreset } from '../../services/adminConsole.js';
 
-export type AdminSection = 'dashboard' | 'doctors' | 'facilities' | 'accounts' | 'reviews' | 'audit' | 'messages';
+export type AdminSection = 'dashboard' | 'doctors' | 'facilities' | 'issues' | 'strikes' | 'accounts' | 'reviews' | 'audit' | 'messages';
 
 const svg = (paths: string) =>
   trusted(`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`);
 
 export const adminIcon = {
+  issues: svg('<path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path>'),
+  strikes: svg('<path d="M4 22V4a1 1 0 0 1 1-1h11l-2 4 2 4H5"></path>'),
   facilities: svg('<path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M10 12h4M12 10v4"></path>'),
   dashboard: svg('<path d="M3 3v18h18"></path><path d="M8 17V11"></path><path d="M13 17V7"></path><path d="M18 17v-4"></path>'),
   doctors: svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="12" r="2"></circle><path d="M14 10h4M14 14h4"></path>'),
@@ -36,6 +38,8 @@ const NAV: { key: AdminSection; path: string; label: MessageKey; icon: SafeHtml 
   { key: 'dashboard', path: '/admin', label: 'adm.nav.dashboard', icon: adminIcon.dashboard },
   { key: 'doctors', path: '/admin/doctors', label: 'adm.nav.doctors', icon: adminIcon.doctors },
   { key: 'facilities', path: '/admin/facilities', label: 'adm.nav.facilities', icon: adminIcon.facilities },
+  { key: 'issues', path: '/admin/issues', label: 'adm.nav.issues', icon: adminIcon.issues },
+  { key: 'strikes', path: '/admin/strikes', label: 'adm.nav.strikes', icon: adminIcon.strikes },
   { key: 'accounts', path: '/admin/accounts', label: 'adm.nav.accounts', icon: adminIcon.accounts },
   { key: 'reviews', path: '/admin/reviews', label: 'adm.nav.reviews', icon: adminIcon.reviews },
   { key: 'audit', path: '/admin/audit', label: 'adm.nav.audit', icon: adminIcon.audit },
@@ -92,6 +96,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
   const quick: { path: string; label: MessageKey; icon: SafeHtml; badge?: number }[] = [
     { path: '/admin/doctors', label: 'adm.nav.doctors', icon: adminIcon.doctors, badge: s.doctorsPending },
     { path: '/admin/facilities', label: 'adm.nav.facilities', icon: adminIcon.facilities, badge: s.facilitiesPending },
+    { path: '/admin/issues', label: 'adm.nav.issues', icon: adminIcon.issues, badge: s.openIssues },
     { path: '/admin/accounts', label: 'adm.nav.accounts', icon: adminIcon.accounts },
     { path: '/admin/reviews', label: 'adm.nav.reviews', icon: adminIcon.reviews },
     { path: '/admin/audit', label: 'adm.nav.audit', icon: adminIcon.audit },
@@ -101,6 +106,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
     <h1>${ctx.t('adm.nav.dashboard')}</h1>
     ${s.doctorsPending ? alert('info', html`${ctx.t('adm.pendingAlert', { n: formatNumber(s.doctorsPending, ctx.locale) })} <a href="${href(ctx, '/admin/doctors')}">${ctx.t('admin.review')}</a>`) : ''}
     ${s.facilitiesPending ? alert('info', html`${ctx.t('adm.facPendingAlert', { n: formatNumber(s.facilitiesPending, ctx.locale) })} <a href="${href(ctx, '/admin/facilities')}">${ctx.t('admin.review')}</a>`) : ''}
+    ${s.openIssues ? alert('warning', html`${ctx.t('issue.openAlert', { n: formatNumber(s.openIssues, ctx.locale) })} <a href="${href(ctx, '/admin/issues')}">${ctx.t('admin.review')}</a>`) : ''}
     ${s.failedMessages ? alert('warning', html`${ctx.t('adm.failedAlert', { n: formatNumber(s.failedMessages, ctx.locale) })} <a href="${href(ctx, '/admin/messages')}">${ctx.t('adm.nav.messages')}</a>`) : ''}
     ${rangePicker(ctx, '/admin', range)}
     <section class="stack-sm" aria-labelledby="k-people"><h2 id="k-people" class="h3">${ctx.t('adm.groupPeople')}</h2>

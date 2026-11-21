@@ -155,7 +155,7 @@ test('admin pages fit a phone screen in Arabic and English and on desktop', asyn
     await page.locator('input[name=password]').fill(admin.password);
     await page.locator('form button[type=submit]').first().click();
     await page.waitForLoadState('load');
-    for (const path of ['/admin', '/admin/accounts?q=a', '/admin/audit', '/admin/messages', '/admin/doctors', '/admin/reviews', `/admin/doctors/${d.id}`]) {
+    for (const path of ['/admin', '/admin/accounts?q=a', '/admin/audit', '/admin/messages', '/admin/doctors', '/admin/reviews', '/admin/facilities', '/admin/issues', '/admin/strikes', `/admin/doctors/${d.id}`]) {
       await page.goto(h.baseUrl + lang + path);
       const overflow = await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth');
       assert.ok((overflow as number) <= 1, `${name} ${path} is ${String(overflow)}px too wide`);

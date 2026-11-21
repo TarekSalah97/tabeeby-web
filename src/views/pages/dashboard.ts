@@ -71,6 +71,10 @@ export function todayPage(
     noShows?: Map<string, number>;
     /** Live payment per appointment id. */
     payments?: Map<string, { id: string; amount: number; method: PaymentMethod }>;
+    /** Active strikes (cancellations of online bookings) and the limit at which online booking pauses. */
+    strikes?: { active: number; limit: number };
+    /** Confirmed bookings on this day (for "Can't work this day?"). */
+    confirmedToday?: number;
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
@@ -99,7 +103,36 @@ export function todayPage(
       ${csrfField(ctx)}<input type="hidden" name="to" value="${to}"><input type="hidden" name="date" value="${o.date}">
       <button type="submit" class="btn ${primary ? 'btn-primary action-main' : 'btn-outline btn-sm'}">${ctx.t(label)}</button></form>`;
 
+  // Cancelling a visit the patient booked online: say who asked, because only the clinic's own cancellations are strikes.
+  const cancelChoice = (a: DoctorDayAppointment) => html`<details class="cancel-choice"><summary class="btn btn-outline btn-sm">${ctx.t('action.cancel')}</summary>
+    <div class="stack-sm">
+      <form method="post" action="${href(ctx, `/dashboard/appointments/${a.id}/status`)}">${csrfField(ctx)}
+        <input type="hidden" name="to" value="cancelled"><input type="hidden" name="date" value="${o.date}"><input type="hidden" name="cancelKind" value="patient_request">
+        <button type="submit" class="btn btn-outline btn-sm">${ctx.t('strike.patientAsked')}</button></form>
+      <form method="post" action="${href(ctx, `/dashboard/appointments/${a.id}/status`)}">${csrfField(ctx)}
+        <input type="hidden" name="to" value="cancelled"><input type="hidden" name="date" value="${o.date}"><input type="hidden" name="cancelKind" value="clinic">
+        <button type="submit" class="btn btn-outline btn-sm danger">${ctx.t('strike.clinicCancels')}</button></form>
+      <p class="hint">${ctx.t('strike.cancelHint')}</p>
+    </div></details>`;
+  const strikes = o.strikes;
+  const strikeBanner = strikes && strikes.active
+    ? strikes.active >= strikes.limit
+      ? alert('error', ctx.t('strike.pausedBody'), ctx.t('strike.pausedTitle'))
+      : alert('warning', ctx.t('strike.countBody', { n: strikes.active, limit: strikes.limit }))
+    : '';
+  const isPast = o.date < todayIn(tz, ctx.deps.now());
+  const dayOff = !isPast && canBook
+    ? html`<details class="panel day-off"><summary class="h3">${ctx.t('dayoff.title')}</summary>
+        <form method="post" action="${href(ctx, '/dashboard/day-off')}" class="stack-sm">${csrfField(ctx)}
+          <input type="hidden" name="date" value="${o.date}">
+          <p class="muted">${ctx.t(o.confirmedToday ? 'dayoff.leadCount' : 'dayoff.leadNone', { n: o.confirmedToday ?? 0, day: dayLabel })}</p>
+          <div class="field"><label for="dayoff-reason">${ctx.t('dayoff.reason')}</label><input id="dayoff-reason" name="reason" maxlength="200" required></div>
+          <div><button type="submit" class="btn btn-outline danger">${ctx.t(o.confirmedToday ? 'dayoff.confirmCount' : 'dayoff.confirm', { n: o.confirmedToday ?? 0 })}</button></div>
+        </form></details>`
+    : '';
+
   const content = html`
+    ${strikeBanner}
     <div class="row-between">
       <div><h1>${ctx.t('dash.greeting', { name: doctor.full_name })}</h1><p class="muted">${dayLabel}</p></div>
       ${canBook ? html`<a class="btn btn-primary btn-lg" href="${href(ctx, '/dashboard/book', { date: o.date })}">${icon.plus}${ctx.t('cbook.add')}</a>` : ''}
@@ -143,7 +176,7 @@ export function todayPage(
                 <td class="cell-actions"><div class="row-wrap">
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
-                  ${a.status === 'confirmed' || a.status === 'arrived' ? actionForm(a, 'cancelled', 'action.cancel', false) : ''}
+                  ${a.status === 'confirmed' || a.status === 'arrived' ? (a.booked_by === 'patient' ? cancelChoice(a) : actionForm(a, 'cancelled', 'action.cancel', false)) : ''}
                   ${paidOf(a)
                     ? paidChip(ctx, paidOf(a)!, href(ctx, `/dashboard/appointments/${a.id}/receipt`))
                     : a.status === 'arrived' || a.status === 'in_consultation' || a.status === 'completed'
@@ -155,7 +188,8 @@ export function todayPage(
               </tr>`;
             })}</tbody></table></div>`
         : html`<p class="empty">${ctx.t('dash.noAppointments')}</p>`}
-    </section>`;
+    </section>
+    ${dayOff}`;
   return shell(ctx, doctor, 'today', content, o.notice);
 }
 

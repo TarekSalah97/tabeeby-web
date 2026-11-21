@@ -14,6 +14,8 @@ import { money } from './public.js';
 import { paidChip } from './payments.js';
 import { canReport, ISSUE_CATEGORIES, type IssueTarget } from '../../services/reliability.js';
 import type { VisitType } from '../../domain/visitPricing.js';
+import type { LiveVisit } from '../../services/queue.js';
+import { queueCard } from './queue.js';
 
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
 function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number }): SafeHtml {
@@ -61,11 +63,15 @@ export function appointmentsPage(
   ctx: Ctx,
   list: PatientAppointment[],
   waitlist: PatientWaitlistEntry[],
-  o: { notice?: MessageKey; error?: MessageKey; needsPassword?: boolean; issues?: Map<string, { status: 'open' | 'resolved'; note: string | null }> },
+  o: { notice?: MessageKey; error?: MessageKey; needsPassword?: boolean; issues?: Map<string, { status: 'open' | 'resolved'; note: string | null }>; live?: LiveVisit[] },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const now = ctx.deps.now().getTime();
-  const upcoming = list.filter((a) => a.starts_at.getTime() >= now && (a.status === 'confirmed' || a.status === 'arrived')).reverse();
+  // Today's visits stay "upcoming" while the patient is still waiting, even after the booked minute has passed.
+  const liveIds = new Set((o.live ?? []).map((v) => v.id));
+  const upcoming = list
+    .filter((a) => liveIds.has(a.id) || (a.starts_at.getTime() >= now && (a.status === 'confirmed' || a.status === 'arrived')))
+    .reverse();
   const past = list.filter((a) => !upcoming.includes(a));
   const district = (a: PatientAppointment) => (ctx.locale === 'ar' ? a.district_ar : a.district_en);
 
@@ -141,6 +147,7 @@ export function appointmentsPage(
       ? html`<div class="alert alert-info row-between" role="status"><span>${ctx.t('password.setPrompt')}</span>
           <a class="btn btn-primary btn-sm" href="${href(ctx, '/account/password')}">${ctx.t('password.setButton')}</a></div>`
       : ''}
+    ${o.live?.length ? html`<div class="stack">${o.live.map((v) => queueCard(ctx, v))}</div>` : ''}
     <section class="stack"><h2>${ctx.t('appts.upcoming')}</h2>
       ${upcoming.length ? html`<ul class="appt-list">${upcoming.map(upcomingRow)}</ul>`
         : html`<div class="empty"><p>${ctx.t('appts.none')}</p><a class="btn btn-primary btn-lg" href="${href(ctx, '/search')}">${ctx.t('appts.findDoctor')}</a></div>`}

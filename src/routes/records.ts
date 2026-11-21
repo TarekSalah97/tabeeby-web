@@ -1,9 +1,11 @@
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser } from '../http/context.js';
-import { sendHtml, redirect } from '../http/respond.js';
+import { sendHtml, sendJson, redirect } from '../http/respond.js';
+import { hitRateLimit } from '../auth/rateLimit.js';
+import { assist } from '../services/demoAssistant.js';
 import { fieldAll } from '../http/body.js';
-import { notFound } from '../http/errors.js';
+import { notFound, tooManyRequests } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { getOwnDoctor, type OwnDoctor } from '../services/doctors.js';
@@ -79,7 +81,45 @@ async function renderVisit(ctx: Ctx, d: { user: SessionUser; doctor: OwnDoctor }
   sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
 }
 
+/** Whole years between a YYYY-MM-DD birth date and now. */
+function ageYears(dob: string | null, now: Date): number | null {
+  if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
+  const [y, m, d] = dob.split('-').map(Number) as [number, number, number];
+  let age = now.getUTCFullYear() - y;
+  if (now.getUTCMonth() + 1 < m || (now.getUTCMonth() + 1 === m && now.getUTCDate() < d)) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+const ASSIST_FIELD_MAX = 4000;
+const ASSIST_PER_HOUR = 60;
+
 export function recordsRoutes(r: Router): void {
+  // ---- DEMO ONLY: the fictional "Tabeeby AI" diagnosis helper. Does not exist on the live site.
+  // The notes are read for this one request and never stored or logged.
+  r.post('/dashboard/ai-assist', async (ctx) => {
+    if (!ctx.deps.cfg.DEMO_MODE) throw notFound();
+    const own = await recordsDoctor(ctx);
+    if (!own) return;
+    if (!(await hitRateLimit(ctx.deps.db, `ai-assist:${own.user.id}`, ASSIST_PER_HOUR, 3600))) throw tooManyRequests();
+    const recordId = formValue(ctx, 'record');
+    if (!isUuid(recordId)) throw notFound();
+    const record = await getRecord(ctx.deps.db, own.user.id, recordId); // scoped to this doctor's own patients
+    const field = (name: string) => formValue(ctx, name).slice(0, ASSIST_FIELD_MAX);
+    sendJson(ctx, 200, assist({
+      complaint: field('complaint'),
+      history: field('history'),
+      examination: field('examination'),
+      patient: {
+        ageYears: ageYears(record.date_of_birth, ctx.deps.now()),
+        sex: record.sex,
+        allergies: record.allergies,
+        habits: record.habits,
+        chronic: record.chronic_conditions,
+        medications: record.current_medications,
+      },
+    }));
+  });
+
   // ---- doctor: patient files
   r.get('/dashboard/patients', async (ctx) => {
     const d = await recordsDoctor(ctx);

@@ -256,10 +256,13 @@ export async function changeStatus(
     if (problem) throw new DomainError(problem);
     await tx.query(
       `update appointments set status = $2, updated_at = now(),
+              arrived_at = case when $2 = 'arrived' then $4::timestamptz else arrived_at end,
+              consult_started_at = case when $2 = 'in_consultation' then $4::timestamptz else consult_started_at end,
+              completed_at = case when $2 = 'completed' then $4::timestamptz else completed_at end,
               cancelled_by = case when $2 = 'cancelled' then $3 else cancelled_by end,
               cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
         where id = $1`,
-      [appt.id, to, patientAsked ? 'patient' : actorKind],
+      [appt.id, to, patientAsked ? 'patient' : actorKind, deps.now()],
     );
     // A doctor cancelling a visit the patient booked online is a strike (the patient can report it if it was unfair).
     if (to === 'cancelled' && actorKind === 'doctor' && !patientAsked && appt.booked_by === 'patient') {

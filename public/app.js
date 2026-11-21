@@ -201,3 +201,104 @@
     refresh();
   });
 })();
+
+// Live waiting-time page: reload every N seconds while the tab is visible (no reload in a hidden tab).
+(function () {
+  var el = document.querySelector('[data-autorefresh]');
+  if (!el) return;
+  var secs = Math.max(30, parseInt(el.getAttribute('data-autorefresh'), 10) || 60);
+  setInterval(function () { if (document.visibilityState === 'visible') location.reload(); }, secs * 1000);
+})();
+
+// DEMO ONLY: the fictional "Tabeeby AI" diagnosis helper on the visit notes form.
+// Results are built with textContent (never innerHTML), and nothing is added to the notes
+// unless the doctor presses "Add".
+(function () {
+  var panels = document.querySelectorAll('[data-ai-assist]');
+  Array.prototype.forEach.call(panels, function (panel) {
+    var form = panel.closest('form');
+    var btn = panel.querySelector('[data-ai-run]');
+    var out = panel.querySelector('.ai-out');
+    if (!form || !btn || !out) return;
+    var L = function (k) { return panel.getAttribute('data-l-' + k) || ''; };
+    var field = function (name) { var el = form.querySelector('[name="' + name + '"]'); return el ? el.value : ''; };
+    var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    function append(name, text) {
+      var ta = form.querySelector('[name="' + name + '"]');
+      if (!ta) return;
+      ta.value = ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' + text : text;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function list(title, items, cls) {
+      if (!items || !items.length) return null;
+      var box = el('div', 'ai-block' + (cls ? ' ' + cls : ''));
+      box.appendChild(el('h4', null, title));
+      var ul = el('ul');
+      items.forEach(function (x) { ul.appendChild(el('li', null, x)); });
+      box.appendChild(ul);
+      return box;
+    }
+    function render(r) {
+      out.textContent = '';
+      if (!r.matched) {
+        out.appendChild(el('p', 'muted', L('none')));
+      } else {
+        var dx = el('div', 'ai-block');
+        dx.appendChild(el('h4', null, L('ddx')));
+        var ul = el('ul', 'ai-ddx');
+        r.suggestions.forEach(function (s) {
+          var li = el('li', 'ai-ddx-item');
+          var top = el('div', 'ai-ddx-top');
+          top.appendChild(el('span', 'ai-level ai-' + s.likelihood, L(s.likelihood)));
+          top.appendChild(el('strong', null, s.condition));
+          li.appendChild(top);
+          li.appendChild(el('span', 'small muted', s.why));
+          var add = el('button', 'btn btn-ghost btn-sm', L('add-dx'));
+          add.type = 'button';
+          add.addEventListener('click', function () { append('diagnosis', s.condition); add.textContent = L('added'); add.disabled = true; });
+          li.appendChild(add);
+          ul.appendChild(li);
+        });
+        dx.appendChild(ul);
+        out.appendChild(dx);
+        var tests = list(L('tests'), r.tests);
+        if (tests) {
+          var addPlan = el('button', 'btn btn-ghost btn-sm', L('add-plan'));
+          addPlan.type = 'button';
+          addPlan.addEventListener('click', function () { append('plan', r.tests.join(', ')); addPlan.textContent = L('added'); addPlan.disabled = true; });
+          tests.appendChild(addPlan);
+          out.appendChild(tests);
+        }
+        [list(L('flags'), r.redFlags, 'ai-flags'), list(L('ask'), r.questions)].forEach(function (b) { if (b) out.appendChild(b); });
+      }
+      var c = list(L('cautions'), r.cautions, 'ai-cautions');
+      if (c) out.appendChild(c);
+    }
+    btn.addEventListener('click', function () {
+      var csrf = form.querySelector('input[name="_csrf"]');
+      var body = new URLSearchParams();
+      body.set('_csrf', csrf ? csrf.value : '');
+      body.set('record', panel.getAttribute('data-record') || '');
+      body.set('complaint', field('complaint'));
+      body.set('history', field('history'));
+      body.set('examination', field('examination'));
+      btn.disabled = true;
+      out.textContent = '';
+      var steps = L('steps').split('|');
+      var thinking = el('p', 'ai-thinking', steps[0]);
+      out.appendChild(thinking);
+      var i = 0;
+      var timer = setInterval(function () { i = Math.min(i + 1, steps.length - 1); thinking.textContent = steps[i]; }, 450);
+      var request = fetch(panel.getAttribute('data-url'), {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body: body.toString(),
+      }).then(function (res) { if (!res.ok) throw new Error(String(res.status)); return res.json(); });
+      // A short pause so the "thinking" steps can be read (it is a demo).
+      var pause = new Promise(function (ok) { setTimeout(ok, 1400); });
+      Promise.all([request, pause]).then(function (v) { render(v[0]); })
+        .catch(function () { out.textContent = ''; out.appendChild(el('p', 'field-error', L('error'))); })
+        .then(function () { clearInterval(timer); btn.disabled = false; });
+    });
+  });
+})();

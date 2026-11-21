@@ -321,11 +321,31 @@ export interface NotesValues {
   plan: string;
 }
 
-function notesFields(ctx: Ctx, v: Partial<NotesValues>, errors: FieldErrors | undefined, idPrefix = ''): SafeHtml {
+/**
+ * DEMO ONLY: the fictional "Tabeeby AI" panel. It reads the notes above when the doctor asks and
+ * suggests possibilities; the doctor decides what, if anything, goes into the diagnosis or plan.
+ */
+function demoAssistantPanel(ctx: Ctx, recordId: string): SafeHtml {
+  if (!ctx.deps.cfg.DEMO_MODE) return html``;
+  const t = (k: MessageKey) => ctx.t(k);
+  return html`<div class="ai-panel" data-ai-assist data-url="${href(ctx, '/dashboard/ai-assist')}" data-record="${recordId}"
+      data-l-steps="${[t('ai.step1'), t('ai.step2'), t('ai.step3')].join('|')}" data-l-ddx="${t('ai.ddx')}" data-l-tests="${t('ai.tests')}"
+      data-l-flags="${t('ai.flags')}" data-l-ask="${t('ai.ask')}" data-l-cautions="${t('ai.cautions')}" data-l-none="${t('ai.none')}"
+      data-l-error="${t('ai.error')}" data-l-add-dx="${t('ai.addDx')}" data-l-add-plan="${t('ai.addPlan')}" data-l-added="${t('ai.added')}"
+      data-l-high="${t('ai.high')}" data-l-medium="${t('ai.medium')}" data-l-low="${t('ai.low')}">
+    <div class="ai-head"><span class="ai-mark" aria-hidden="true">✦</span><strong>${t('ai.title')}</strong><span class="chip ai-chip">${t('ai.demoChip')}</span></div>
+    <p class="small muted">${t('ai.lead')}</p>
+    <div><button type="button" class="btn btn-outline btn-sm" data-ai-run>${t('ai.run')}</button></div>
+    <div class="ai-out" aria-live="polite"></div>
+  </div>`;
+}
+
+function notesFields(ctx: Ctx, v: Partial<NotesValues>, errors: FieldErrors | undefined, idPrefix = '', recordId?: string): SafeHtml {
   return html`
     ${textArea(ctx, { idPrefix, name: 'complaint', label: ctx.t('visit.complaint'), value: v.complaint, rows: 2, maxlength: 500, required: true, errors, hint: ctx.t('visit.complaintHint') })}
     ${textArea(ctx, { idPrefix, name: 'history', label: ctx.t('visit.historyField'), value: v.history, rows: 3, maxlength: 4000, hint: ctx.t('visit.historyHint') })}
     ${textArea(ctx, { idPrefix, name: 'examination', label: ctx.t('visit.examination'), value: v.examination, rows: 3, maxlength: 4000, hint: ctx.t('visit.examinationHint') })}
+    ${recordId ? demoAssistantPanel(ctx, recordId) : ''}
     ${textArea(ctx, { idPrefix, name: 'diagnosis', label: ctx.t('visit.diagnosis'), value: v.diagnosis, rows: 2, maxlength: 1000 })}
     ${textArea(ctx, { idPrefix, name: 'plan', label: ctx.t('visit.plan'), value: v.plan, rows: 3, maxlength: 4000, hint: ctx.t('visit.planHint') })}`;
 }
@@ -347,7 +367,7 @@ export function newVisitPage(
       ${o.appointmentId ? html`<input type="hidden" name="appointment" value="${o.appointmentId}">` : ''}
       ${o.errors?.general ? alert('error', ctx.t(o.errors.general)) : ''}
       ${o.errors && (o.errors.fields || o.errors.rx || o.errors.lab) ? alert('error', ctx.t('visit.err.nothingSaved')) : ''}
-      <section class="panel stack"><h2>${ctx.t('visit.notes')}</h2>${notesFields(ctx, o.notes ?? {}, o.errors?.fields)}</section>
+      <section class="panel stack"><h2>${ctx.t('visit.notes')}</h2>${notesFields(ctx, o.notes ?? {}, o.errors?.fields, '', r.id)}</section>
       <section class="panel stack"><h2>${ctx.t('rx.title')}</h2><p class="hint">${ctx.t('rx.lead')}</p>${rxFields(ctx, o.rx, o.errors?.rx)}</section>
       <section class="panel stack"><h2>${ctx.t('lab.title')}</h2><p class="hint">${ctx.t('lab.lead')}</p>${labFields(ctx, o.lab, o.errors?.lab)}</section>
       <div class="row-wrap"><button class="btn btn-primary btn-lg" type="submit">${ctx.t('visit.save')}</button>
@@ -421,7 +441,7 @@ export function visitPage(
       ${v.updated_at.getTime() - v.created_at.getTime() > 1000 ? html`<p class="hint">${ctx.t('visit.edited', { date: formatDateTime(v.updated_at, ctx.locale, tz) })}</p>` : ''}
       <details${attrIf(!!o.notesErrors, 'open')}><summary class="btn btn-outline btn-sm">${ctx.t('visit.editNotes')}</summary>
         <form method="post" action="${href(ctx, `/dashboard/visits/${v.id}`)}" class="stack" novalidate>${csrfField(ctx)}
-          ${notesFields(ctx, notes, o.notesErrors, 'edit-')}
+          ${notesFields(ctx, notes, o.notesErrors, 'edit-', r.id)}
           <div><button class="btn btn-primary" type="submit">${ctx.t('common.save')}</button></div></form>
       </details>
     </section>

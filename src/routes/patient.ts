@@ -15,6 +15,8 @@ import { issueTarget, patientIssues, reportIssue } from '../services/reliability
 import { receiptPage } from '../views/pages/payments.js';
 import { getReviewTarget, parseRating, submitReview } from '../services/reviews.js';
 import { joinWaitlist, leaveWaitlist, listPatientWaitlist } from '../services/waitlist.js';
+import { liveVisit, todaysLiveVisits } from '../services/queue.js';
+import { queuePage } from '../views/pages/queue.js';
 import { DomainError, badRequest } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
 import { isMessageKey, type MessageKey } from '../i18n/index.js';
@@ -207,13 +209,20 @@ export function patientRoutes(r: Router): void {
   r.get('/appointments', async (ctx) => {
     if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
     const user = ctx.user;
-    const [list, waitlist, pw, issues] = await Promise.all([
+    const [list, waitlist, pw, issues, live] = await Promise.all([
       listPatientAppointments(ctx.deps.db, user.id),
       listPatientWaitlist(ctx.deps, user.id),
       hasPassword(ctx.deps, user.id),
       patientIssues(ctx.deps.db, user.id),
+      todaysLiveVisits(ctx.deps, user.id),
     ]);
-    sendHtml(ctx, 200, appointmentsPage(ctx, list, waitlist, { notice: noticeFrom(ctx), error: errorFrom(ctx), needsPassword: !pw, issues }));
+    sendHtml(ctx, 200, appointmentsPage(ctx, list, waitlist, { notice: noticeFrom(ctx), error: errorFrom(ctx), needsPassword: !pw, issues, live }));
+  });
+
+  // Live waiting time for one of the patient's visits (Talabat-style tracker).
+  r.get('/appointments/:id/wait', async (ctx) => {
+    if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'appointments', ctx.path));
+    sendHtml(ctx, 200, queuePage(ctx, await liveVisit(ctx.deps, ctx.user.id, uuidParam(ctx, 'id'))));
   });
 
   // Verified reviews: only the patient of a completed visit can rate it.

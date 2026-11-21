@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -422,7 +422,7 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
       <h1>${v.source ? ctx.t('cbook.followUpTitle', { name: v.source.name }) : ctx.t('cbook.title')}</h1>
       <p class="muted">${v.source ? ctx.t('cbook.followUpLead', { date: formatDate(v.source.startsAt, ctx.locale, tz) }) : ctx.t('cbook.lead')}</p>
     </div>
-    ${v.error ? alert('error', ctx.t(v.error)) : v.errors && Object.keys(v.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+    ${v.error ? alert('error', ctx.t(v.error)) : errorSummary(ctx, v.errors)}
     <section class="panel stack">
       <h2 class="h3">${ctx.t('cbook.step1')}</h2>
       <div class="row-wrap">${quick.map((q) => {

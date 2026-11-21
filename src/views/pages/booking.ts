@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, icon, input, statusChip, starRow } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, icon, input, statusChip, starRow, errorSummary } from '../components.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import { formatDate, formatTime, formatShortDate, type MessageKey } from '../../i18n/index.js';
 import type { BookingTarget, PatientAppointment } from '../../services/booking.js';
@@ -211,7 +211,7 @@ export function guestConfirmPage(
       ${hasAccountError
         ? alert('warning', html`${ctx.t('guest.signInInstead')} <a href="${href(ctx, '/login', { next: bookUrl })}">${ctx.t('nav.signIn')}</a>`)
         : o.errors && Object.keys(o.errors).length
-          ? alert('error', ctx.t('common.fixErrors'))
+          ? errorSummary(ctx, o.errors)
           : ''}
       <form method="post" action="${href(ctx, '/book/guest')}" class="stack" novalidate>
         ${csrfField(ctx)}

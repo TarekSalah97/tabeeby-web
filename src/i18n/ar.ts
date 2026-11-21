@@ -1199,4 +1199,6 @@ export const ar: Record<keyof typeof en, string> = {
   'strike.waiveNote': "لماذا يُلغى؟",
   'strike.waived': "ملغى",
   'strike.waivedDone': "تم إلغاء الإنذار.",
+  'common.reenterFile': "حفاظًا على أمانك، اكتب كلمة المرور واختر الملف مرة أخرى.",
+  'common.reenterPassword': "حفاظًا على أمانك، اكتب كلمة المرور مرة أخرى.",
 };

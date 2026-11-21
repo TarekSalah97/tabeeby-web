@@ -165,7 +165,7 @@ export function consentField(ctx: Ctx, errors: FieldErrors | undefined, suffix?:
   const err = errors?.['consent'];
   return html`<div class="field${err ? ' has-error' : ''}">
     <label class="check">
-      <input type="checkbox" name="consent" value="yes" required${attrIf(!!err, 'aria-invalid="true"')}>
+      <input type="checkbox" id="consent" name="consent" value="yes" required${attrIf(!!err, 'aria-invalid="true"')}>
       <span>${ctx.t('auth.consentPrefix')} <a href="${href(ctx, '/terms')}">${ctx.t('auth.terms')}</a> ${ctx.t('auth.and')}
       <a href="${href(ctx, '/privacy')}">${ctx.t('auth.privacy')}</a>${suffix ? html` ${suffix}` : '.'}</span>
     </label>
@@ -210,4 +210,20 @@ export function starRow(ctx: Ctx, rating: number): SafeHtml {
 export function directionsHref(address: string, district: string): string {
   const q = [address, district, 'Egypt'].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+/**
+ * "Please fix the highlighted fields" plus a list of each problem, linking to its field,
+ * so nobody has to hunt for a red field lower down the page. Passwords and chosen files
+ * are cleared by the browser after an error, so the summary also says to re-enter them.
+ */
+export function errorSummary(ctx: Ctx, errors: FieldErrors | undefined, o: { idPrefix?: string; reenter?: ('password' | 'file')[] } = {}): SafeHtml {
+  const entries = Object.entries(errors ?? {}).filter((e): e is [string, MessageKey] => !!e[1]);
+  if (!entries.length) return html``;
+  const reenter = (o.reenter ?? []).filter((r) => r === 'file' || !entries.some(([k]) => k === 'password'));
+  return html`<div class="alert alert-error error-summary" role="alert" tabindex="-1">
+    <strong class="alert-title">${ctx.t('common.fixErrors')}</strong>
+    <ul>${entries.map(([name, key]) => html`<li><a href="#${o.idPrefix ?? ''}${name}">${ctx.t(key)}</a></li>`)}</ul>
+    ${reenter.length ? html`<p class="small">${ctx.t(reenter.includes('file') ? 'common.reenterFile' : 'common.reenterPassword')}</p>` : ''}
+  </div>`;
 }

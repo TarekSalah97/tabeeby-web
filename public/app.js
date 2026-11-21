@@ -68,3 +68,12 @@
     });
   }
 })();
+
+// After a form error, bring the list of problems into view so the user sees what to fix.
+(function () {
+  var summary = document.querySelector('.error-summary');
+  if (summary) {
+    summary.scrollIntoView({ block: 'start' });
+    summary.focus({ preventScroll: true });
+  }
+})();

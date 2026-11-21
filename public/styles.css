@@ -683,3 +683,6 @@ details.day-off > summary::-webkit-details-marker { display: none; }
 .plain-list { list-style: none; margin: 0; padding: 0; }
 .choice-list { display: grid; gap: 6px; }
 .choice-list .check { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; }
+.error-summary ul { margin: 6px 0 0; padding-inline-start: 20px; }
+.error-summary a { color: inherit; font-weight: 600; }
+.error-summary p { margin: 8px 0 0; }

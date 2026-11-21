@@ -1196,4 +1196,6 @@ export const en = {
   'strike.waiveNote': "Why is it waived?",
   'strike.waived': "Waived",
   'strike.waivedDone': "Strike waived.",
+  'common.reenterFile': "For your security, please type your password and choose your file again.",
+  'common.reenterPassword': "For your security, please type your password again.",
 } as const;

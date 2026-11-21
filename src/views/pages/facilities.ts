@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary } from '../components.js';
 import { pick, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
@@ -43,7 +43,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
       <h1>${ctx.t('facjoin.title')}</h1>
       <p class="muted">${ctx.t('facjoin.lead')}</p>
     </div>
-    ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+    ${errorSummary(ctx, o.errors, { reenter: ['password', 'file'] })}
     <form class="panel stack-lg" method="post" action="${href(ctx, '/facilities/join')}" enctype="multipart/form-data" novalidate>
       ${csrfField(ctx)}
       <fieldset class="stack-sm">
@@ -220,7 +220,7 @@ export function facilityPricesPage(
   const groups = testGroupsFor(f.kind);
   const content = html`
     <div><h1>${ctx.t('facdash.nav.prices')}</h1><p class="muted">${ctx.t('facdash.pricesLead')}</p></div>
-    ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+    ${errorSummary(ctx, o.errors)}
     <form method="post" action="${href(ctx, '/facility/prices')}" class="panel stack" novalidate>
       ${csrfField(ctx)}
       ${groups.map(

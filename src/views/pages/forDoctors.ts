@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select } from '../components.js';
+import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary } from '../components.js';
 import { pick, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -67,7 +67,7 @@ export function joinPage(ctx: Ctx, ref: ReferenceData, o: { values?: Record<stri
     </div>
     <form class="panel stack-lg" method="post" action="${href(ctx, '/for-doctors/join')}" enctype="multipart/form-data" novalidate>
       ${csrfField(ctx)}
-      ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+      ${errorSummary(ctx, o.errors, { reenter: ['password', 'file'] })}
       <fieldset class="form-grid">
         <legend>${ctx.t('join.account')}</legend>
         ${input(ctx, { name: 'fullName', label: ctx.t('auth.fullName'), value: str('fullName'), hint: ctx.t('join.fullNameHint'), autocomplete: 'name', maxlength: 120, errors: o.errors, required: true })}

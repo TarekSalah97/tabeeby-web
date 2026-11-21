@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml, type HtmlValue } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href, alternateHref } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, input, select, fieldError } from '../components.js';
+import { alert, csrfField, input, select, fieldError, errorSummary } from '../components.js';
 import { formatFullDate as formatDate, formatFullDateTime as formatDateTime, formatNumber, pick, type MessageKey } from '../../i18n/index.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { OwnDoctor } from '../../services/doctors.js';
@@ -168,7 +168,7 @@ export function newRecordPage(
     <form method="post" action="${href(ctx, '/dashboard/patients')}" class="panel stack-lg" novalidate>
       ${csrfField(ctx)}
       ${appt ? html`<input type="hidden" name="appointment" value="${appt.appointmentId}">` : ''}
-      ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+      ${errorSummary(ctx, o.errors)}
       ${recordFields(ctx, o.values, o.habits, o.errors)}
       <div class="field${o.errors?.['consent'] ? ' has-error' : ''}">
         <label class="check"><input type="checkbox" name="consent" value="yes" required${attrIf(o.values['consent'] === 'yes', 'checked')}><span>${ctx.t('records.consent')}</span></label>
@@ -185,7 +185,7 @@ export function editRecordPage(ctx: Ctx, doctor: OwnDoctor, r: PatientRecord, o:
     <h1>${ctx.t('records.edit')}</h1>
     <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}`)}" class="panel stack-lg" novalidate>
       ${csrfField(ctx)}
-      ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+      ${errorSummary(ctx, o.errors)}
       ${recordFields(ctx, o.values, o.habits, o.errors)}
       <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('common.save')}</button></div>
     </form>`;

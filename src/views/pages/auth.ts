@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, icon, input, passwordInput } from '../components.js';
+import { alert, consentField, csrfField, icon, input, passwordInput, errorSummary } from '../components.js';
 import { emailEnabled } from '../../config.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { MessageKey } from '../../i18n/index.js';
@@ -37,7 +37,7 @@ export function signupPage(ctx: Ctx, o: { values?: Record<string, string>; error
     <div class="auth-card">
       <h1>${ctx.t('auth.signUpTitle')}</h1>
       <p class="muted">${ctx.t('auth.signUpLead')}</p>
-      ${o.errors && Object.keys(o.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+      ${errorSummary(ctx, o.errors, { reenter: ['password'] })}
       <form method="post" action="${href(ctx, '/signup')}" class="stack" novalidate>
         ${csrfField(ctx)}
         ${o.next ? html`<input type="hidden" name="next" value="${o.next}">` : ''}

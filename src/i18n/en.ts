@@ -1220,4 +1220,9 @@ export const en = {
   'doctor.ownerPreview': "This is how patients see your page.",
   'doctor.backToDashboard': "Back to dashboard",
   'doctor.editProfile': "Edit profile",
+  'dictate.start': "Dictate",
+  'dictate.stop': "Stop",
+  'dictate.otherLang': "Switch dictation language",
+  'dictate.denied': "Microphone blocked. Allow it in your browser settings to dictate.",
+  'dictate.note': "Dictation uses your browser’s speech service (Chrome: Google, Safari: Apple). Check the text before saving.",
 } as const;

@@ -1223,4 +1223,9 @@ export const ar: Record<keyof typeof en, string> = {
   'doctor.ownerPreview': "هكذا يرى المرضى صفحتك.",
   'doctor.backToDashboard': "العودة إلى لوحة التحكم",
   'doctor.editProfile': "تعديل الصفحة",
+  'dictate.start': "إملاء صوتي",
+  'dictate.stop': "إيقاف",
+  'dictate.otherLang': "تغيير لغة الإملاء",
+  'dictate.denied': "الميكروفون محظور. اسمح به من إعدادات المتصفح للإملاء.",
+  'dictate.note': "يستخدم الإملاء خدمة الكلام في متصفحك (Chrome: جوجل، Safari: أبل). راجع النص قبل الحفظ.",
 };

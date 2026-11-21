@@ -693,3 +693,6 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .photo-panel input[type=file] { max-width: 100%; }
 .owner-bar { padding-block-start: 16px; }
 .owner-bar .alert { align-items: center; flex-wrap: wrap; gap: 10px; }
+.dictate-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-block-start: 6px; }
+.dictate-bar [aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: #fff; }
+.dictate-live { font-style: italic; }

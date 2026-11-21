@@ -64,7 +64,8 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
   return http.createServer((req, res) => {
     const started = Date.now();
     const requestId = crypto.randomBytes(6).toString('hex');
-    applySecurityHeaders(res, https);
+    const path = (req.url ?? '').split('?')[0] ?? '';
+    applySecurityHeaders(res, https, path.startsWith('/dashboard') || path.startsWith('/en/dashboard'));
     if (deps.cfg.DEMO_MODE) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     void handle(req, res).finally(() => {
       log.info('request', { id: requestId, method: req.method, route: (res as { route?: string }).route ?? (req.url?.startsWith('/static/') ? 'static' : 'unmatched'), status: res.statusCode, ms: Date.now() - started });

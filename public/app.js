@@ -77,3 +77,96 @@
     summary.focus({ preventScroll: true });
   }
 })();
+
+// Doctor dictation: a microphone button on patient-file text boxes. Uses the browser's own
+// speech-to-text (Chrome sends audio to Google, Safari to Apple); the text only lands in the box,
+// and nothing is saved until the doctor presses Save. Hidden where the browser cannot do it.
+(function () {
+  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var boxes = document.querySelectorAll('textarea[data-dictate]');
+  if (!Recognition || !boxes.length) return;
+  var active = null; // { rec, button, box }
+  var noteShown = false;
+
+  function stop() {
+    if (!active) return;
+    try { active.rec.stop(); } catch (e) { /* already stopped */ }
+    active.button.setAttribute('aria-pressed', 'false');
+    active.button.textContent = '🎤 ' + active.box.getAttribute('data-dictate-start');
+    active = null;
+  }
+
+  Array.prototype.forEach.call(boxes, function (box) {
+    var bar = document.createElement('div');
+    bar.className = 'dictate-bar';
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-outline btn-sm';
+    button.setAttribute('aria-pressed', 'false');
+    button.textContent = '🎤 ' + box.getAttribute('data-dictate-start');
+    var lang = box.getAttribute('data-dictate-lang');
+    var switcher = document.createElement('button');
+    switcher.type = 'button';
+    switcher.className = 'btn btn-ghost btn-sm';
+    var otherLabel = box.getAttribute('data-dictate-other');
+    function langLabel() { return lang === 'ar-EG' ? 'عربي ⇄ English' : 'English ⇄ عربي'; }
+    switcher.textContent = langLabel();
+    switcher.setAttribute('aria-label', otherLabel);
+    switcher.addEventListener('click', function () {
+      lang = lang === 'ar-EG' ? 'en-US' : 'ar-EG';
+      switcher.textContent = langLabel();
+      if (active && active.box === box) { stop(); button.click(); }
+    });
+    var live = document.createElement('span');
+    live.className = 'hint dictate-live';
+    live.setAttribute('aria-live', 'polite');
+    bar.appendChild(button);
+    bar.appendChild(switcher);
+    bar.appendChild(live);
+    box.parentNode.insertBefore(bar, box.nextSibling);
+    if (!noteShown) {
+      var note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = box.getAttribute('data-dictate-note');
+      bar.parentNode.insertBefore(note, bar.nextSibling);
+      noteShown = true;
+    }
+
+    button.addEventListener('click', function () {
+      if (active && active.box === box) { stop(); return; }
+      stop();
+      var rec = new Recognition();
+      rec.lang = lang;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = function (event) {
+        var interim = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+          var text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            var sep = box.value && !/\s$/.test(box.value) ? ' ' : '';
+            var max = Number(box.getAttribute('maxlength')) || 100000;
+            box.value = (box.value + sep + text.trim()).slice(0, max);
+            box.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            interim += text;
+          }
+        }
+        live.textContent = interim;
+      };
+      rec.onerror = function (event) {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') live.textContent = box.getAttribute('data-dictate-denied');
+        stop();
+      };
+      rec.onend = function () { if (active && active.rec === rec) { live.textContent = ''; stop(); } };
+      try {
+        rec.start();
+        active = { rec: rec, button: button, box: box };
+        button.setAttribute('aria-pressed', 'true');
+        button.textContent = '⏹ ' + box.getAttribute('data-dictate-stop');
+        box.focus();
+      } catch (e) { stop(); }
+    });
+  });
+  window.addEventListener('pagehide', stop);
+})();

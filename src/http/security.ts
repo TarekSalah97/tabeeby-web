@@ -18,12 +18,13 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 
-export function applySecurityHeaders(res: ServerResponse, https: boolean): void {
+/** micAllowed: only the doctor dashboard may use the microphone (voice dictation of notes). */
+export function applySecurityHeaders(res: ServerResponse, https: boolean, micAllowed = false): void {
   res.setHeader('Content-Security-Policy', CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Permissions-Policy', `camera=(), microphone=${micAllowed ? '(self)' : '()'}, geolocation=(), payment=()`);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (https) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');

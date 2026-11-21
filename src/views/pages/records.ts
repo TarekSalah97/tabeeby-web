@@ -30,6 +30,8 @@ function textArea(ctx: Ctx, o: { name: string; label: string; value?: string | n
   return html`<div class="field${err ? ' has-error' : ''}">
     <label for="${id}">${o.label}</label>
     <textarea id="${id}" name="${o.name}" rows="${o.rows ?? 3}" maxlength="${o.maxlength}"${attrIf(!!o.required, 'required')}${attrIf(!!err, 'aria-invalid="true"')}
+      data-dictate data-dictate-start="${ctx.t('dictate.start')}" data-dictate-stop="${ctx.t('dictate.stop')}" data-dictate-note="${ctx.t('dictate.note')}"
+      data-dictate-lang="${ctx.locale === 'ar' ? 'ar-EG' : 'en-US'}" data-dictate-other="${ctx.t('dictate.otherLang')}" data-dictate-denied="${ctx.t('dictate.denied')}"
       ${described ? html`aria-describedby="${described}"` : ''}>${o.value ?? ''}</textarea>
     ${o.hint ? html`<p class="hint" id="${id}-hint">${o.hint}</p>` : ''}
     ${fieldError(ctx, o.errors, o.name, id)}

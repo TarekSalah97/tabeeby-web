@@ -321,3 +321,45 @@ test('doctor records a payment on a phone (Arabic) and opens the income page', a
   if (shots) await page.screenshot({ path: `${shots}/income-phone.png`, fullPage: true });
   await page.close();
 });
+
+test('doctor dictates into a patient-file box (simulated speech service); microphone allowed only on the dashboard', async () => {
+  const d = await createApprovedDoctor(h.db);
+  await h.db.query('update doctors set records_enabled = true where user_id = $1', [d.id]);
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.addInitScript({
+    content: `window.SpeechRecognition = window.webkitSpeechRecognition = function () {
+      var self = this;
+      this.start = function () {
+        window.__dictateLang = self.lang;
+        setTimeout(function () {
+          var result = [{ transcript: 'حساسية من البنسلين' }];
+          result.isFinal = true;
+          self.onresult && self.onresult({ resultIndex: 0, results: [result] });
+        }, 50);
+      };
+      this.stop = function () { self.onend && self.onend(); };
+    };`,
+  });
+  await page.goto(h.baseUrl + '/login');
+  await page.locator('input[name=phone]').fill('0' + d.phone.slice(3));
+  await page.locator('input[name=password]').fill(d.password);
+  await page.locator('form button[type=submit]').first().click();
+  await page.waitForLoadState('load');
+  const res = await page.goto(h.baseUrl + '/dashboard/patients/new');
+  assert.match(res!.headers()['permissions-policy'] ?? '', /microphone=\(self\)/);
+  const mic = page.getByRole('button', { name: /إملاء صوتي/ }).first();
+  await mic.click();
+  let dictated = '';
+  for (let i = 0; i < 40 && !dictated.includes('البنسلين'); i++) {
+    await page.waitForTimeout(100);
+    dictated = await page.locator('textarea[name=allergies]').inputValue();
+  }
+  assert.match(dictated, /حساسية من البنسلين/);
+  assert.equal(await page.evaluate(() => (window as unknown as { __dictateLang: string }).__dictateLang), 'ar-EG');
+  assert.match(await page.content(), /Chrome: جوجل/);
+  const overflow = (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+  assert.ok(overflow <= 1, `too wide ${overflow}`);
+  const pub = await page.goto(h.baseUrl + '/');
+  assert.match(pub!.headers()['permissions-policy'] ?? '', /microphone=\(\)/);
+  await page.close();
+});

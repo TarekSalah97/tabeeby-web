@@ -10,6 +10,7 @@ import { isValidDate } from '../domain/time.js';
 import { errorFrom, noticeFrom } from './helpers.js';
 import { listDoctorReviews } from '../services/reviews.js';
 import { fullDays, waitingDates } from '../services/waitlist.js';
+import { messageButtonState } from '../services/messaging.js';
 import { recentDoctors, nextVisit } from '../services/patientHome.js';
 
 export function publicRoutes(r: Router): void {
@@ -62,15 +63,16 @@ export function publicRoutes(r: Router): void {
     const days = groupDays(slots);
     const requestedDate = ctx.query.get('date') ?? '';
     const date = isValidDate(requestedDate) && days.some((d) => d.date === requestedDate) ? requestedDate : (days[0]?.date ?? '');
-    const [reviews, full, waiting] = await Promise.all([
+    const [reviews, full, waiting, message] = await Promise.all([
       listDoctorReviews(ctx.deps.db, doctor.id),
       clinicId ? fullDays(ctx.deps, ctx.deps.db, doctor.id, clinicId) : Promise.resolve([]),
       clinicId && ctx.user?.role === 'patient' ? waitingDates(ctx.deps, ctx.user.id, clinicId) : Promise.resolve([]),
+      ctx.user?.role === 'patient' ? messageButtonState(ctx.deps, ctx.user.id, doctor.id) : Promise.resolve('hidden' as const),
     ]);
     sendHtml(
       ctx,
       200,
-      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: full, waiting }, reviews),
+      profilePage(ctx, ref, doctor, { clinicId, date, slots, days, error: errorFrom(ctx), notice: noticeFrom(ctx), fullDays: full, waiting, message }, reviews),
     );
   });
 

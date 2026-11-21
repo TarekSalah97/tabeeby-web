@@ -137,3 +137,14 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - As a clinic, I want patients who miss appointments to stop booking online, so that times are not wasted.
   - Given 3 no-shows in 180 days (settings `NO_SHOW_LIMIT`, `NO_SHOW_WINDOW_DAYS`), When the patient books online, Then they are asked to call the clinic. The clinic can still book them. Doctors see the no-show count next to the name.
   - An admin can lift the pause from the accounts page ("Allow online booking again"); earlier no-shows stop counting. Recorded in the audit log.
+
+## Messaging
+
+- As a doctor, I want to switch messaging on and choose the days and hours patients can write, so that questions arrive when I can handle them.
+  - Off by default. At least one day; end time after start. Outside the hours patients see when they can write; I can reply at any time.
+- As a patient, I want to message a doctor I booked with, so that I can ask a short question between visits.
+  - Only with a non-cancelled booking with that doctor in the last 180 days or upcoming; otherwise the page says to book first. 1–1,000 characters; 20 messages a day per doctor.
+  - Every conversation shows that messages are not for emergencies (call 123).
+- As a doctor, I want to block a patient from sending new messages (and undo it).
+- As either side, I want to see unread conversations (badge in the dashboard menu / patient tab bar) and get one text alert per batch of new messages; email for replies if my email is confirmed.
+  - Alerts never include the message text (health data). Only the two participants can read a conversation; other doctors get 404, admins 403.

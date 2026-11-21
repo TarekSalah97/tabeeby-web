@@ -29,17 +29,20 @@ function userMenu(ctx: Ctx): SafeHtml {
       <button type="submit" class="btn btn-outline">${ctx.t('nav.signOut')}</button></form>`;
 }
 
-/** Phone-only bottom bar for signed-in patients: the four things they do most, always one tap away. */
+/** Phone-only bottom bar for signed-in patients: the five things they do most, always one tap away. */
 function patientTabBar(ctx: Ctx): SafeHtml {
   const here = ctx.path;
-  const item = (path: string, label: string, ic: SafeHtml) => {
+  const item = (path: string, label: string, ic: SafeHtml, badge = 0) => {
     const current = path === '/' ? here === '/' : here === path || here.startsWith(path + '/');
-    return html`<a href="${href(ctx, path)}"${current ? html` aria-current="page"` : ''}>${ic}<span>${label}</span></a>`;
+    return html`<a href="${href(ctx, path)}"${current ? html` aria-current="page"` : ''}>${ic}<span>${label}</span>${
+      badge ? html`<span class="tab-badge" aria-label="${ctx.t('msg.unreadCount', { n: badge })}">${badge}</span>` : ''
+    }</a>`;
   };
   return html`<nav class="tabbar" aria-label="${ctx.t('nav.quick')}">
     ${item('/', ctx.t('nav.home'), icon.logoSmall)}
     ${item('/search', ctx.t('nav.findShort'), icon.search)}
     ${item('/appointments', ctx.t('nav.appointmentsShort'), icon.calendar)}
+    ${item('/messages', ctx.t('nav.messagesShort'), icon.chat, ctx.unreadMessages)}
     ${item('/prescriptions', ctx.t('nav.docsShort'), icon.check)}
   </nav>`;
 }

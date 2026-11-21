@@ -198,3 +198,52 @@ test('doctor adds a walk-in booking on a phone by tapping a time (Arabic)', asyn
   if (shots) await page.screenshot({ path: `${shots}/clinic-day-phone.png`, fullPage: true });
   await page.close();
 });
+
+test('patient and doctor exchange messages on phones (Arabic) without sideways scrolling', async () => {
+  const d = await createApprovedDoctor(h.db);
+  const p = await createPatient(h.db);
+  await h.db.query(`update doctors set messaging_enabled = true, messaging_days = '{0,1,2,3,4,5,6}', messaging_start = '00:00', messaging_end = '23:59' where user_id = $1`, [d.id]);
+  await h.db.query(
+    `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, fee_egp) values ($1, $2, $3, now() + interval '1 day', now() + interval '1 day 30 minutes', 'new', 400)`,
+    [d.id, d.clinicId, p.id],
+  );
+  const shots = process.env['SHOTS_DIR'];
+  const signIn = async (who: { phone: string; password: string }) => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(h.baseUrl + '/login');
+    await page.locator('input[name=phone]').fill('0' + who.phone.slice(3));
+    await page.locator('input[name=password]').fill(who.password);
+    await page.locator('form button[type=submit]').first().click();
+    await page.waitForLoadState('load');
+    return page;
+  };
+  const wide = async (page: import('playwright').Page) => (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+
+  const pp = await signIn(p);
+  await pp.goto(h.baseUrl + `/doctors/${d.slug}`);
+  await pp.getByRole('link', { name: 'راسل الطبيب' }).first().click();
+  await pp.getByLabel('اكتب رسالتك…').fill('هل أستمر على الدواء قبل الزيارة؟ ' + 'كلمة '.repeat(40));
+  await pp.getByRole('button', { name: 'إرسال' }).click();
+  await pp.waitForLoadState('load');
+  assert.match(await pp.content(), /أُرسلت الرسالة/);
+  assert.ok((await wide(pp)) <= 1, 'patient thread fits');
+
+  const dp = await signIn(d);
+  await dp.goto(h.baseUrl + '/dashboard/messages');
+  assert.ok((await wide(dp)) <= 1, 'doctor inbox fits');
+  await dp.locator('.inbox-row').first().click();
+  await dp.getByLabel('اكتب رسالتك…').fill('نعم، استمر عليه كالمعتاد.');
+  await dp.getByRole('button', { name: 'إرسال' }).click();
+  await dp.waitForLoadState('load');
+  assert.ok((await wide(dp)) <= 1, 'doctor thread fits');
+  if (shots) await dp.screenshot({ path: `${shots}/msg-doctor-phone.png`, fullPage: true });
+
+  await pp.goto(h.baseUrl + '/');
+  assert.equal(await pp.locator('.tabbar .tab-badge').count(), 1);
+  await pp.locator('.tabbar a[href="/messages"]').click();
+  await pp.locator('.inbox-row').first().click();
+  assert.match(await pp.content(), /استمر عليه كالمعتاد/);
+  if (shots) await pp.screenshot({ path: `${shots}/msg-patient-phone.png`, fullPage: true });
+  await pp.close();
+  await dp.close();
+});

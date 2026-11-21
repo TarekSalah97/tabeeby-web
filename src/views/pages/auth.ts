@@ -140,17 +140,17 @@ export function setPasswordPage(ctx: Ctx, o: { error?: MessageKey }): SafeHtml {
  * Shown instead of a bare redirect when a visitor opens a patient-only page
  * (My appointments, My prescriptions & tests) without being signed in as a patient.
  */
-export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions', returnTo: string): SafeHtml {
+export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions' | 'messages', returnTo: string): SafeHtml {
   const staff = ctx.user && ctx.user.role !== 'patient';
-  const title: MessageKey = kind === 'appointments' ? 'gate.appointmentsTitle' : 'gate.prescriptionsTitle';
+  const title: MessageKey = `gate.${kind}Title`;
   const body = html`<div class="container page auth-page">
     <div class="auth-card gate">
-      <span class="gate-icon" aria-hidden="true">${kind === 'appointments' ? icon.calendar : icon.check}</span>
+      <span class="gate-icon" aria-hidden="true">${kind === 'appointments' ? icon.calendar : kind === 'messages' ? icon.chat : icon.check}</span>
       <h1>${ctx.t(title)}</h1>
       ${staff
         ? html`<p class="muted">${ctx.t('gate.staffLead')}</p>
            <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' ? '/dashboard' : '/admin')}">${ctx.t(ctx.user!.role === 'doctor' ? 'nav.dashboard' : 'nav.admin')}</a>`
-        : html`<p class="muted">${ctx.t(kind === 'appointments' ? 'gate.appointmentsLead' : 'gate.prescriptionsLead')}</p>
+        : html`<p class="muted">${ctx.t(`gate.${kind}Lead`)}</p>
            <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, '/login', { next: returnTo })}">${ctx.t('gate.signIn')}</a>
            <a class="btn btn-outline btn-lg btn-block" href="${href(ctx, '/signup', { next: returnTo })}">${ctx.t('gate.signUp')}</a>
            <p class="hint center">${ctx.t('gate.free')}</p>

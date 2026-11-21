@@ -295,6 +295,8 @@ export interface ProfileBooking {
   fullDays: string[];
   /** Of those, the days the signed-in patient is already waiting for. */
   waiting: string[];
+  /** "Message the doctor" for a signed-in patient who has booked with them (closed = outside messaging hours). */
+  message?: 'hidden' | 'open' | 'closed';
 }
 
 function waitlistBlock(ctx: Ctx, d: PublicProfile, booking: ProfileBooking): SafeHtml {
@@ -423,6 +425,9 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
       ${clinic && clinic.followUpFee !== null && clinic.followUpFee < clinic.fee
         ? html`<div class="fee-row"><span class="muted">${ctx.t('doctor.followUpFee', { days: clinic.followUpDays })}</span><strong>${money(ctx, clinic.followUpFee)}</strong></div>`
+        : ''}
+      ${booking.message && booking.message !== 'hidden'
+        ? html`<a class="btn btn-outline btn-block" href="${href(ctx, `/messages/${d.slug}`)}">${icon.chat}${ctx.t(booking.message === 'open' ? 'msg.messageDoctor' : 'msg.messageDoctorClosed')}</a>`
         : ''}
       ${d.clinics.length > 1
         ? html`<div class="stack-sm"><span class="label">${ctx.t('doctor.chooseClinic')}</span>

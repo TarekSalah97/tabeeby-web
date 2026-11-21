@@ -38,6 +38,8 @@ export interface Ctx {
   cookies: Record<string, string>;
   session: Session | null;
   user: SessionUser | null;
+  /** Conversations with something new for the signed-in patient or doctor (menu badge). */
+  unreadMessages: number;
   csrfToken: string;
   form: FormFields;
   files: UploadedFile[];

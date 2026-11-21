@@ -16,11 +16,12 @@ import { money } from './public.js';
 import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
 import type { Slot } from '../../domain/availability.js';
 
-export type Section = 'today' | 'patients' | 'clinics' | 'hours' | 'profile';
+export type Section = 'today' | 'messages' | 'patients' | 'clinics' | 'hours' | 'profile';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: Section; path: string; label: MessageKey }[] = [
     { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
+    { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
     ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
     { key: 'clinics', path: '/dashboard/clinics', label: 'dash.nav.clinics' },
     { key: 'hours', path: '/dashboard/hours', label: 'dash.nav.hours' },
@@ -38,7 +39,9 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
   const body = html`<div class="dash">
     <nav class="dash-nav" aria-label="${ctx.t('dash.nav')}">
       <ul>${items.map(
-        (i) => html`<li><a href="${href(ctx, i.path)}"${attrIf(i.key === section, 'aria-current="page"')}>${ctx.t(i.label)}</a></li>`,
+        (i) => html`<li><a href="${href(ctx, i.path)}"${attrIf(i.key === section, 'aria-current="page"')}>${ctx.t(i.label)}${
+          i.key === 'messages' && ctx.unreadMessages ? html` <span class="count-badge inline" aria-label="${ctx.t('msg.unreadCount', { n: ctx.unreadMessages })}">${ctx.unreadMessages}</span>` : ''
+        }</a></li>`,
       )}</ul>
       ${status === 'approved' ? html`<a class="dash-public" href="${href(ctx, `/doctors/${doctor.slug}`)}">${ctx.t('dash.publicProfile')}${icon.arrow}</a>` : ''}
     </nav>

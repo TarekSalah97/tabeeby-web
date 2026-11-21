@@ -13,6 +13,7 @@ import { applySecurityHeaders } from './http/security.js';
 import { serveStatic } from './http/static.js';
 import { sendHtml, redirect } from './http/respond.js';
 import { loadSession, SESSION_COOKIE } from './auth/sessions.js';
+import { unreadConversations } from './services/messaging.js';
 import { CSRF_COOKIE, CSRF_FIELD, checkCsrfToken, checkOrigin } from './auth/csrf.js';
 import { randomToken } from './auth/tokens.js';
 import { translator, type Locale } from './i18n/index.js';
@@ -24,6 +25,7 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { adminRoutes } from './routes/admin.js';
 import { recordsRoutes } from './routes/records.js';
 import { symptomCheckerRoutes } from './routes/symptomChecker.js';
+import { messagingRoutes } from './routes/messaging.js';
 import { log, errorFields } from './log.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +38,7 @@ export function buildRouter(): Router {
   publicRoutes(r);
   authRoutes(r);
   patientRoutes(r);
+  messagingRoutes(r);
   symptomCheckerRoutes(r);
   recordsRoutes(r);
   dashboardRoutes(r);
@@ -121,6 +124,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
       cookies,
       session: null,
       user: null,
+      unreadMessages: 0,
       csrfToken,
       form: {},
       files: [],
@@ -132,6 +136,10 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
       if (sessionToken) {
         ctx.session = await loadSession(deps.db, sessionToken);
         ctx.user = ctx.session?.user ?? null;
+        // One small indexed count per page view, only for people who can have messages.
+        if (ctx.user && method === 'GET' && (ctx.user.role === 'patient' || ctx.user.role === 'doctor')) {
+          ctx.unreadMessages = await unreadConversations(deps.db, ctx.user);
+        }
         if (!ctx.session) responseCookies.push(serializeCookie(SESSION_COOKIE, '', { secure: https, maxAgeSeconds: 0 }));
       }
 

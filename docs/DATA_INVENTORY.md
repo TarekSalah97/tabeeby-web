@@ -44,3 +44,12 @@ For the data-protection lawyer and the PDPC licence application. "Sensitive" fol
 8. Symptom checker: confirm the consent wording and cross-border transfer of symptom descriptions to Anthropic (USA), and Anthropic's data-retention terms for API inputs.
 9. Reviews are published with first name + last initial. Confirm consent wording for publishing, and the policy for removing reviews that contain health details (admins can hide them; they are kept, not deleted).
 7. Confirm what an Egyptian prescription must show (e.g. syndicate number, signature) — the printout currently shows the doctor's name, specialty, title, clinic, patient, date, medicines and a signature line.
+
+## Messages (migration 008)
+
+| Data | Where | Who can see it | Why |
+|---|---|---|---|
+| Conversation (doctor, patient, read times, blocked) | `conversations` | The doctor and the patient | Show inbox and unread state |
+| Message text (may contain health information) | `messages` | The doctor and the patient only (not admins) | Patient–doctor questions between visits |
+
+Text alerts and emails about new messages never contain the message text.

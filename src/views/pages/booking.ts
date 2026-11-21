@@ -11,10 +11,23 @@ import type { ReviewTarget } from '../../services/reviews.js';
 import { MAX_REVIEW_COMMENT } from '../../services/reviews.js';
 import { zonedToUtc } from '../../domain/time.js';
 import { money } from './public.js';
+import type { VisitType } from '../../domain/visitPricing.js';
 
-export function confirmPage(ctx: Ctx, target: BookingTarget, o: { error?: MessageKey; reason?: string; visitType?: string }): SafeHtml {
+/** Price row: the follow-up price is explained so the patient knows why it is lower. */
+function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number }): SafeHtml {
+  const followUp = visit.type === 'follow_up';
+  return html`<div><dt>${ctx.t(followUp ? 'book.feeFollowUp' : 'book.fee')}</dt><dd>${money(ctx, visit.fee)} · ${ctx.t('doctor.payAtClinic')}${
+    followUp ? html`<br><span class="muted small">${ctx.t('book.followUpApplies', { days: target.followUpDays })}</span>` : ''
+  }</dd></div>`;
+}
+
+export function confirmPage(
+  ctx: Ctx,
+  target: BookingTarget,
+  visit: { type: VisitType; fee: number },
+  o: { error?: MessageKey; reason?: string },
+): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
-  const visit = o.visitType === 'follow_up' ? 'follow_up' : 'new';
   const body = html`<div class="container page narrow">
     <div class="panel stack">
       <h1>${ctx.t('book.title')}</h1>
@@ -23,19 +36,12 @@ export function confirmPage(ctx: Ctx, target: BookingTarget, o: { error?: Messag
         <div><dt>${ctx.t('book.with')}</dt><dd><a href="${href(ctx, `/doctors/${target.doctorSlug}`)}">${target.doctorName}</a></dd></div>
         <div><dt>${ctx.t('book.when')}</dt><dd>${formatDate(target.startsAt, ctx.locale, tz)} · ${formatTime(target.startsAt, ctx.locale, tz)}</dd></div>
         <div><dt>${ctx.t('book.where')}</dt><dd>${target.clinicName}<br><span class="muted">${target.clinicAddress}</span></dd></div>
-        <div><dt>${ctx.t('book.fee')}</dt><dd>${money(ctx, target.fee)} · ${ctx.t('doctor.payAtClinic')}</dd></div>
+        ${feeRow(ctx, target, visit)}
       </dl>
       <form method="post" action="${href(ctx, '/book')}" class="stack">
         ${csrfField(ctx)}
         <input type="hidden" name="clinic" value="${target.clinicId}">
         <input type="hidden" name="start" value="${target.startsAt.toISOString()}">
-        <fieldset class="stack-sm">
-          <legend class="label">${ctx.t('book.visitType')}</legend>
-          <div class="segmented">
-            <label><input type="radio" name="visitType" value="new"${visit === 'new' ? html` checked` : ''}><span>${ctx.t('book.new')}</span></label>
-            <label><input type="radio" name="visitType" value="follow_up"${visit === 'follow_up' ? html` checked` : ''}><span>${ctx.t('book.followUp')}</span></label>
-          </div>
-        </fieldset>
         <div class="field">
           <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
           <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${o.reason ?? ''}</textarea>
@@ -65,7 +71,7 @@ export function appointmentsPage(
     <div class="appt-when"><strong>${formatDate(a.starts_at, ctx.locale, tz)}</strong><span class="appt-time">${formatTime(a.starts_at, ctx.locale, tz)}</span></div>
     <div class="stack-sm">
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto"><strong>${a.doctor_name}</strong></a> · <span dir="auto">${a.clinic_name}</span></span>
-      <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${money(ctx, a.fee_egp)}</span>
+      <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${a.visit_type === 'follow_up' ? html`${ctx.t('book.followUp')} · ` : ''}${money(ctx, a.fee_egp)}</span>
       <div>${statusChip(ctx, a.status)}</div>
     </div>
     <div class="appt-actions">
@@ -168,7 +174,6 @@ export function guestConfirmPage(
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const v = o.values ?? {};
-  const visit = v['visitType'] === 'follow_up' ? 'follow_up' : 'new';
   const bookUrl = href(ctx, '/book', { doctor: target.doctorSlug, clinic: target.clinicId, start: target.startsAt.toISOString() });
   const hasAccountError = o.errors?.['phone'] === 'guest.phoneHasAccount' || o.errors?.['email'] === 'guest.emailHasAccount';
   const body = html`<div class="container page narrow">
@@ -178,7 +183,7 @@ export function guestConfirmPage(
         <div><dt>${ctx.t('book.with')}</dt><dd><a href="${href(ctx, `/doctors/${target.doctorSlug}`)}">${target.doctorName}</a></dd></div>
         <div><dt>${ctx.t('book.when')}</dt><dd>${formatDate(target.startsAt, ctx.locale, tz)} · ${formatTime(target.startsAt, ctx.locale, tz)}</dd></div>
         <div><dt>${ctx.t('book.where')}</dt><dd>${target.clinicName}<br><span class="muted">${target.clinicAddress}</span></dd></div>
-        <div><dt>${ctx.t('book.fee')}</dt><dd>${money(ctx, target.fee)} · ${ctx.t('doctor.payAtClinic')}</dd></div>
+        ${feeRow(ctx, target, { type: 'new', fee: target.fee })}
       </dl>
       <div class="have-account row-between">
         <span>${ctx.t('guest.haveAccount')}</span>
@@ -199,13 +204,6 @@ export function guestConfirmPage(
         ${input(ctx, { name: 'fullName', label: ctx.t('auth.fullName'), value: v['fullName'], autocomplete: 'name', maxlength: 120, errors: o.errors, required: true })}
         ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: v['phone'], prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('auth.phoneHint'), errors: o.errors, required: true })}
         ${input(ctx, { name: 'email', label: ctx.t('guest.email'), type: 'email', value: v['email'], autocomplete: 'email', inputmode: 'email', hint: ctx.t('guest.emailHint'), maxlength: 254, errors: o.errors, required: true })}
-        <fieldset class="stack-sm">
-          <legend class="label">${ctx.t('book.visitType')}</legend>
-          <div class="segmented">
-            <label><input type="radio" name="visitType" value="new"${visit === 'new' ? html` checked` : ''}><span>${ctx.t('book.new')}</span></label>
-            <label><input type="radio" name="visitType" value="follow_up"${visit === 'follow_up' ? html` checked` : ''}><span>${ctx.t('book.followUp')}</span></label>
-          </div>
-        </fieldset>
         <div class="field">
           <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
           <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${v['reason'] ?? ''}</textarea>

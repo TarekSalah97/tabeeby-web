@@ -590,3 +590,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .table.table-fit { min-width: 0; }
 .service-card { min-width: 0; overflow-wrap: anywhere; }
 .table.table-fit th, .table.table-fit td { white-space: normal; padding-inline: 8px; }
+/* Clinic booking (phone / walk-in / follow-up) */
+.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-weight: 600; min-height: 44px; }
+.back-link:hover { color: var(--ink); }
+.row-wrap.tight { gap: 4px; }
+.slot-pick .slot { position: relative; cursor: pointer; }
+.slot-pick .slot input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.slot-pick .slot:has(input:checked) { background: var(--primary); border-color: var(--primary); color: #fff; }
+.slot-pick .slot:has(input:focus-visible) { outline: 3px solid #2f7de1; outline-offset: 2px; }
+.dash-content .btn-lg svg { flex-shrink: 0; }
+.cbook-day { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.cbook-day .field { flex: 1 1 180px; margin: 0; }
+.cbook-day .field:last-child { flex: 0 0 auto; }

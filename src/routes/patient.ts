@@ -8,7 +8,7 @@ import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { emailCodePage, patientGatePage } from '../views/pages/auth.js';
 import { startSession } from './helpers.js';
 import type { SessionUser } from '../auth/sessions.js';
-import { book, resolveSlot, changeStatus, listPatientAppointments } from '../services/booking.js';
+import { book, resolveSlot, changeStatus, listPatientAppointments, quote } from '../services/booking.js';
 import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage } from '../views/pages/booking.js';
 import { getReviewTarget, parseRating, submitReview } from '../services/reviews.js';
 import { joinWaitlist, leaveWaitlist, listPatientWaitlist } from '../services/waitlist.js';
@@ -50,7 +50,7 @@ export function patientRoutes(r: Router): void {
     if (!isUuid(clinicId) || Number.isNaN(start.getTime())) throw badRequest();
     try {
       const target = await resolveSlot(ctx.deps, ctx.deps.db, clinicId, start);
-      sendHtml(ctx, 200, confirmPage(ctx, target, {}));
+      sendHtml(ctx, 200, confirmPage(ctx, target, await quote(ctx.deps.db, user.id, target), {}));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
       const slug = await doctorSlugForClinic(ctx, clinicId);
@@ -64,10 +64,9 @@ export function patientRoutes(r: Router): void {
     const clinicId = formValue(ctx, 'clinic');
     const start = new Date(formValue(ctx, 'start'));
     if (!isUuid(clinicId) || Number.isNaN(start.getTime())) throw badRequest();
-    const visitType = formValue(ctx, 'visitType') === 'follow_up' ? 'follow_up' : 'new';
     const reason = formValue(ctx, 'reason');
     try {
-      await book(ctx.deps, user, { clinicId, startsAt: start, visitType, reason }, ctx.ip);
+      await book(ctx.deps, user, { clinicId, startsAt: start, reason }, ctx.ip);
       redirect(ctx, href(ctx, '/appointments', { ok: smsEnabled(ctx.deps.cfg) ? 'booked' : 'bookedNoSms' }));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
@@ -79,7 +78,7 @@ export function patientRoutes(r: Router): void {
       if (key === 'booking.verifyPhoneFirst') return redirect(ctx, href(ctx, '/verify-phone'));
       try {
         const target = await resolveSlot(ctx.deps, ctx.deps.db, clinicId, start);
-        sendHtml(ctx, 409, confirmPage(ctx, target, { error: key, reason, visitType }));
+        sendHtml(ctx, 409, confirmPage(ctx, target, await quote(ctx.deps.db, user.id, target), { error: key, reason }));
       } catch {
         redirect(ctx, href(ctx, '/appointments', { error: key }));
       }
@@ -97,7 +96,6 @@ export function patientRoutes(r: Router): void {
       fullName: formValue(ctx, 'fullName'),
       phone: formValue(ctx, 'phone'),
       email: formValue(ctx, 'email'),
-      visitType: formValue(ctx, 'visitType') === 'follow_up' ? 'follow_up' : 'new',
       reason: formValue(ctx, 'reason'),
     } as const;
     try {
@@ -156,7 +154,7 @@ export function patientRoutes(r: Router): void {
     const user: SessionUser = { id: result.userId, role: 'patient', fullName: req.fullName, phone: req.phone, phoneVerified: false, locale: req.locale };
     const start = new Date(req.startsAt);
     try {
-      await book(ctx.deps, user, { clinicId: req.clinicId, startsAt: start, visitType: req.visitType, reason: req.reason }, ctx.ip);
+      await book(ctx.deps, user, { clinicId: req.clinicId, startsAt: start, reason: req.reason }, ctx.ip);
       redirect(ctx, href(ctx, '/appointments', { ok: 'bookedGuest' }));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;

@@ -6,6 +6,9 @@ import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
 
 export const icon = {
+  plus: trusted(
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>',
+  ),
   logoSmall: trusted(
     '<svg width="22" height="22" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"></rect><path d="M18 9v18M9 18h18" stroke="#fff" stroke-width="4" stroke-linecap="round"></path></svg>',
   ),

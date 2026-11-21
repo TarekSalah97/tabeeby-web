@@ -13,9 +13,11 @@ import {
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
 import { ratingsFor } from '../services/reviews.js';
-import { todayPage, clinicsPage, hoursPage, profileEditPage, type HoursFormValues } from '../views/pages/dashboard.js';
+import { todayPage, clinicsPage, hoursPage, profileEditPage, clinicBookPage, type HoursFormValues, type ClinicBookView } from '../views/pages/dashboard.js';
+import { bookByClinic, clampClinicDate, clinicSlots, followUpSource, noShowCounts, ownActiveClinics, CLINIC_BOOKING_DAYS, type ClinicBookingInput } from '../services/clinicBooking.js';
+import type { FieldErrors } from '../services/accounts.js';
 import { experienceYears } from '../domain/experience.js';
-import { isValidDate, todayIn } from '../domain/time.js';
+import { addDays, isValidDate, todayIn } from '../domain/time.js';
 import { DomainError, notFound } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
 import { isMessageKey, type MessageKey } from '../i18n/index.js';
@@ -48,12 +50,14 @@ function clinicInput(ctx: Ctx): ClinicInput {
     address: formValue(ctx, 'address'),
     phone: formValue(ctx, 'phone'),
     fee: formValue(ctx, 'fee'),
+    followUpFee: formValue(ctx, 'followUpFee'),
+    followUpDays: formValue(ctx, 'followUpDays'),
     isActive: formValue(ctx, 'active') === 'yes',
   };
 }
 
 function rawClinicValues(ctx: Ctx): Record<string, string> {
-  return Object.fromEntries(['name', 'district', 'address', 'phone', 'fee', 'active'].map((k) => [k, formValue(ctx, k)]));
+  return Object.fromEntries(['name', 'district', 'address', 'phone', 'fee', 'followUpFee', 'followUpDays', 'active'].map((k) => [k, formValue(ctx, k)]));
 }
 
 async function renderClinics(ctx: Ctx, user: SessionUser, extra: Parameters<typeof clinicsPage>[4] = {}, status = 200): Promise<void> {
@@ -93,8 +97,71 @@ export function dashboardRoutes(r: Router): void {
       listOwnClinics(db, user.id),
       listOwnRules(db, user.id),
     ]);
-    const rating = (await ratingsFor(db, [user.id])).get(user.id) ?? null;
-    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, notice: ok(ctx) }));
+    const [ratings, noShows] = await Promise.all([
+      ratingsFor(db, [user.id]),
+      noShowCounts(db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS, user.id, appointments.map((a) => ({ patientId: a.patient_id, phone: a.patient_phone }))),
+    ]);
+    const rating = ratings.get(user.id) ?? null;
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, notice: ok(ctx) }));
+  });
+
+  /** Booking by the clinic: a phone call, a walk-in, or a follow-up from today's list. */
+  const renderClinicBook = async (
+    ctx: Ctx,
+    user: SessionUser,
+    req: { clinicId: string | null; date: string; fromId: string | null },
+    extra: Pick<ClinicBookView, 'values' | 'errors' | 'error'> = {},
+    status = 200,
+  ): Promise<void> => {
+    const db = ctx.deps.db;
+    const [doctor, clinics] = await Promise.all([getOwnDoctor(db, user.id), ownActiveClinics(db, user.id)]);
+    if (doctor.verification_status !== 'approved' || !clinics.length) return redirect(ctx, href(ctx, '/dashboard', { error: 'cbook.notApproved' }));
+    const source = req.fromId ? await followUpSource(db, user.id, req.fromId) : null;
+    const clinic = clinics.find((c) => c.id === req.clinicId) ?? clinics.find((c) => c.id === source?.clinicId) ?? clinics[0]!;
+    const today = todayIn(ctx.deps.cfg.TIME_ZONE, ctx.deps.now());
+    const date = clampClinicDate(req.date, today);
+    const slots = await clinicSlots(ctx.deps, db, user.id, clinic.id, date);
+    sendHtml(ctx, status, clinicBookPage(ctx, doctor, { clinics, clinicId: clinic.id, date, today, lastDate: addDays(today, CLINIC_BOOKING_DAYS), slots, source, ...extra }));
+  };
+
+  r.get('/dashboard/book', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const clinic = ctx.query.get('clinic');
+    const from = ctx.query.get('from');
+    await renderClinicBook(ctx, user, { clinicId: isUuid(clinic) ? clinic : null, date: ctx.query.get('date') ?? '', fromId: isUuid(from) ? from : null });
+  });
+
+  r.post('/dashboard/book', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const clinicId = formValue(ctx, 'clinic');
+    const from = formValue(ctx, 'from');
+    const startRaw = formValue(ctx, 'start');
+    if (!isUuid(clinicId)) throw notFound();
+    const fromId = isUuid(from) ? from : null;
+    const values = Object.fromEntries(['name', 'phone', 'visitType', 'reason', 'start'].map((k) => [k, formValue(ctx, k)]));
+    const back = { clinicId, date: formValue(ctx, 'date'), fromId };
+    if (!startRaw) return renderClinicBook(ctx, user, back, { values, errors: { start: 'cbook.pickTime' } satisfies FieldErrors }, 422);
+    const input: ClinicBookingInput = {
+      clinicId,
+      startsAt: new Date(startRaw),
+      visitType: values['visitType'] === 'follow_up' ? 'follow_up' : 'new',
+      reason: values['reason'] ?? '',
+      fromAppointmentId: fromId,
+      name: values['name'] ?? '',
+      phone: values['phone'] ?? '',
+    };
+    try {
+      const result = await bookByClinic(ctx.deps, user, input, ctx.ip);
+      if ('errors' in result) return renderClinicBook(ctx, user, back, { values, errors: result.errors }, 422);
+      const day = new Date(startRaw);
+      redirect(ctx, href(ctx, '/dashboard', { date: todayIn(ctx.deps.cfg.TIME_ZONE, day), ok: 'clinicBooked' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      const key = isMessageKey(e.messageKey) ? e.messageKey : 'booking.slotUnavailable';
+      await renderClinicBook(ctx, user, back, { values: { ...values, start: '' }, error: key }, 409);
+    }
   });
 
   r.post('/dashboard/appointments/:id/status', async (ctx) => {

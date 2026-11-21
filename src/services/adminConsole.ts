@@ -108,10 +108,12 @@ export interface AccountRow {
   created_at: Date;
   verification_status: string | null;
   upcoming: number;
+  /** No-shows that count towards pausing online booking. */
+  no_shows: number;
 }
 
 /** Search by name (part of it), mobile number, or email. At most 30 results. */
-export async function searchAccounts(db: Queryable, rawQuery: string): Promise<AccountRow[]> {
+export async function searchAccounts(db: Queryable, rawQuery: string, noShowWindowDays: number): Promise<AccountRow[]> {
   const q = rawQuery.trim();
   if (q.length < 2) return [];
   const phone = normalizeEgyptMobile(q);
@@ -120,25 +122,26 @@ export async function searchAccounts(db: Queryable, rawQuery: string): Promise<A
     await db.query<AccountRow>(
       `select u.id, u.role, u.full_name, u.phone_e164, u.email, u.status, u.created_at, d.verification_status,
               (select count(*)::int from appointments a where (a.patient_id = u.id or a.doctor_id = u.id)
-                  and a.status in ('confirmed', 'arrived') and a.starts_at > now()) as upcoming
+                  and a.status in ('confirmed', 'arrived') and a.starts_at > now()) as upcoming,
+              (select count(*)::int from appointments a where a.patient_id = u.id and a.status = 'no_show'
+                  and a.starts_at > now() - make_interval(days => $4)
+                  and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)) as no_shows
          from users u left join doctors d on d.user_id = u.id
         where u.full_name ilike $1 or u.email = $2 or u.phone_e164 = $3
         order by u.created_at desc limit 30`,
-      [like, q.toLowerCase(), phone ?? ''],
+      [like, q.toLowerCase(), phone ?? '', noShowWindowDays],
     )
   ).rows;
 }
 
-export async function getAccount(db: Queryable, id: string): Promise<AccountRow> {
-  const { rows } = await db.query<AccountRow>(
-    `select u.id, u.role, u.full_name, u.phone_e164, u.email, u.status, u.created_at, d.verification_status,
-            (select count(*)::int from appointments a where (a.patient_id = u.id or a.doctor_id = u.id)
-                and a.status in ('confirmed', 'arrived') and a.starts_at > now()) as upcoming
-       from users u left join doctors d on d.user_id = u.id where u.id = $1`,
-    [id],
-  );
-  if (!rows[0]) throw notFound();
-  return rows[0];
+/** Lets a patient book online again after no-shows paused it. Older no-shows stop counting. */
+export async function clearNoShows(deps: Deps, admin: SessionUser, userId: string, ip: string): Promise<void> {
+  if (admin.role !== 'admin') throw notFound();
+  await deps.db.transaction(async (tx) => {
+    const r = await tx.query("update users set no_show_cleared_at = now(), updated_at = now() where id = $1 and role = 'patient'", [userId]);
+    if (r.rowCount === 0) throw notFound();
+    await audit(tx, { actorId: admin.id, action: 'account.clear_no_shows', entityType: 'user', entityId: userId, ip });
+  });
 }
 
 /**

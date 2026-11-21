@@ -13,6 +13,8 @@ import { nextDoctorAction } from '../../domain/appointmentStatus.js';
 import { addDays, todayIn } from '../../domain/time.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { money } from './public.js';
+import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
+import type { Slot } from '../../domain/availability.js';
 
 export type Section = 'today' | 'patients' | 'clinics' | 'hours' | 'profile';
 
@@ -59,12 +61,17 @@ export function todayPage(
     clinics: ClinicRow[];
     rules: RuleRow[];
     rating?: { avg: number; count: number } | null;
+    /** By patient id (accounts) or phone (walk-ins). */
+    noShows?: Map<string, number>;
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const live = o.appointments.filter((a) => a.status !== 'cancelled');
   const done = live.filter((a) => a.status === 'completed').length;
+  const collected = live.filter((a) => a.status === 'completed').reduce((sum, a) => sum + a.fee_egp, 0);
+  const canBook = doctor.verification_status === 'approved' && o.clinics.some((c) => c.is_active) && o.rules.length > 0;
+  const noShowsOf = (a: DoctorDayAppointment) => o.noShows?.get(a.patient_id ?? a.patient_phone) ?? 0;
   const waiting = live.filter((a) => a.status === 'arrived').length;
   const isToday = o.date === todayIn(tz, ctx.deps.now());
   const dayLabel = formatDate(new Date(`${o.date}T12:00:00Z`), ctx.locale, 'UTC');
@@ -86,12 +93,14 @@ export function todayPage(
   const content = html`
     <div class="row-between">
       <div><h1>${ctx.t('dash.greeting', { name: doctor.full_name })}</h1><p class="muted">${dayLabel}</p></div>
+      ${canBook ? html`<a class="btn btn-primary btn-lg" href="${href(ctx, '/dashboard/book', { date: o.date })}">${icon.plus}${ctx.t('cbook.add')}</a>` : ''}
     </div>
     ${setup}
     <div class="kpis">
       <div class="kpi"><span>${ctx.t('dash.kpiToday')}</span><strong>${n(live.length)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiCompleted')}</span><strong>${n(done)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiWaiting')}</span><strong>${n(waiting)}</strong></div>
+      <div class="kpi"><span>${ctx.t('dash.kpiCollected')}</span><strong>${money(ctx, collected)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiWeek')}</span><strong>${n(o.weekCount)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiRating')}</span>${o.rating ? html`<strong>${ratingBadge(ctx, o.rating)}</strong>` : html`<span class="muted">${ctx.t('dash.noRatingYet')}</span>`}</div>
     </div>
@@ -113,15 +122,20 @@ export function todayPage(
               const started = ctx.deps.now().getTime() >= a.starts_at.getTime();
               return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : ''}">
                 <td class="nowrap cell-time" data-label="${ctx.t('dash.time')}"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
-                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong><a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a>${a.patient_email ? html`<a class="muted small" dir="ltr" href="mailto:${a.patient_email}">${a.patient_email}</a>` : ''}</span></td>
+                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong>${
+                  a.booked_by === 'doctor' || noShowsOf(a)
+                    ? html`<span class="row-wrap tight">${a.booked_by === 'doctor' ? html`<span class="chip">${ctx.t('cbook.byClinic')}</span>` : ''}${
+                        noShowsOf(a) ? html`<span class="chip status-cancelled">${ctx.t('cbook.noShows', { n: noShowsOf(a) })}</span>` : ''}</span>`
+                    : ''}<a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a>${a.patient_email ? html`<a class="muted small" dir="ltr" href="mailto:${a.patient_email}">${a.patient_email}</a>` : ''}</span></td>
                 <td data-label="${ctx.t('dash.clinic')}">${a.clinic_name}</td>
-                <td data-label="${ctx.t('dash.type')}">${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')}</td>
+                <td data-label="${ctx.t('dash.type')}">${ctx.t(a.visit_type === 'new' ? 'book.new' : 'book.followUp')} <span class="muted small">· ${money(ctx, a.fee_egp)}</span></td>
                 <td class="muted" data-label="${ctx.t('dash.reason')}">${a.reason ?? '—'}</td>
                 <td data-label="${ctx.t('dash.status')}">${statusChip(ctx, a.status)}</td>
                 <td class="cell-actions"><div class="row-wrap">
                   ${next ? actionForm(a, next, `action.${next}` as MessageKey, true) : ''}
                   ${a.status === 'confirmed' && started ? actionForm(a, 'no_show', 'action.no_show', false) : ''}
                   ${a.status === 'confirmed' || a.status === 'arrived' ? actionForm(a, 'cancelled', 'action.cancel', false) : ''}
+                  ${canBook && (a.status === 'completed' || a.status === 'in_consultation') ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard/book', { from: a.id, date: addDays(todayIn(tz, ctx.deps.now()), 7) })}">${ctx.t('cbook.bookFollowUp')}</a>` : ''}
                   ${doctor.records_enabled && a.status !== 'cancelled' ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
                 </div></td>
               </tr>`;
@@ -135,7 +149,7 @@ export function clinicsPage(ctx: Ctx, doctor: OwnDoctor, ref: ReferenceData, cli
   const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
   const form = (c: ClinicRow | null) => {
     const isTarget = (o.editing ?? null) === (c?.id ?? null);
-    const v = isTarget && o.values ? o.values : c ? { name: c.name, district: String(c.district_id), address: c.address, phone: c.phone_e164 ? c.phone_e164.replace(/^\+20/, '0') : '', fee: String(c.fee_egp), active: c.is_active ? 'yes' : '' } : { active: 'yes' };
+    const v = isTarget && o.values ? o.values : c ? { name: c.name, district: String(c.district_id), address: c.address, phone: c.phone_e164 ? c.phone_e164.replace(/^\+20/, '0') : '', fee: String(c.fee_egp), followUpFee: c.follow_up_fee_egp === null ? '' : String(c.follow_up_fee_egp), followUpDays: String(c.follow_up_days), active: c.is_active ? 'yes' : '' } : { active: 'yes', followUpDays: '14' };
     const errors = isTarget ? o.errors : undefined;
     const idPrefix = c ? `c${c.id.slice(0, 8)}-` : 'new-';
     return html`<form method="post" action="${href(ctx, c ? `/dashboard/clinics/${c.id}` : '/dashboard/clinics')}" class="stack">
@@ -145,6 +159,8 @@ export function clinicsPage(ctx: Ctx, doctor: OwnDoctor, ref: ReferenceData, cli
         ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: v['district'] ?? '', options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
         ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: v['address'], errors, maxlength: 300, required: true })}
         ${input(ctx, { idPrefix, name: 'fee', label: ctx.t('clinics.fee'), value: v['fee'], inputmode: 'numeric', errors, required: true })}
+        ${input(ctx, { idPrefix, name: 'followUpFee', label: ctx.t('clinics.followUpFee'), value: v['followUpFee'], inputmode: 'numeric', hint: ctx.t('clinics.followUpFeeHint'), errors })}
+        ${input(ctx, { idPrefix, name: 'followUpDays', label: ctx.t('clinics.followUpDays'), value: v['followUpDays'], inputmode: 'numeric', hint: ctx.t('clinics.followUpDaysHint'), errors })}
         ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('clinics.phone'), type: 'tel', value: v['phone'], inputmode: 'tel', errors })}
         <div class="field"><label class="check"><input type="checkbox" name="active" value="yes"${attrIf(v['active'] === 'yes', 'checked')}><span>${ctx.t('clinics.active')}</span></label></div>
       </div>
@@ -323,4 +339,94 @@ export function profileEditPage(
       </form>
     </section>`;
   return shell(ctx, doctor, 'profile', content, o.notice);
+}
+
+export interface ClinicBookView {
+  clinics: ClinicForBooking[];
+  clinicId: string;
+  date: string;
+  today: string;
+  lastDate: string;
+  slots: Slot[];
+  source: FollowUpSource | null;
+  values?: Record<string, string>;
+  errors?: FieldErrors;
+  error?: MessageKey;
+}
+
+/** The clinic books for someone: a phone call, a walk-in, or a follow-up from today's list. Two steps on one page: pick a day, then a time. */
+export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const values = v.values ?? {};
+  const clinic = v.clinics.find((c) => c.id === v.clinicId)!;
+  const from = v.source ? { from: v.source.id } : {};
+  const dayHref = (date: string) => href(ctx, '/dashboard/book', { ...from, clinic: clinic.id, date });
+  const quick: { label: MessageKey; days: number }[] = v.source
+    ? [{ label: 'cbook.in1w', days: 7 }, { label: 'cbook.in2w', days: 14 }, { label: 'cbook.in1m', days: 30 }]
+    : [{ label: 'common.today', days: 0 }, { label: 'cbook.tomorrow', days: 1 }];
+  const chosen = values['start'] ?? '';
+  const visit = v.source ? 'follow_up' : values['visitType'] === 'follow_up' ? 'follow_up' : 'new';
+  const followUpPrice = clinic.followUpFee ?? clinic.fee;
+
+  const content = html`
+    <div class="stack-sm">
+      <a class="back-link" href="${href(ctx, '/dashboard', { date: v.date })}">${icon.chevronStart}${ctx.t('cbook.back')}</a>
+      <h1>${v.source ? ctx.t('cbook.followUpTitle', { name: v.source.name }) : ctx.t('cbook.title')}</h1>
+      <p class="muted">${v.source ? ctx.t('cbook.followUpLead', { date: formatDate(v.source.startsAt, ctx.locale, tz) }) : ctx.t('cbook.lead')}</p>
+    </div>
+    ${v.error ? alert('error', ctx.t(v.error)) : v.errors && Object.keys(v.errors).length ? alert('error', ctx.t('common.fixErrors')) : ''}
+    <section class="panel stack">
+      <h2 class="h3">${ctx.t('cbook.step1')}</h2>
+      <div class="row-wrap">${quick.map((q) => {
+        const d = addDays(v.today, q.days);
+        return d <= v.lastDate ? html`<a class="chip-link"${attrIf(d === v.date, 'aria-current="true"')} href="${dayHref(d)}">${ctx.t(q.label)}</a>` : '';
+      })}</div>
+      <form method="get" action="${href(ctx, '/dashboard/book')}" class="cbook-day">
+        ${v.source ? html`<input type="hidden" name="from" value="${v.source.id}">` : ''}
+        ${v.clinics.length > 1
+          ? select(ctx, { name: 'clinic', label: ctx.t('dash.clinic'), value: clinic.id, options: v.clinics.map((c) => ({ value: c.id, label: c.name })) })
+          : html`<input type="hidden" name="clinic" value="${clinic.id}">`}
+        <div class="field"><label for="date">${ctx.t('cbook.date')}</label>
+          <input id="date" type="date" name="date" value="${v.date}" min="${v.today}" max="${v.lastDate}" required></div>
+        <div class="field"><button class="btn btn-outline" type="submit">${ctx.t('cbook.showTimes')}</button></div>
+      </form>
+    </section>
+    <form method="post" action="${href(ctx, '/dashboard/book')}" class="panel stack" novalidate>
+      ${csrfField(ctx)}
+      <input type="hidden" name="clinic" value="${clinic.id}">
+      <input type="hidden" name="date" value="${v.date}">
+      ${v.source ? html`<input type="hidden" name="from" value="${v.source.id}">` : ''}
+      <fieldset class="stack-sm">
+        <legend class="h3">${ctx.t('cbook.step2', { day: formatDate(new Date(`${v.date}T12:00:00Z`), ctx.locale, 'UTC') })}</legend>
+        ${v.errors?.['start'] ? html`<p class="field-error" id="start-error">${ctx.t(v.errors['start'])}</p>` : ''}
+        ${v.slots.length
+          ? html`<div class="slot-grid slot-pick">${v.slots.map(
+              (s) => html`<label class="slot"><input type="radio" name="start" value="${s.startsAt.toISOString()}"${attrIf(chosen === s.startsAt.toISOString(), 'checked')} required><span>${formatTime(s.startsAt, ctx.locale, tz)}</span></label>`,
+            )}</div>`
+          : html`<p class="empty">${ctx.t('cbook.noSlots')}</p>`}
+      </fieldset>
+      ${v.source
+        ? html`<dl class="summary">
+            <div><dt>${ctx.t('dash.patient')}</dt><dd><strong dir="auto">${v.source.name}</strong> · <span dir="ltr">${formatEgyptMobile(v.source.phone)}</span></dd></div>
+            <div><dt>${ctx.t('book.feeFollowUp')}</dt><dd>${money(ctx, followUpPrice)}</dd></div>
+          </dl>`
+        : html`<div class="form-grid">
+            ${input(ctx, { name: 'name', label: ctx.t('cbook.name'), value: values['name'], autocomplete: 'off', maxlength: 120, errors: v.errors, required: true })}
+            ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: values['phone'], prefix: '+20', inputmode: 'tel', autocomplete: 'off', errors: v.errors, required: true })}
+          </div>
+          <fieldset class="stack-sm">
+            <legend class="label">${ctx.t('book.visitType')}</legend>
+            <div class="segmented">
+              <label><input type="radio" name="visitType" value="new"${attrIf(visit === 'new', 'checked')}><span>${ctx.t('book.new')} · ${money(ctx, clinic.fee)}</span></label>
+              <label><input type="radio" name="visitType" value="follow_up"${attrIf(visit === 'follow_up', 'checked')}><span>${ctx.t('book.followUp')} · ${money(ctx, followUpPrice)}</span></label>
+            </div>
+          </fieldset>`}
+      <div class="field">
+        <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+        <input id="reason" type="text" name="reason" maxlength="200" value="${values['reason'] ?? ''}">
+      </div>
+      <button class="btn btn-primary btn-lg btn-block" type="submit"${attrIf(!v.slots.length, 'disabled')}>${ctx.t('cbook.confirm')}</button>
+      <p class="hint">${ctx.t(v.source?.patientId ? 'cbook.noticeAccount' : 'cbook.noticeWalkIn')}</p>
+    </form>`;
+  return shell(ctx, doctor, 'today', content);
 }

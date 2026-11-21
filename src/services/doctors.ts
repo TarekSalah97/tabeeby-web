@@ -195,13 +195,15 @@ export interface ClinicRow {
   address: string;
   phone_e164: string | null;
   fee_egp: number;
+  follow_up_fee_egp: number | null;
+  follow_up_days: number;
   is_active: boolean;
 }
 
 export async function listOwnClinics(db: Queryable, doctorId: string): Promise<ClinicRow[]> {
   return (
     await db.query<ClinicRow>(
-      'select id, name, district_id, address, phone_e164, fee_egp, is_active from clinics where doctor_id = $1 order by created_at',
+      'select id, name, district_id, address, phone_e164, fee_egp, follow_up_fee_egp, follow_up_days, is_active from clinics where doctor_id = $1 order by created_at',
       [doctorId],
     )
   ).rows;
@@ -213,41 +215,63 @@ export interface ClinicInput {
   address: string;
   phone: string;
   fee: string;
+  /** Empty: follow-ups cost the same as a new visit. */
+  followUpFee: string;
+  followUpDays: string;
   isActive: boolean;
 }
 
-export async function validateClinic(db: Queryable, input: ClinicInput): Promise<{ errors: FieldErrors; phone: string | null; fee: number }> {
+const parseFee = (raw: string): number => {
+  const digits = normalizeDigits(raw).replace(/[,\s]/g, '');
+  const n = /^\d{1,6}$/.test(digits) ? Number(digits) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 100000 ? n : NaN;
+};
+
+export async function validateClinic(
+  db: Queryable,
+  input: ClinicInput,
+): Promise<{ errors: FieldErrors; phone: string | null; fee: number; followUpFee: number | null; followUpDays: number }> {
   const errors: FieldErrors = {};
   const ref = await getReference(db);
   if (input.name.trim().length < 2 || input.name.trim().length > 120) errors['name'] = 'clinics.nameInvalid';
   if (!ref.districtById.has(input.districtId)) errors['district'] = 'clinics.districtInvalid';
   if (input.address.trim().length < 5 || input.address.trim().length > 300) errors['address'] = 'clinics.addressInvalid';
-  const feeDigits = normalizeDigits(input.fee).replace(/[,\s]/g, '');
-  const fee = /^\d{1,6}$/.test(feeDigits) ? Number(feeDigits) : NaN;
-  if (!Number.isInteger(fee) || fee < 0 || fee > 100000) errors['fee'] = 'clinics.feeInvalid';
+  const fee = parseFee(input.fee);
+  if (Number.isNaN(fee)) errors['fee'] = 'clinics.feeInvalid';
+  let followUpFee: number | null = null;
+  if (input.followUpFee.trim()) {
+    followUpFee = parseFee(input.followUpFee);
+    if (Number.isNaN(followUpFee)) errors['followUpFee'] = 'clinics.feeInvalid';
+    else if (!Number.isNaN(fee) && followUpFee > fee) errors['followUpFee'] = 'clinics.followUpFeeTooHigh';
+  }
+  const daysDigits = normalizeDigits(input.followUpDays).trim();
+  const followUpDays = daysDigits === '' ? 14 : /^\d{1,2}$/.test(daysDigits) ? Number(daysDigits) : NaN;
+  if (!Number.isInteger(followUpDays) || followUpDays < 1 || followUpDays > 90) errors['followUpDays'] = 'clinics.followUpDaysInvalid';
   let phone: string | null = null;
   if (input.phone.trim()) {
     const digits = normalizeDigits(input.phone).replace(/[\s\-()]/g, '').replace(/^(\+20|0020|0)/, '');
     if (/^\d{8,10}$/.test(digits)) phone = `+20${digits}`;
     else errors['phone'] = 'phone.invalid';
   }
-  return { errors, phone, fee };
+  return { errors, phone, fee, followUpFee, followUpDays };
 }
 
 export async function saveClinic(deps: Deps, doctorId: string, clinicId: string | null, input: ClinicInput): Promise<FieldErrors> {
-  const { errors, phone, fee } = await validateClinic(deps.db, input);
+  const { errors, phone, fee, followUpFee, followUpDays } = await validateClinic(deps.db, input);
   if (Object.keys(errors).length) return errors;
-  const values = [doctorId, input.name.trim(), input.districtId, input.address.trim(), phone, fee, input.isActive];
+  const values = [doctorId, input.name.trim(), input.districtId, input.address.trim(), phone, fee, input.isActive, followUpFee, followUpDays];
   if (clinicId) {
     const r = await deps.db.query(
-      `update clinics set name = $2, district_id = $3, address = $4, phone_e164 = $5, fee_egp = $6, is_active = $7, updated_at = now()
-        where id = $8 and doctor_id = $1`,
+      `update clinics set name = $2, district_id = $3, address = $4, phone_e164 = $5, fee_egp = $6, is_active = $7,
+              follow_up_fee_egp = $8, follow_up_days = $9, updated_at = now()
+        where id = $10 and doctor_id = $1`,
       [...values, clinicId],
     );
     if (r.rowCount === 0) throw notFound();
   } else {
     await deps.db.query(
-      `insert into clinics (doctor_id, name, district_id, address, phone_e164, fee_egp, is_active) values ($1, $2, $3, $4, $5, $6, $7)`,
+      `insert into clinics (doctor_id, name, district_id, address, phone_e164, fee_egp, is_active, follow_up_fee_egp, follow_up_days)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       values,
     );
   }

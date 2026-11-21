@@ -39,7 +39,7 @@ test('patient books through the Arabic UI: search → profile → sign in → co
 
   await page.getByRole('button', { name: 'دخول' }).click();
   await page.waitForURL(/\/book\?/);
-  await page.getByRole('radio', { name: 'متابعة' }).check();
+  assert.match(await page.content(), /سعر الكشف/);
   await page.getByLabel(/سبب الزيارة/).fill('متابعة ضغط');
   await page.getByRole('button', { name: 'تأكيد الحجز' }).click();
   await page.waitForURL(/\/appointments\?ok=booked/);
@@ -165,4 +165,36 @@ test('admin pages fit a phone screen in Arabic and English and on desktop', asyn
     }
     await page.close();
   }
+});
+
+test('doctor adds a walk-in booking on a phone by tapping a time (Arabic)', async () => {
+  const d = await createApprovedDoctor(h.db);
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(h.baseUrl + '/login');
+  await page.locator('input[name=phone]').fill('0' + d.phone.slice(3));
+  await page.locator('input[name=password]').fill(d.password);
+  await page.locator('form button[type=submit]').first().click();
+  await page.waitForLoadState('load');
+  await page.goto(h.baseUrl + '/dashboard');
+  await page.getByRole('link', { name: 'إضافة حجز' }).click();
+  await page.getByRole('link', { name: 'غدًا' }).click();
+  const shots = process.env['SHOTS_DIR'];
+  await page.locator('.slot-pick .slot').nth(3).click();
+  await page.getByLabel('اسم المريض').fill('عمرو سعيد');
+  await page.getByLabel('رقم الموبايل').fill('01012345678');
+  if (shots) await page.screenshot({ path: `${shots}/clinic-book-phone.png`, fullPage: true });
+  for (const path of ['/dashboard/book', '/dashboard/clinics']) {
+    const p2 = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await p2.context().addCookies(await page.context().cookies());
+    await p2.goto(h.baseUrl + path);
+    const overflow = (await p2.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+    assert.ok(overflow <= 1, `${path} is ${overflow}px too wide`);
+    await p2.close();
+  }
+  await page.getByRole('button', { name: 'تأكيد الحجز' }).click();
+  await page.waitForLoadState('load');
+  assert.match(await page.content(), /أُضيف الحجز إلى جدولك/);
+  assert.match(await page.content(), /عمرو سعيد/);
+  if (shots) await page.screenshot({ path: `${shots}/clinic-day-phone.png`, fullPage: true });
+  await page.close();
 });

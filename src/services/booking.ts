@@ -1,4 +1,6 @@
 import type { Deps } from '../http/context.js';
+import type { Config } from '../config.js';
+import { visitForOnlineBooking, type ClinicPrices, type VisitType } from '../domain/visitPricing.js';
 import { smsEnabled } from '../config.js';
 import type { Queryable } from '../db/db.js';
 import { isExclusionViolation } from '../db/db.js';
@@ -16,7 +18,6 @@ import { DomainError, notFound, tooManyRequests } from '../http/errors.js';
 export interface BookingRequest {
   clinicId: string;
   startsAt: Date;
-  visitType: 'new' | 'follow_up';
   reason: string;
 }
 
@@ -25,6 +26,9 @@ export interface BookingTarget {
   clinicName: string;
   clinicAddress: string;
   fee: number;
+  followUpFee: number | null;
+  followUpDays: number;
+  clinicPhone: string | null;
   doctorId: string;
   doctorName: string;
   doctorSlug: string;
@@ -37,8 +41,12 @@ export interface BookingTarget {
  * "this clinic, this start time"; it can never choose an arbitrary time or length.
  */
 export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, startsAt: Date): Promise<BookingTarget> {
-  const { rows } = await db.query<{ clinic_id: string; name: string; address: string; fee_egp: number; doctor_id: string; full_name: string; slug: string }>(
-    `select c.id as clinic_id, c.name, c.address, c.fee_egp, d.user_id as doctor_id, u.full_name, d.slug
+  const { rows } = await db.query<{
+    clinic_id: string; name: string; address: string; fee_egp: number; follow_up_fee_egp: number | null; follow_up_days: number;
+    phone_e164: string | null; doctor_id: string; full_name: string; slug: string;
+  }>(
+    `select c.id as clinic_id, c.name, c.address, c.fee_egp, c.follow_up_fee_egp, c.follow_up_days, c.phone_e164,
+            d.user_id as doctor_id, u.full_name, d.slug
        from clinics c join doctors d on d.user_id = c.doctor_id join users u on u.id = d.user_id
       where c.id = $1 and c.is_active and d.verification_status = 'approved' and u.status = 'active'`,
     [clinicId],
@@ -57,12 +65,68 @@ export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, s
     clinicName: c.name,
     clinicAddress: c.address,
     fee: c.fee_egp,
+    followUpFee: c.follow_up_fee_egp,
+    followUpDays: c.follow_up_days,
+    clinicPhone: c.phone_e164,
     doctorId: c.doctor_id,
     doctorName: c.full_name,
     doctorSlug: c.slug,
     startsAt: slot.startsAt,
     endsAt: slot.endsAt,
   };
+}
+
+/** When the patient last finished a visit with this doctor (any clinic), for follow-up pricing. */
+export async function lastCompletedVisit(db: Queryable, patientId: string, doctorId: string): Promise<Date | null> {
+  const { rows } = await db.query<{ at: Date | null }>(
+    `select max(starts_at) as at from appointments where patient_id = $1 and doctor_id = $2 and status = 'completed'`,
+    [patientId, doctorId],
+  );
+  return rows[0]?.at ?? null;
+}
+
+/** No-shows that count towards pausing online booking (inside the window and after any admin reset). */
+export async function countedNoShows(db: Queryable, cfg: Pick<Config, 'NO_SHOW_WINDOW_DAYS'>, patientId: string): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(
+    `select count(*)::int as n from appointments a join users u on u.id = a.patient_id
+      where a.patient_id = $1 and a.status = 'no_show'
+        and a.starts_at > now() - make_interval(days => $2)
+        and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)`,
+    [patientId, cfg.NO_SHOW_WINDOW_DAYS],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+export const pricesOf = (t: BookingTarget): ClinicPrices => ({ fee: t.fee, followUpFee: t.followUpFee, followUpDays: t.followUpDays });
+
+/** What the patient will be charged for this slot, shown before they confirm. */
+export async function quote(db: Queryable, patientId: string | null, target: BookingTarget): Promise<{ type: VisitType; fee: number }> {
+  const last = patientId ? await lastCompletedVisit(db, patientId, target.doctorId) : null;
+  return visitForOnlineBooking(pricesOf(target), last, target.startsAt);
+}
+
+export interface BookedNotice {
+  phone: string;
+  locale: Locale;
+  name: string;
+  /** Only a confirmed email is used. */
+  email: string | null;
+}
+
+/** Confirmation by SMS (and email when confirmed), queued in the same transaction as the booking. */
+export async function queueBookedNotices(deps: Deps, tx: Queryable, to: BookedNotice, target: BookingTarget): Promise<void> {
+  const t = translator(to.locale);
+  const link = `${deps.cfg.PUBLIC_ORIGIN}${to.locale === 'en' ? '/en' : ''}/appointments`;
+  const when = formatDateTime(target.startsAt, to.locale, deps.cfg.TIME_ZONE);
+  await enqueueSms(tx, to.phone, t('sms.booked', { doctor: target.doctorName, when, clinic: target.clinicName, link }));
+  if (to.email) {
+    await enqueueEmail(
+      tx,
+      to.email,
+      t('email.bookedSubject', { doctor: target.doctorName }),
+      t('email.bookedBody', { name: to.name, doctor: target.doctorName, when, clinic: target.clinicName, address: target.clinicAddress, link }),
+    );
+  }
 }
 
 export async function book(deps: Deps, patient: SessionUser, req: BookingRequest, ip: string): Promise<string> {
@@ -75,6 +139,7 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
     return await deps.db.transaction(async (tx) => {
       // Serialise this patient's bookings so the active-appointments limit cannot be raced.
       await tx.query('select 1 from users where id = $1 for update', [patient.id]);
+      if ((await countedNoShows(tx, deps.cfg, patient.id)) >= deps.cfg.NO_SHOW_LIMIT) throw new DomainError('booking.pausedNoShows');
       const active = await tx.query<{ n: number }>(
         `select count(*)::int as n from appointments where patient_id = $1 and status in ('confirmed', 'arrived') and starts_at > now()`,
         [patient.id],
@@ -82,42 +147,18 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
       if ((active.rows[0]?.n ?? 0) >= deps.cfg.MAX_ACTIVE_APPOINTMENTS_PER_PATIENT) throw new DomainError('booking.tooManyActive');
 
       const target = await resolveSlot(deps, tx, req.clinicId, req.startsAt);
+      const visit = await quote(tx, patient.id, target);
       const { rows } = await tx.query<{ id: string }>(
         `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp)
          values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, req.visitType, reason || null, target.fee],
+        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee],
       );
       const id = rows[0]!.id;
       await closeOnBooking(tx, deps.cfg.TIME_ZONE, patient.id, target.clinicId, target.startsAt);
-      const t = translator(patient.locale);
-      await enqueueSms(
-        tx,
-        patient.phone,
-        t('sms.booked', {
-          doctor: target.doctorName,
-          when: formatDateTime(target.startsAt, patient.locale, deps.cfg.TIME_ZONE),
-          clinic: target.clinicName,
-          link: `${deps.cfg.PUBLIC_ORIGIN}${patient.locale === 'en' ? '/en' : ''}/appointments`,
-        }),
-      );
       // Patients with a confirmed email also get the confirmation by email (works without SMS).
       const mail = await tx.query<{ email: string }>('select email from users where id = $1 and email is not null and email_verified_at is not null', [patient.id]);
-      if (mail.rows[0]) {
-        await enqueueEmail(
-          tx,
-          mail.rows[0].email,
-          t('email.bookedSubject', { doctor: target.doctorName }),
-          t('email.bookedBody', {
-            name: patient.fullName,
-            doctor: target.doctorName,
-            when: formatDateTime(target.startsAt, patient.locale, deps.cfg.TIME_ZONE),
-            clinic: target.clinicName,
-            address: target.clinicAddress,
-            link: `${deps.cfg.PUBLIC_ORIGIN}${patient.locale === 'en' ? '/en' : ''}/appointments`,
-          }),
-        );
-      }
-      await audit(tx, { actorId: patient.id, action: 'appointment.book', entityType: 'appointment', entityId: id, ip });
+      await queueBookedNotices(deps, tx, { phone: patient.phone, locale: patient.locale, name: patient.fullName, email: mail.rows[0]?.email ?? null }, target);
+      await audit(tx, { actorId: patient.id, action: 'appointment.book', entityType: 'appointment', entityId: id, metadata: { visit: visit.type }, ip });
       return id;
     });
   } catch (e) {
@@ -176,14 +217,14 @@ export async function changeStatus(
       clinic_id: string;
       status: AppointmentStatus;
       starts_at: Date;
-      patient_phone: string;
+      patient_phone: string | null;
       patient_locale: Locale;
       doctor_name: string;
       doctor_slug: string;
     }>(
-      `select a.id, a.clinic_id, a.status, a.starts_at, p.phone_e164 as patient_phone, p.preferred_locale as patient_locale,
-              du.full_name as doctor_name, d.slug as doctor_slug
-         from appointments a join users p on p.id = a.patient_id
+      `select a.id, a.clinic_id, a.status, a.starts_at, coalesce(p.phone_e164, a.walk_in_phone) as patient_phone,
+              coalesce(p.preferred_locale, 'ar') as patient_locale, du.full_name as doctor_name, d.slug as doctor_slug
+         from appointments a left join users p on p.id = a.patient_id
          join doctors d on d.user_id = a.doctor_id join users du on du.id = a.doctor_id
         where a.id = $1 and ${scope} = $2 for update of a`,
       [appointmentId, actor.id],
@@ -209,7 +250,7 @@ export async function changeStatus(
     );
     // A freed place goes to the people waiting for that day (patient or doctor cancellation alike).
     if (to === 'cancelled') await notifyWaitlist(deps, tx, appt);
-    if (to === 'cancelled' && actorKind === 'doctor') {
+    if (to === 'cancelled' && actorKind === 'doctor' && appt.patient_phone) {
       const t = translator(appt.patient_locale);
       await enqueueSms(
         tx,

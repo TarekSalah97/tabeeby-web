@@ -10,7 +10,7 @@ import { listReviewsForAdmin, setReviewVisibility } from '../services/reviews.js
 import { DomainError, notFound } from '../http/errors.js';
 import { isMessageKey } from '../i18n/index.js';
 import { errorFrom, formValue, noticeFrom, uuidParam } from './helpers.js';
-import { adminStats, parseRange, searchAccounts, setAccountStatus, listAudit, outboxOverview, retryFailedMessages } from '../services/adminConsole.js';
+import { adminStats, parseRange, searchAccounts, setAccountStatus, clearNoShows, listAudit, outboxOverview, retryFailedMessages } from '../services/adminConsole.js';
 import { adminDashboardPage, adminAccountsPage, adminAuditPage, adminMessagesPage } from '../views/pages/adminConsole.js';
 import { smsEnabled, emailEnabled } from '../config.js';
 
@@ -33,7 +33,7 @@ export function adminRoutes(r: Router): void {
   r.get('/admin/accounts', async (ctx) => {
     requireUser(ctx, 'admin');
     const q = (ctx.query.get('q') ?? '').slice(0, 120);
-    const results = q.trim().length >= 2 ? await searchAccounts(ctx.deps.db, q) : null;
+    const results = q.trim().length >= 2 ? await searchAccounts(ctx.deps.db, q, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : null;
     sendHtml(ctx, 200, adminAccountsPage(ctx, { q, results, notice: noticeFrom(ctx), error: errorFrom(ctx) }));
   });
 
@@ -41,9 +41,13 @@ export function adminRoutes(r: Router): void {
     const admin = requireUser(ctx, 'admin');
     const id = uuidParam(ctx, 'id');
     const action = ctx.params['action'];
-    if (action !== 'suspend' && action !== 'reactivate') throw notFound();
+    if (action !== 'suspend' && action !== 'reactivate' && action !== 'clear-no-shows') throw notFound();
     const q = formValue(ctx, 'q').slice(0, 120) || undefined;
     try {
+      if (action === 'clear-no-shows') {
+        await clearNoShows(ctx.deps, admin, id, ctx.ip);
+        return redirect(ctx, href(ctx, '/admin/accounts', { q, ok: 'noShowsCleared' }));
+      }
       await setAccountStatus(ctx.deps, admin, id, action === 'suspend', formValue(ctx, 'reason'), ctx.ip);
       redirect(ctx, href(ctx, '/admin/accounts', { q, ok: action === 'suspend' ? 'accountSuspended' : 'accountReactivated' }));
     } catch (e) {

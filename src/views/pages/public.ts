@@ -421,6 +421,9 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       ${booking.error ? alert('error', ctx.t(booking.error)) : ''}
       ${booking.notice ? alert('success', ctx.t(booking.notice)) : ''}
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
+      ${clinic && clinic.followUpFee !== null && clinic.followUpFee < clinic.fee
+        ? html`<div class="fee-row"><span class="muted">${ctx.t('doctor.followUpFee', { days: clinic.followUpDays })}</span><strong>${money(ctx, clinic.followUpFee)}</strong></div>`
+        : ''}
       ${d.clinics.length > 1
         ? html`<div class="stack-sm"><span class="label">${ctx.t('doctor.chooseClinic')}</span>
             <div class="stack-sm">${d.clinics.map(

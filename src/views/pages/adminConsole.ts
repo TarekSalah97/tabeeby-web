@@ -136,9 +136,15 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
         <span class="chip ${a.status === 'suspended' ? 'status-cancelled' : 'status-confirmed'}">${ctx.t(a.status === 'suspended' ? 'adm.statusSuspended' : 'adm.statusActive')}</span></div>
       <span class="muted small"><span dir="ltr">${formatEgyptMobile(a.phone_e164)}</span>${a.email ? html` · <span dir="ltr">${a.email}</span>` : ''} · ${ctx.t('adm.joined')} ${formatDateTime(a.created_at, ctx.locale, tz)}</span>
       ${a.upcoming ? html`<span class="small">${ctx.t('adm.upcomingCount', { n: formatNumber(a.upcoming, ctx.locale) })}</span>` : ''}
+      ${a.no_shows ? html`<span class="small">${ctx.t(a.no_shows >= ctx.deps.cfg.NO_SHOW_LIMIT ? 'adm.noShowsPaused' : 'adm.noShowsCount', { n: formatNumber(a.no_shows, ctx.locale) })}</span>` : ''}
     </div>
     <div class="stack-sm account-actions">
       ${a.role === 'doctor' ? html`<a class="btn btn-ghost btn-sm" href="${href(ctx, `/admin/doctors/${a.id}`)}">${ctx.t('adm.openDoctor')}</a>` : ''}
+      ${a.role === 'patient' && a.no_shows
+        ? html`<form method="post" action="${href(ctx, `/admin/accounts/${a.id}/clear-no-shows`)}">${csrfField(ctx)}
+            <input type="hidden" name="q" value="${o.q}">
+            <button type="submit" class="btn btn-outline btn-sm">${ctx.t('adm.clearNoShows')}</button></form>`
+        : ''}
       ${a.role === 'admin'
         ? html`<span class="muted small">${ctx.t('adm.adminProtected')}</span>`
         : a.status === 'active'

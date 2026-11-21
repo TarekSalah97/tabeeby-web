@@ -20,7 +20,6 @@ export interface GuestBookingInput {
   fullName: string;
   phone: string;
   email: string;
-  visitType: 'new' | 'follow_up';
   reason: string;
   consent: boolean;
   locale: Locale;
@@ -33,7 +32,6 @@ export interface GuestRequest {
   phone: string;
   clinicId: string;
   startsAt: string;
-  visitType: 'new' | 'follow_up';
   reason: string;
   locale: Locale;
 }
@@ -71,7 +69,7 @@ export async function startGuestBooking(deps: Deps, input: GuestBookingInput): P
   if (existing.rows[0]?.email_taken) return { errors: { email: 'guest.emailHasAccount' } };
 
   const code = newCode();
-  const request: GuestRequest = { fullName, phone, clinicId: target.clinicId, startsAt: target.startsAt.toISOString(), visitType: input.visitType, reason, locale: input.locale };
+  const request: GuestRequest = { fullName, phone, clinicId: target.clinicId, startsAt: target.startsAt.toISOString(), reason, locale: input.locale };
   const t = translator(input.locale);
   const codeId = await deps.db.transaction(async (tx) => {
     const id = await createEmailCode(tx, email, 'guest_booking', code, { ...request });

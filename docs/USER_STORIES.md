@@ -122,3 +122,18 @@ Each criterion maps to an automated test where marked (U = unit, I = integration
 - As an admin, I want to search the audit log by action, record and who did it, within a date range, so that I can answer "who changed this and when".
 - As an admin, I want to see which services are connected (SMS, email, AI assistant), this week's message counts and the latest failed messages with masked recipients, and retry failures from the last 7 days, so that patients get their confirmations.
 - Every admin page is admin-only (patients and doctors get 403; visitors are sent to sign in) and fits a phone screen.
+
+## Clinic day
+
+- As a doctor, I want to set a follow-up ("متابعة / استشارة") price and period per clinic, so that returning patients pay the right amount.
+  - Given the follow-up price is higher than the consultation fee, Then saving is refused. Empty = same price as a new visit. Period 1–90 days (default 14).
+  - Given a patient finished a visit with me within the period, When they book online, Then they are charged the follow-up price and the confirm page says why; otherwise the full fee. Patients cannot choose the type (the server decides).
+- As a doctor, I want to add a booking for someone who calls or walks in (name + mobile), so that my whole day is in one list.
+  - Only free times from my schedule are offered (including the slot running now); two bookings can never overlap; up to 90 days ahead.
+  - These bookings are kept with my clinic only and never shown to any patient account (a mistyped number cannot reveal a visit to a stranger). They are marked "Booked by clinic".
+- As a doctor, I want a "Book follow-up" button on a finished or ongoing visit, so that I can schedule the next visit before the patient leaves (In 1 week / 2 weeks / 1 month).
+  - The follow-up uses the follow-up price. A patient with an account sees it in "My appointments" and gets a confirmation.
+- As a doctor, I want to see how much I collected from completed visits today.
+- As a clinic, I want patients who miss appointments to stop booking online, so that times are not wasted.
+  - Given 3 no-shows in 180 days (settings `NO_SHOW_LIMIT`, `NO_SHOW_WINDOW_DAYS`), When the patient books online, Then they are asked to call the clinic. The clinic can still book them. Doctors see the no-show count next to the name.
+  - An admin can lift the pause from the accounts page ("Allow online booking again"); earlier no-shows stop counting. Recorded in the audit log.

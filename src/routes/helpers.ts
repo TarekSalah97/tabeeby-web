@@ -25,6 +25,8 @@ const NOTICES: Record<string, MessageKey> = {
   waitlistJoined: 'waitlist.joined',
   waitlistLeft: 'waitlist.left',
   bookedGuest: 'guest.booked',
+  clinicBooked: 'cbook.done',
+  noShowsCleared: 'adm.noShowsClearedDone',
   passwordSet: 'password.setDone',
   accountSuspended: 'adm.suspendedDone',
   accountReactivated: 'adm.reactivatedDone',

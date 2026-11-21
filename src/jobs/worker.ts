@@ -21,9 +21,10 @@ export async function queueReminders(deps: Deps): Promise<number> {
            update appointments a set ${column} = now()
             where a.status = 'confirmed' and a.${column} is null
               and a.starts_at > now() and a.starts_at <= now() + ${window} ${minLead}
-           returning a.patient_id, a.doctor_id, a.clinic_id, a.starts_at)
-         select due.starts_at, p.phone_e164 as phone, p.preferred_locale as locale, du.full_name as doctor, c.name as clinic
-           from due join users p on p.id = due.patient_id join users du on du.id = due.doctor_id join clinics c on c.id = due.clinic_id`,
+           returning a.patient_id, a.walk_in_phone, a.doctor_id, a.clinic_id, a.starts_at)
+         select due.starts_at, coalesce(p.phone_e164, due.walk_in_phone) as phone, coalesce(p.preferred_locale, 'ar') as locale,
+                du.full_name as doctor, c.name as clinic
+           from due left join users p on p.id = due.patient_id join users du on du.id = due.doctor_id join clinics c on c.id = due.clinic_id`,
       );
       for (const r of rows) {
         const t = translator(r.locale);

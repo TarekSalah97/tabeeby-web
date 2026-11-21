@@ -169,3 +169,8 @@ Migrations are forward-only. To roll back code, check out the previous commit an
 - Move PostgreSQL to a managed service in an approved location (`DATABASE_SSL=require`), with point-in-time recovery.
 - Move uploads to private object storage with server-side encryption (implement `FileStorage`).
 - Several app replicas behind Caddy/a load balancer: sessions and rate limits are already in Postgres, so the app is stateless.
+
+
+### Optional: no-show protection
+
+`NO_SHOW_LIMIT` (default 3) and `NO_SHOW_WINDOW_DAYS` (default 180): after that many missed appointments in the window, a patient can no longer book online until an admin allows it again. The defaults need no setting.

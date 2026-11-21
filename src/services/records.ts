@@ -153,9 +153,10 @@ export async function getRecord(db: Queryable, doctorId: string, id: string): Pr
 
 /** A doctor's own appointment, with its patient. */
 async function ownAppointment(db: Queryable, doctorId: string, appointmentId: string) {
-  const { rows } = await db.query<{ id: string; patient_id: string; clinic_id: string; full_name: string; phone_e164: string }>(
-    `select a.id, a.patient_id, a.clinic_id, u.full_name, u.phone_e164
-       from appointments a join users u on u.id = a.patient_id where a.id = $1 and a.doctor_id = $2`,
+  // patient_id is null for phone / walk-in bookings the clinic made; name and phone then come from the booking.
+  const { rows } = await db.query<{ id: string; patient_id: string | null; clinic_id: string; full_name: string; phone_e164: string }>(
+    `select a.id, a.patient_id, a.clinic_id, coalesce(u.full_name, a.walk_in_name) as full_name, coalesce(u.phone_e164, a.walk_in_phone) as phone_e164
+       from appointments a left join users u on u.id = a.patient_id where a.id = $1 and a.doctor_id = $2`,
     [appointmentId, doctorId],
   );
   if (!rows[0]) throw notFound();
@@ -173,8 +174,10 @@ export type AppointmentFile =
  */
 export async function fileForAppointment(db: Queryable, doctorId: string, appointmentId: string): Promise<AppointmentFile> {
   const appt = await ownAppointment(db, doctorId, appointmentId);
-  const existing = await db.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, appt.patient_id]);
-  if (existing.rows[0]) return { kind: 'existing', recordId: existing.rows[0].id };
+  if (appt.patient_id) {
+    const existing = await db.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, appt.patient_id]);
+    if (existing.rows[0]) return { kind: 'existing', recordId: existing.rows[0].id };
+  }
   const walkIns = await db.query<{ id: string; full_name: string; created_at: Date }>(
     'select id, full_name, created_at from patient_records where doctor_id = $1 and patient_user_id is null and phone_e164 = $2 order by created_at desc limit 10',
     [doctorId, appt.phone_e164],
@@ -197,8 +200,10 @@ export async function createRecord(
     if (o.appointmentId) {
       const appt = await ownAppointment(tx, doctorId, o.appointmentId);
       patientUserId = appt.patient_id;
-      const existing = await tx.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, patientUserId]);
-      if (existing.rows[0]) return { id: existing.rows[0].id };
+      if (patientUserId) {
+        const existing = await tx.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, patientUserId]);
+        if (existing.rows[0]) return { id: existing.rows[0].id };
+      }
     }
     const { rows } = await tx.query<{ id: string }>(
       `insert into patient_records (doctor_id, patient_user_id, full_name, phone_e164, date_of_birth, sex, occupation, marital_status,
@@ -239,6 +244,8 @@ export async function linkRecord(deps: Deps, doctorId: string, recordId: string,
     const appt = await ownAppointment(tx, doctorId, appointmentId);
     const rec = await tx.query<{ patient_user_id: string | null }>('select patient_user_id from patient_records where id = $1 and doctor_id = $2 for update', [recordId, doctorId]);
     if (!rec.rows[0]) throw notFound();
+    // A booking without an account has nothing to link to; the doctor just uses the existing file.
+    if (!appt.patient_id) return 'records.err.noAccount';
     if (rec.rows[0].patient_user_id) return rec.rows[0].patient_user_id === appt.patient_id ? null : 'records.err.alreadyLinked';
     try {
       await tx.query('update patient_records set patient_user_id = $3, updated_at = now() where id = $1 and doctor_id = $2', [recordId, doctorId, appt.patient_id]);

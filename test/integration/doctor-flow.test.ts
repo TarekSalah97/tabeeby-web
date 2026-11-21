@@ -122,7 +122,7 @@ test('doctor joins, is hidden until approved, sets up hours, then runs a visit',
   const apptId = await book(
     h.deps,
     { id: patient.id, role: 'patient', fullName: 'Test Patient', phone: patient.phone, phoneVerified: true, locale: 'ar' },
-    { clinicId: slot.clinic, startsAt: new Date(slot.start), visitType: 'follow_up', reason: '' },
+    { clinicId: slot.clinic, startsAt: new Date(slot.start), reason: '' },
     'ip',
   );
   await doc.get('/en/dashboard');

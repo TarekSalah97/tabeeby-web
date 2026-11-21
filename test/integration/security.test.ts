@@ -20,7 +20,7 @@ test('double booking: 12 patients racing for one slot → exactly one wins', asy
   const slot = await firstSlotStart(new Client(h.baseUrl), doctor.slug);
   const patients = await Promise.all(Array.from({ length: 12 }, () => createPatient(h.db)));
   const results = await Promise.allSettled(
-    patients.map((p) => book(h.deps, asUser(p), { clinicId: slot.clinic, startsAt: new Date(slot.start), visitType: 'new', reason: '' }, '127.0.0.1')),
+    patients.map((p) => book(h.deps, asUser(p), { clinicId: slot.clinic, startsAt: new Date(slot.start), reason: '' }, '127.0.0.1')),
   );
   const won = results.filter((r) => r.status === 'fulfilled');
   const lost = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
@@ -54,7 +54,7 @@ test('patient limit on active appointments', async () => {
   for (const d of doctors) {
     const slot = await firstSlotStart(client, d.slug);
     try {
-      await book(h.deps, asUser(p), { clinicId: slot.clinic, startsAt: new Date(slot.start), visitType: 'new', reason: '' }, 'ip');
+      await book(h.deps, asUser(p), { clinicId: slot.clinic, startsAt: new Date(slot.start), reason: '' }, 'ip');
     } catch (e) {
       lastError = e;
     }
@@ -68,7 +68,7 @@ test('access control: roles and ownership are enforced on the server', async () 
   const patient = await createPatient(h.db);
   const other = await createPatient(h.db);
   const slot = await firstSlotStart(new Client(h.baseUrl), doctorA.slug);
-  const apptId = await book(h.deps, asUser(patient), { clinicId: slot.clinic, startsAt: new Date(slot.start), visitType: 'new', reason: 'private' }, 'ip');
+  const apptId = await book(h.deps, asUser(patient), { clinicId: slot.clinic, startsAt: new Date(slot.start), reason: 'private' }, 'ip');
 
   // Doctor B cannot touch doctor A's appointment (looks like it does not exist).
   const b = new Client(h.baseUrl);

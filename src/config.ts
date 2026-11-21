@@ -53,6 +53,9 @@ const schema = z
     BOOKING_MIN_LEAD_MINUTES: z.coerce.number().int().min(0).max(1440).default(30),
     /** Abuse limit: active upcoming appointments per patient. */
     MAX_ACTIVE_APPOINTMENTS_PER_PATIENT: z.coerce.number().int().min(1).max(50).default(5),
+    // Online booking pauses after this many no-shows in the window (the clinic can still book them).
+    NO_SHOW_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
+    NO_SHOW_WINDOW_DAYS: z.coerce.number().int().min(7).max(730).default(180),
 
     TIME_ZONE: z.string().default('Africa/Cairo'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

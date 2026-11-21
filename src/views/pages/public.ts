@@ -1,8 +1,8 @@
-import { html, type SafeHtml } from '../html.js';
+import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar } from '../components.js';
+import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -249,14 +249,14 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
             value: spec?.slug ?? '',
             options: [{ value: '', label: ctx.t('search.anySpecialty') }, ...ref.specialties.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
           })}
-          ${subs.length
-            ? select(ctx, {
-                name: 'sub',
-                label: ctx.t('search.subspecialty'),
-                value: slugOf(f.subspecialtyId, subs) ?? '',
-                options: [{ value: '', label: ctx.t('search.anySubspecialty') }, ...subs.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
-              })
-            : ''}
+          <div data-sub-for="specialty" data-sub-any="${ctx.t('search.anySubspecialty')}" data-sub-map="${subMap(ctx, ref, 'slug')}"${attrIf(!subs.length, 'hidden')}>
+          ${select(ctx, {
+            name: 'sub',
+            label: ctx.t('search.subspecialty'),
+            value: slugOf(f.subspecialtyId, subs) ?? '',
+            options: [{ value: '', label: ctx.t('search.anySubspecialty') }, ...subs.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
+          })}
+          </div>
           ${select(ctx, {
             name: 'district',
             label: ctx.t('search.district'),

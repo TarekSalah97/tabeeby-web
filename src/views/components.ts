@@ -247,3 +247,12 @@ export function doctorAvatar(ctx: Ctx, d: { slug: string; fullName: string; phot
     ? html`<img class="avatar${size ? ` ${size}` : ''} photo" src="${href(ctx, `/photos/doctors/${d.slug}`, { v: String(d.photoVersion) })}" alt="${ctx.t('photo.alt', { name: d.fullName })}" width="${size ? 128 : 84}" height="${size ? 128 : 84}" loading="lazy">`
     : html`<div class="avatar${size ? ` ${size}` : ''}" aria-hidden="true">${initials(d.fullName)}</div>`;
 }
+
+/**
+ * Subspecialties per specialty for the page script that shows only the chosen specialty's
+ * subspecialties (JSON in a data attribute; the HTML escaping is undone by getAttribute).
+ */
+export function subMap(ctx: Ctx, ref: { specialties: { id: number; slug: string; name_en: string; name_ar: string; subspecialties: { id: number; slug: string; name_en: string; name_ar: string }[] }[] }, key: 'id' | 'slug'): string {
+  const label = (x: { name_en: string; name_ar: string }) => (ctx.locale === 'ar' ? x.name_ar : x.name_en);
+  return JSON.stringify(Object.fromEntries(ref.specialties.map((s) => [String(s[key]), s.subspecialties.map((x) => [String(x[key]), label(x)])])));
+}

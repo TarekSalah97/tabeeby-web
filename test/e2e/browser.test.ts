@@ -363,3 +363,27 @@ test('doctor dictates into a patient-file box (simulated speech service); microp
   assert.match(pub!.headers()['permissions-policy'] ?? '', /microphone=\(\)/);
   await page.close();
 });
+
+test('subspecialties appear as soon as a specialty is picked (search and doctor sign-up)', async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.goto(h.baseUrl + '/en/search');
+  const subWrap = page.locator('aside [data-sub-for]');
+  assert.equal(await subWrap.isHidden(), true, 'hidden before a specialty is chosen');
+  await page.locator('aside select[name=specialty]').selectOption('cardiology');
+  assert.equal(await subWrap.isVisible(), true, 'shown right after choosing');
+  const opts = await page.locator('aside select[name=sub] option').allTextContents();
+  assert.ok(opts.includes('Interventional cardiology') || opts.some((o) => /cardio|heart|echo/i.test(o)), opts.join(','));
+  assert.ok(!opts.some((o) => /Root canal|Endodontics|Acne/i.test(o)), 'only cardiology subspecialties');
+  await page.locator('aside select[name=specialty]').selectOption('');
+  assert.equal(await subWrap.isHidden(), true);
+
+  await page.goto(h.baseUrl + '/en/for-doctors/join');
+  const joinWrap = page.locator('form [data-sub-for]');
+  assert.equal(await joinWrap.isHidden(), true);
+  const specValue = await page.locator('select[name=specialty] option', { hasText: 'Dermatology' }).getAttribute('value');
+  await page.locator('select[name=specialty]').selectOption(specValue!);
+  const joinOpts = await page.locator('select[name=subspecialties] option').allTextContents();
+  assert.ok(joinOpts.includes('Acne'), joinOpts.join(','));
+  assert.ok(!joinOpts.some((o) => /Interventional|Pediatric cardiology/i.test(o)));
+  await page.close();
+});

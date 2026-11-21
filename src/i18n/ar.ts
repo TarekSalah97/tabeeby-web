@@ -8,6 +8,7 @@ export const ar: Record<keyof typeof en, string> = {
   'demo.logins': 'حسابات تجريبية (كلمة المرور: {password})',
   'demo.patient': 'المرضى',
   'demo.doctor': 'الأطباء',
+  'demo.facility': 'الصيدليات والمعامل ومراكز الأشعة',
   'nav.skip': 'انتقل إلى المحتوى',
   'nav.findDoctor': 'ابحث عن طبيب',
   'nav.forDoctors': 'للأطباء',

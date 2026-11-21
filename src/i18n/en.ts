@@ -5,6 +5,7 @@ export const en = {
   'demo.logins': 'Demo accounts (password: {password})',
   'demo.patient': 'Patients',
   'demo.doctor': 'Doctors',
+  'demo.facility': 'Pharmacies, labs, scan centres',
   'nav.skip': 'Skip to content',
   'nav.findDoctor': 'Find a doctor',
   'nav.forDoctors': 'For doctors',

@@ -223,7 +223,7 @@ test('no-show protection: 3 no-shows pause online booking; the clinic can still 
   const found = await ac.get(`/en/admin/accounts?q=0${p.phone.slice(3)}`);
   assert.match(found.body, /online booking is paused/);
   assert.match((await ac.post(`/en/admin/accounts/${p.id}/clear-no-shows`, {})).location!, /ok=noShowsCleared/);
-  const slot2 = await firstSlotStart(pc, d.slug, 30);
+  const slot2 = await firstSlotStart(pc, d.slug);
   const ok = await pc.post('/en/book', { clinic: slot2.clinic, start: slot2.start, reason: '' });
   assert.equal(ok.status, 303);
   assert.equal((await ac.post(`/en/admin/accounts/${d.id}/clear-no-shows`, {})).status, 404, 'only patients');

@@ -3,7 +3,7 @@ import type { Ctx } from '../../http/context.js';
 import { displayYears } from '../../domain/experience.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary } from '../components.js';
+import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary, subMap } from '../components.js';
 import { pick, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -98,18 +98,21 @@ export function joinPage(ctx: Ctx, ref: ReferenceData, o: { values?: Record<stri
           errors: o.errors,
           required: true,
         })}
+        <div data-sub-for="specialty" data-sub-map="${subMap(ctx, ref, 'id')}">
         ${select(ctx, {
           name: 'subspecialties',
           label: ctx.t('join.subspecialties'),
           multiple: true,
           size: 6,
           value: Array.isArray(v['subspecialties']) ? (v['subspecialties'] as string[]) : [],
+          // Without JavaScript every subspecialty is listed; the page script narrows it to the chosen specialty.
           options: ref.specialties
             .filter((s) => s.subspecialties.length)
             .map((s) => ({ group: pick(ctx.locale, s), options: s.subspecialties.map((x) => ({ value: String(x.id), label: pick(ctx.locale, x) })) })),
           hint: ctx.t('join.subspecialtiesHint'),
           errors: o.errors,
         })}
+        </div>
         <div class="field span-all${o.errors?.['card'] ? ' has-error' : ''}">
           <span class="label" id="card-label">${ctx.t('join.card')}</span>
           <label class="dropzone" for="card">

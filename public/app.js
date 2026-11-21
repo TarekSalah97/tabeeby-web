@@ -170,3 +170,34 @@
   });
   window.addEventListener('pagehide', stop);
 })();
+
+// Subspecialties follow the chosen specialty: the list shows only that specialty's
+// subspecialties as soon as it is picked (search filters and doctor sign-up).
+(function () {
+  var wraps = document.querySelectorAll('[data-sub-for]');
+  Array.prototype.forEach.call(wraps, function (wrap) {
+    var form = wrap.closest('form');
+    var spec = form && form.querySelector('select[name="' + wrap.getAttribute('data-sub-for') + '"]');
+    var sub = wrap.querySelector('select');
+    if (!spec || !sub) return;
+    var map;
+    try { map = JSON.parse(wrap.getAttribute('data-sub-map') || '{}'); } catch (e) { return; }
+    var anyLabel = wrap.getAttribute('data-sub-any');
+    function refresh() {
+      var chosen = {};
+      Array.prototype.forEach.call(sub.options, function (o) { if (o.selected && o.value) chosen[o.value] = true; });
+      var list = map[spec.value] || [];
+      while (sub.firstChild) sub.removeChild(sub.firstChild);
+      if (anyLabel !== null) sub.appendChild(new Option(anyLabel, ''));
+      list.forEach(function (pair) {
+        var o = new Option(pair[1], pair[0]);
+        if (chosen[pair[0]]) o.selected = true;
+        sub.appendChild(o);
+      });
+      wrap.hidden = list.length === 0;
+      if (sub.multiple) sub.size = Math.min(Math.max(list.length, 2), 6);
+    }
+    spec.addEventListener('change', refresh);
+    refresh();
+  });
+})();

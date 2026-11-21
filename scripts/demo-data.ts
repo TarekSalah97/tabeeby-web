@@ -196,3 +196,66 @@ export const MESSAGES: [string, string][] = [
   ['هل أكمل العلاج لو حسيت إني أحسن؟', 'أيوه، كمّل المدة كاملة حتى لو حسيت بتحسن.'],
   ['The lab results are ready, should I bring them?', 'Please bring them to your next visit, or book a follow-up this week.'],
 ];
+
+export interface DemoBranch {
+  name: string;
+  district: string;
+  address: string;
+  open24h?: boolean;
+  days?: number[];
+  opens?: string;
+  closes?: string;
+}
+export interface DemoFacility {
+  kind: 'pharmacy' | 'lab' | 'radiology';
+  name: string;
+  phone: string;
+  whatsapp?: string;
+  homeService: boolean;
+  description: string;
+  branches: DemoBranch[];
+  /** test code → price in EGP (labs and scan centres). */
+  prices?: Record<string, number>;
+}
+
+const ALL = [0, 1, 2, 3, 4, 5, 6];
+const NOT_FRIDAY = [0, 1, 2, 3, 4, 6];
+
+export const FACILITIES: DemoFacility[] = [
+  { kind: 'pharmacy', name: 'Nile Pharmacy', phone: '+201000000301', whatsapp: '+201000000301', homeService: true,
+    description: 'Open 24 hours. Free delivery within Smouha and Sidi Gaber. Cash, card and InstaPay.',
+    branches: [{ name: 'Smouha branch', district: 'smouha', address: '14 Victor Emmanuel Square', open24h: true }, { name: 'Sidi Gaber branch', district: 'sidi-gaber', address: '3 Station Street', opens: '09:00', closes: '02:00' }] },
+  { kind: 'pharmacy', name: 'El Ezaby Demo Pharmacy', phone: '+201000000302', homeService: true,
+    description: 'Medicines, baby care and cosmetics. Delivery in under an hour.',
+    branches: [{ name: 'Roushdy branch', district: 'roushdy', address: '22 Syria Street', opens: '08:00', closes: '01:00' }, { name: 'Stanley branch', district: 'stanley', address: '5 Corniche Road', opens: '09:00', closes: '00:00' }] },
+  { kind: 'pharmacy', name: 'Al Shefaa Pharmacy', phone: '+201000000303', homeService: false,
+    description: 'Neighbourhood pharmacy, blood pressure and sugar checks free.',
+    branches: [{ name: 'Sporting', district: 'sporting', address: '41 Port Said Street', days: NOT_FRIDAY, opens: '10:00', closes: '23:00' }] },
+  { kind: 'pharmacy', name: 'Miami Night Pharmacy', phone: '+201000000304', whatsapp: '+201000000304', homeService: true,
+    description: 'Late-night pharmacy for Miami and Asafra.',
+    branches: [{ name: 'Miami', district: 'miami', address: '90 Gamal Abdel Nasser Road', opens: '18:00', closes: '06:00' }] },
+  { kind: 'lab', name: 'Alpha Labs', phone: '+201000000311', whatsapp: '+201000000311', homeService: true,
+    description: 'ISO-accredited laboratory. Most results the same day, sent by WhatsApp. Home sample collection across Alexandria.',
+    branches: [{ name: 'Smouha', district: 'smouha', address: '7 Fawzy Moaz Street', opens: '07:00', closes: '23:00' }, { name: 'Louran', district: 'louran', address: '12 Louran Square', days: NOT_FRIDAY, opens: '08:00', closes: '22:00' }, { name: 'Raml Station', district: 'raml-station', address: '2 Saad Zaghloul Street', opens: '08:00', closes: '21:00' }],
+    prices: { cbc: 150, esr: 60, crp: 180, fbs: 50, ppbs: 50, rbs: 45, hba1c: 300, lipid: 350, lft: 320, kft: 280, uric_acid: 90, electrolytes: 260, calcium: 90, tsh: 220, ft4: 220, vit_d: 650, vit_b12: 380, ferritin: 300, iron: 140, pt_inr: 140, blood_group: 60, hcv_ab: 250, hbsag: 220, hiv: 300, h_pylori: 280, psa: 300, beta_hcg: 230, urine: 60, urine_culture: 220, stool: 60, ecg: 150 } },
+  { kind: 'lab', name: 'Al Borg Demo Lab', phone: '+201000000312', homeService: true,
+    description: 'Wide test menu, early opening for fasting tests.',
+    branches: [{ name: 'Sidi Bishr', district: 'sidi-bishr', address: '45 Khaled Ibn El Walid Street', opens: '06:30', closes: '22:00' }, { name: 'Stanley', district: 'stanley', address: '18 Abdel Salam Aref Street', opens: '07:00', closes: '22:00' }],
+    prices: { cbc: 130, esr: 50, crp: 160, fbs: 45, ppbs: 45, hba1c: 270, lipid: 320, lft: 300, kft: 250, tsh: 200, ft4: 200, vit_d: 600, vit_b12: 350, ferritin: 280, h_pylori: 250, beta_hcg: 210, urine: 50, stool: 50, urine_culture: 200 } },
+  { kind: 'lab', name: 'Cleopatra Medical Lab', phone: '+201000000313', homeService: false,
+    description: 'Small friendly lab, paediatric blood draws.',
+    branches: [{ name: 'Cleopatra', district: 'cleopatra', address: '9 Cleopatra Street', days: NOT_FRIDAY, opens: '08:00', closes: '20:00' }],
+    prices: { cbc: 110, fbs: 40, hba1c: 240, lipid: 280, tsh: 180, urine: 45, stool: 45, vit_d: 550 } },
+  { kind: 'radiology', name: 'Delta Scan Center', phone: '+201000000321', whatsapp: '+201000000321', homeService: false,
+    description: '1.5T MRI, 64-slice CT, 4D ultrasound. Reports within 24 hours.',
+    branches: [{ name: 'Smouha', district: 'smouha', address: '30 Albert El Awal Street', opens: '08:00', closes: '00:00' }, { name: 'Gleem', district: 'gleem', address: '11 Abu Qir Street', days: NOT_FRIDAY, opens: '09:00', closes: '22:00' }],
+    prices: { xray_chest: 200, xray_other: 250, us_abdomen: 450, us_pelvis: 450, ct: 1800, mri: 2600, echo: 900, ecg: 150 } },
+  { kind: 'radiology', name: 'Alex Dental X-Ray', phone: '+201000000322', homeService: false,
+    description: 'Dental imaging only: panoramic, periapical and CBCT.',
+    branches: [{ name: 'Sporting', district: 'sporting', address: '56 Port Said Street', days: NOT_FRIDAY, opens: '11:00', closes: '21:00' }],
+    prices: { xray_panoramic: 250, xray_periapical: 80, cbct: 1200 } },
+  { kind: 'radiology', name: 'Home Scan Alex', phone: '+201000000323', homeService: true,
+    description: 'Portable X-ray and ultrasound at home for the elderly and bed-bound.',
+    branches: [{ name: 'Main office', district: 'ibrahimia', address: '4 Omar Lotfy Street', days: ALL, opens: '09:00', closes: '21:00' }],
+    prices: { xray_chest: 600, xray_other: 650, us_abdomen: 900, ecg: 400 } },
+];

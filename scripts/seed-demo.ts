@@ -15,7 +15,7 @@ import { hashPassword } from '../src/auth/password.js';
 import { clearReferenceCache } from '../src/services/reference.js';
 import { DEMO_PASSWORD } from '../src/demo.js';
 import { addDays, todayIn, weekdayOf, zonedToUtc } from '../src/domain/time.js';
-import { DOCTORS, PATIENTS, TEMPLATES, REVIEW_COMMENTS, MESSAGES, patientsFor, type DemoDoctor } from './demo-data.js';
+import { DOCTORS, PATIENTS, TEMPLATES, REVIEW_COMMENTS, MESSAGES, FACILITIES, patientsFor, type DemoDoctor, type DemoFacility } from './demo-data.js';
 
 const cfg = loadConfig();
 if (cfg.NODE_ENV === 'production' && !cfg.DEMO_MODE) {
@@ -43,6 +43,45 @@ async function id(db: Queryable, sql: string, params: unknown[]): Promise<number
   return rows[0].id;
 }
 
+
+/** An approved pharmacy / lab / scan centre with its branches and prices (added once, prices refreshed). */
+async function upsertFacility(tx: Queryable, f: DemoFacility, hash: string): Promise<void> {
+  const { rows } = await tx.query<{ id: string }>(
+    `insert into users (role, full_name, phone_e164, password_hash, phone_verified_at)
+     values ('facility', $1, $2, $3, now())
+     on conflict (phone_e164) do update set full_name = excluded.full_name returning id`,
+    [`${f.name} (manager)`, f.phone, hash],
+  );
+  const id = rows[0]!.id;
+  const slug = f.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  await tx.query(
+    `insert into facilities (user_id, kind, slug, name, description, licence_number, phone_e164, whatsapp_e164, home_service, verification_status, verified_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'approved', now())
+     on conflict (user_id) do update set name = excluded.name, description = excluded.description, home_service = excluded.home_service,
+       phone_e164 = excluded.phone_e164, whatsapp_e164 = excluded.whatsapp_e164`,
+    [id, f.kind, slug, f.name, `${f.description} (Demo — not a real place.)`, `DEMO-${f.phone.slice(-3)}`, f.phone, f.whatsapp ?? null, f.homeService],
+  );
+  const has = await tx.query('select 1 from facility_branches where facility_id = $1 limit 1', [id]);
+  if (!has.rows.length) {
+    for (const b of f.branches) {
+      const districtId = await idOf(tx, 'select id from districts where slug = $1', [b.district]);
+      await tx.query(
+        `insert into facility_branches (facility_id, name, district_id, address, phone_e164, open_24h, open_days, opens, closes)
+         values ($1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time)`,
+        [id, b.name, districtId, b.address, f.phone, !!b.open24h, b.days ?? [0, 1, 2, 3, 4, 5, 6], b.open24h ? '00:00' : b.opens, b.open24h ? '23:59' : b.closes],
+      );
+    }
+  }
+  for (const [code, price] of Object.entries(f.prices ?? {})) {
+    await tx.query(
+      `insert into facility_tests (facility_id, test_code, price_egp) values ($1, $2, $3)
+       on conflict (facility_id, test_code) do update set price_egp = excluded.price_egp`,
+      [id, code, price],
+    );
+  }
+}
+
+const idOf = id;
 const slugOf = (name: string) => `dr-${name.toLowerCase().replace(/[^a-z]+/g, '-')}`;
 
 async function upsertDoctor(tx: Queryable, d: DemoDoctor, hash: string, insurerId: number): Promise<{ userId: string; clinicId: string }> {
@@ -119,6 +158,8 @@ try {
 
     const doctors = [];
     for (const d of DOCTORS) doctors.push({ d, ...(await upsertDoctor(tx, d, hash, insurerA)) });
+
+    for (const f of FACILITIES) await upsertFacility(tx, f, hash);
 
     const patientIds: string[] = [];
     for (const p of PATIENTS) {
@@ -254,7 +295,7 @@ try {
   });
   clearReferenceCache();
   console.log(summary);
-  console.log(`Demo logins (password ${DEMO_PASSWORD}): patients 01000000201..224, doctors 01000000101..109`);
+  console.log(`Demo logins (password ${DEMO_PASSWORD}): patients 01000000201..224, doctors 01000000101..109, pharmacies/labs/scan centres 01000000301..323`);
 } finally {
   await db.end();
 }

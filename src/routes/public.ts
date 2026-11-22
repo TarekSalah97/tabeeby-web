@@ -4,7 +4,7 @@ import { getReference } from '../services/reference.js';
 import { searchDoctors, getPublicProfile, type SearchFilters } from '../services/search.js';
 import { slotsForDoctors } from '../services/availability.js';
 import { activeServices } from '../services/clinicServices.js';
-import { homePage, searchPage, profilePage, legalPage, groupDays } from '../views/pages/public.js';
+import { homePage, searchPage, profilePage, legalPage, contactPage, groupDays } from '../views/pages/public.js';
 import { forDoctorsPage } from '../views/pages/forDoctors.js';
 import { notFound } from '../http/errors.js';
 import { isValidDate } from '../domain/time.js';
@@ -99,6 +99,7 @@ export function publicRoutes(r: Router): void {
     sendHtml(ctx, 200, forDoctorsPage(ctx));
   });
 
+  r.get('/contact', async (ctx) => sendHtml(ctx, 200, contactPage(ctx)));
   r.get('/privacy', async (ctx) => sendHtml(ctx, 200, legalPage(ctx, 'privacy')));
   r.get('/terms', async (ctx) => sendHtml(ctx, 200, legalPage(ctx, 'terms')));
 

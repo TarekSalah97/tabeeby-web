@@ -1,3 +1,4 @@
+import { normalizeEgyptMobile } from './domain/phone.js';
 import { z } from 'zod';
 
 /**
@@ -11,11 +12,23 @@ const schema = z
     HOST: z.string().default('0.0.0.0'),
     /** Public origin, used for Origin checks and absolute links. e.g. https://tabeeby.com */
     PUBLIC_ORIGIN: z.string().url().default('http://localhost:3000'),
-    /** Trust X-Forwarded-For from the reverse proxy (Caddy) for client IPs. */
+    /**
+     * Trust the reverse proxy for the visitor's address. With one proxy (e.g. Caddy) the address it
+     * appended last in X-Forwarded-For is used — never the first one, which the visitor can fake.
+     */
     TRUST_PROXY: z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    /**
+     * A header set by the edge network that visitors cannot fake, read before X-Forwarded-For.
+     * On Render (Cloudflare in front) this is "true-client-ip"; set automatically there.
+     */
+    CLIENT_IP_HEADER: z
+      .string()
+      .regex(/^[a-z0-9-]*$/i)
+      .default('')
+      .transform((s) => s.toLowerCase()),
 
     // Never echo the value in errors: it contains the database password.
     DATABASE_URL: z
@@ -34,6 +47,26 @@ const schema = z
     /** 'db' stores uploads in PostgreSQL — for hosts whose disk is wiped on restart. */
     STORAGE_DRIVER: z.enum(['disk', 'db']).default('disk'),
     MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+
+    /**
+     * Per-IP request budget per minute (pages, and form submissions). Protects against floods and
+     * scripted guessing on every form. 0 turns the limit off (used by the automated tests).
+     */
+    RATE_LIMIT_PAGES_PER_MIN: z.coerce.number().int().min(0).default(240),
+    RATE_LIMIT_POSTS_PER_MIN: z.coerce.number().int().min(0).default(40),
+
+    /** Phone numbers on the "Contact us" page (comma-separated Egyptian mobiles; call and WhatsApp). */
+    SUPPORT_PHONES: z
+      .string()
+      .default('01017609775,01004704221')
+      .transform((s, c) => {
+        const list = s.split(',').map((x) => x.trim()).filter(Boolean).map((x) => normalizeEgyptMobile(x));
+        if (list.some((x) => !x)) {
+          c.addIssue({ code: z.ZodIssueCode.custom, message: 'SUPPORT_PHONES must be Egyptian mobile numbers separated by commas' });
+          return z.NEVER;
+        }
+        return list as string[];
+      }),
 
     /** 'none' = run without SMS: no phone verification, no confirmations or reminders. */
     SMS_PROVIDER: z.enum(['console', 'http', 'none']).default('console'),
@@ -125,7 +158,9 @@ function resolveEmail(cfg: ParsedConfig): Config {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Hosting platforms such as Render publish the service URL; use it when PUBLIC_ORIGIN is not set.
-  const withOrigin = !env['PUBLIC_ORIGIN'] && env['RENDER_EXTERNAL_URL'] ? { ...env, PUBLIC_ORIGIN: env['RENDER_EXTERNAL_URL'] } : env;
+  let withOrigin = !env['PUBLIC_ORIGIN'] && env['RENDER_EXTERNAL_URL'] ? { ...env, PUBLIC_ORIGIN: env['RENDER_EXTERNAL_URL'] } : env;
+  // On Render, Cloudflare sets True-Client-IP (visitors cannot fake it); X-Forwarded-For is not cleaned.
+  if (env['RENDER'] === 'true' && env['CLIENT_IP_HEADER'] === undefined) withOrigin = { ...withOrigin, CLIENT_IP_HEADER: 'true-client-ip' };
   const parsed = schema.safeParse(withOrigin);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');

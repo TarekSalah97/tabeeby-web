@@ -30,6 +30,7 @@ import { messagingRoutes } from './routes/messaging.js';
 import { facilityRoutes } from './routes/facilities.js';
 import { log, errorFields } from './log.js';
 import { staticRoot } from './http/staticRoot.js';
+import { RequestShield, isProbe } from './http/shield.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // src/ when run with tsx, dist/src/ when compiled.
@@ -51,11 +52,23 @@ export function buildRouter(): Router {
   return r;
 }
 
-function clientIp(req: http.IncomingMessage, trustProxy: boolean): string {
+/**
+ * The visitor's address, used by every rate limit and in the audit log. It must not be something
+ * the visitor can choose: the edge's own header first (Cloudflare's True-Client-IP on Render), then
+ * — behind one trusted proxy — the address that proxy appended LAST to X-Forwarded-For. The first
+ * entry is whatever the visitor sent and is never trusted.
+ */
+export function clientIp(req: http.IncomingMessage, trustProxy: boolean, edgeHeader = ''): string {
+  if (edgeHeader) {
+    const v = req.headers[edgeHeader];
+    const ip = (Array.isArray(v) ? v[0] : v)?.trim();
+    if (ip && /^[0-9a-f.:]{3,45}$/i.test(ip)) return ip;
+  }
   if (trustProxy) {
     const xff = req.headers['x-forwarded-for'];
-    const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
-    if (first) return first;
+    const list = (Array.isArray(xff) ? xff.join(',') : xff ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const last = list[list.length - 1];
+    if (last) return last;
   }
   return req.socket.remoteAddress ?? 'unknown';
 }
@@ -63,6 +76,8 @@ function clientIp(req: http.IncomingMessage, trustProxy: boolean): string {
 export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
   const router = buildRouter();
   const https = deps.cfg.PUBLIC_ORIGIN.startsWith('https://');
+  const limitsOn = deps.cfg.RATE_LIMIT_PAGES_PER_MIN > 0 && deps.cfg.RATE_LIMIT_POSTS_PER_MIN > 0;
+  const shield = new RequestShield({ pagesPerMinute: deps.cfg.RATE_LIMIT_PAGES_PER_MIN, postsPerMinute: deps.cfg.RATE_LIMIT_POSTS_PER_MIN });
 
   return http.createServer((req, res) => {
     const started = Date.now();
@@ -86,6 +101,26 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
       return;
     }
 
+    // Attack probes (WordPress, PHP, .env, .git…) end here, before any database work.
+    if (isProbe(url.pathname)) {
+      res.statusCode = 404;
+      (res as { route?: string }).route = 'probe';
+      res.end();
+      return;
+    }
+    // Per-IP budget (pages and form submissions); static files and the health check are free.
+    if (limitsOn && !url.pathname.startsWith('/static/') && url.pathname !== '/healthz') {
+      const isPost = method !== 'GET' && method !== 'HEAD';
+      if (!shield.allow(clientIp(req, deps.cfg.TRUST_PROXY, deps.cfg.CLIENT_IP_HEADER), isPost)) {
+        res.statusCode = 429;
+        res.setHeader('Retry-After', '60');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        (res as { route?: string }).route = 'rate-limited';
+        res.end('<!doctype html><meta charset="utf-8"><title>Tabeeby</title><body style="font-family:sans-serif;padding:2rem;text-align:center"><h1>طلبات كثيرة — Too many requests</h1><p>من فضلك انتظر دقيقة ثم حاول مرة أخرى.</p><p>Please wait a minute and try again.</p></body>');
+        return;
+      }
+    }
+
     if (url.pathname.startsWith('/static/')) {
       if (await serveStatic(staticDir, url.pathname, res, method, url.searchParams.has('v'))) return;
       res.statusCode = 404;
@@ -94,7 +129,14 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
     }
     if (url.pathname === '/robots.txt') {
       res.setHeader('Content-Type', 'text/plain');
-      res.end(deps.cfg.DEMO_MODE ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /book\nDisallow: /appointments\n');
+      res.end(deps.cfg.DEMO_MODE ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /facility\nDisallow: /book\nDisallow: /appointments\nDisallow: /health-record\nDisallow: /results\nDisallow: /en/dashboard\nDisallow: /en/admin\nDisallow: /en/facility\nDisallow: /en/book\nDisallow: /en/appointments\nDisallow: /en/health-record\nDisallow: /en/results\n');
+      return;
+    }
+    // How security researchers can report a problem (RFC 9116).
+    if (url.pathname === '/.well-known/security.txt') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      const expires = new Date(Date.now() + 180 * 86400_000).toISOString();
+      res.end(`Contact: ${deps.cfg.PUBLIC_ORIGIN}/en/contact\nExpires: ${expires}\nPreferred-Languages: en, ar\nCanonical: ${deps.cfg.PUBLIC_ORIGIN}/.well-known/security.txt\n`);
       return;
     }
 
@@ -124,7 +166,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
       path: pathName,
       params: {},
       query: url.searchParams,
-      ip: clientIp(req, deps.cfg.TRUST_PROXY),
+      ip: clientIp(req, deps.cfg.TRUST_PROXY, deps.cfg.CLIENT_IP_HEADER),
       locale,
       t: translator(locale),
       cookies,

@@ -16,11 +16,15 @@ const CSP = [
   "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  "frame-src 'none'",
+  "worker-src 'none'",
+  "manifest-src 'self'",
 ].join('; ');
 
 /** micAllowed: only the doctor dashboard may use the microphone (voice dictation of notes). */
 export function applySecurityHeaders(res: ServerResponse, https: boolean, micAllowed = false): void {
-  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('Content-Security-Policy', https ? `${CSP}; upgrade-insecure-requests` : CSP);
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');

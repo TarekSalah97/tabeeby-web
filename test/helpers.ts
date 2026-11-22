@@ -44,7 +44,7 @@ export async function startHarness(overrides: Partial<Record<keyof Config, strin
   url.pathname = `/${name}`;
 
   const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-up-'));
-  const cfg = loadConfig({ DATABASE_URL: url.toString(), NODE_ENV: 'test', UPLOAD_DIR: uploadDir, PUBLIC_ORIGIN: 'http://127.0.0.1', ...overrides });
+  const cfg = loadConfig({ DATABASE_URL: url.toString(), NODE_ENV: 'test', UPLOAD_DIR: uploadDir, PUBLIC_ORIGIN: 'http://127.0.0.1', RATE_LIMIT_PAGES_PER_MIN: '0', RATE_LIMIT_POSTS_PER_MIN: '0', ...overrides });
   const db = createDb(cfg);
   await migrate(db, path.join(root, 'migrations'));
   clearReferenceCache();

@@ -97,6 +97,7 @@ ${ctx.user?.role === 'patient' ? patientTabBar(ctx) : ''}
     <div class="footer-brand"><strong>${ctx.t('brand')}</strong><span>${ctx.t('footer.tagline')}</span></div>
     <p class="footer-emergency">${ctx.t('footer.emergency')}</p>
     <nav class="footer-links" aria-label="Legal">
+      <a href="${href(ctx, '/contact')}"><strong>${ctx.t('help.footer')}</strong></a>
       <a href="${href(ctx, '/privacy')}">${ctx.t('footer.privacy')}</a>
       <a href="${href(ctx, '/terms')}">${ctx.t('footer.terms')}</a>
       <a href="${href(ctx, '/facilities/join')}">${ctx.t('footer.listFacility')}</a>

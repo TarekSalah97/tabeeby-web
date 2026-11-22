@@ -810,3 +810,15 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
   .symptom-bar { padding: 16px; gap: 10px; }
   .symptom-bar input { font-size: 1.15rem; }
 }
+
+/* Contact us */
+.contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.contact-card { display: grid; gap: 10px; justify-items: start; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.contact-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--primary-tint); color: var(--primary); }
+.contact-number { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.contact-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-whatsapp { background: #1f9e55; border-color: #1f9e55; color: #fff; }
+.btn-whatsapp:hover { background: #178046; }
+.faq { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 10px 14px; }
+.faq summary { cursor: pointer; font-weight: 600; }
+.faq p { margin: 8px 0 0; }

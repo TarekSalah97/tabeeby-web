@@ -1,4 +1,5 @@
 import type { ClinicService } from '../../services/clinicServices.js';
+import { formatEgyptMobile } from '../../domain/phone.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
@@ -490,6 +491,42 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
   </div>
   ${stickyActions(ctx, d, booking.clinicId, ref)}`;
   return layout(ctx, { title: `${d.fullName} — ${title} — ${ctx.t('brand')}`, description: `${d.fullName}: ${title}`, body });
+}
+
+/** "Contact us / Get help": the support numbers (call or WhatsApp) and answers to common questions. */
+export function contactPage(ctx: Ctx): SafeHtml {
+  const phones = ctx.deps.cfg.SUPPORT_PHONES;
+  const faq: [MessageKey, MessageKey][] = [
+    ['help.q.book', 'help.a.book'],
+    ['help.q.cancel', 'help.a.cancel'],
+    ['help.q.code', 'help.a.code'],
+    ['help.q.results', 'help.a.results'],
+    ['help.q.doctor', 'help.a.doctor'],
+  ];
+  return layout(ctx, {
+    title: `${ctx.t('help.title')} — ${ctx.t('brand')}`,
+    description: ctx.t('help.lead'),
+    body: html`<div class="container page narrow stack-lg">
+      <div><h1>${ctx.t('help.title')}</h1><p class="lead-sm">${ctx.t('help.lead')}</p></div>
+      ${alert('warning', ctx.t('help.emergency'))}
+      <section class="contact-grid" aria-label="${ctx.t('help.numbers')}">
+        ${phones.map(
+          (p) => html`<div class="contact-card">
+            <span class="contact-icon" aria-hidden="true">${icon.phone}</span>
+            <strong class="contact-number" dir="ltr">${formatEgyptMobile(p)}</strong>
+            <div class="contact-actions">
+              <a class="btn btn-primary" href="tel:${p}">${icon.phone}${ctx.t('help.call')}</a>
+              <a class="btn btn-whatsapp" href="https://wa.me/${p.slice(1)}" target="_blank" rel="noopener">${ctx.t('help.whatsapp')}</a>
+            </div>
+          </div>`,
+        )}
+      </section>
+      <p class="small muted">${ctx.t('help.noAdvice')}</p>
+      <section class="stack-sm"><h2>${ctx.t('help.faqTitle')}</h2>
+        ${faq.map(([q, a]) => html`<details class="faq"><summary>${ctx.t(q)}</summary><p>${ctx.t(a)}</p></details>`)}
+      </section>
+    </div>`,
+  });
 }
 
 export function legalPage(ctx: Ctx, kind: 'privacy' | 'terms'): SafeHtml {

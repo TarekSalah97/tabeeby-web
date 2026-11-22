@@ -135,9 +135,9 @@ export async function bookByClinic(deps: Deps, doctor: SessionUser, input: Clini
       const walkInPhone = patientId ? null : (source?.phone ?? walkIn!.phone);
 
       const { rows } = await tx.query<{ id: string }>(
-        `insert into appointments (doctor_id, clinic_id, patient_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name)
-         values ($1, $2, $3, $4, $5, 'doctor', $6, $7, $8, $9, $10, $11, $12) returning id`,
-        [doctor.id, clinic.id, patientId, walkInName, walkInPhone, slot.startsAt, slot.endsAt, visitType, reason || null, fee, service?.id ?? null, service?.name ?? null],
+        `insert into appointments (doctor_id, clinic_id, patient_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name, service_name_ar)
+         values ($1, $2, $3, $4, $5, 'doctor', $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+        [doctor.id, clinic.id, patientId, walkInName, walkInPhone, slot.startsAt, slot.endsAt, visitType, reason || null, fee, service?.id ?? null, service?.name ?? null, service?.name_ar ?? null],
       );
       const id = rows[0]!.id;
 

@@ -1,4 +1,4 @@
-import type { ClinicService } from '../../services/clinicServices.js';
+import { serviceName, type ClinicService } from '../../services/clinicServices.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
@@ -462,7 +462,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
         : ''}
       ${booking.services?.length
         ? html`<details class="svc-public"${booking.services.length <= 4 ? html` open` : ''}><summary>${ctx.t('svc.publicTitle', { n: booking.services.length })}</summary>
-            ${booking.services.map((s) => html`<div class="fee-row"><span class="muted" dir="auto">${s.name}</span><strong>${money(ctx, s.price_egp)}</strong></div>`)}
+            ${booking.services.map((s) => html`<div class="fee-row"><span class="muted" dir="auto">${serviceName(s, ctx.locale)}</span><strong>${money(ctx, s.price_egp)}</strong></div>`)}
             <p class="small muted">${ctx.t('svc.publicHint')}</p></details>`
         : ''}
       ${booking.message && booking.message !== 'hidden'

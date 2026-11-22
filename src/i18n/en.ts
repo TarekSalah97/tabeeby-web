@@ -1431,4 +1431,9 @@ export const en = {
   'link.err.alreadyLinked': "This file is already linked to a patient account.",
   'link.err.hasOtherFile': "This patient's account is already linked to another of your files. Open that file instead.",
   'link.err.tooMany': "Too many tries. Please wait an hour and try again.",
+  'svc.nameAr': "Name in Arabic",
+  'svc.nameEn': "Name in English",
+  'svc.newNameAr': "New service — Arabic name",
+  'svc.newNameEn': "English name",
+  'svc.namesHint': "Fill in one or both names. Patients see the name in their language; pick a suggestion and the other language is filled in for you.",
 } as const;

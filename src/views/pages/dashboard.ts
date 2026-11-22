@@ -1,4 +1,4 @@
-import type { ClinicService } from '../../services/clinicServices.js';
+import { serviceName, type ClinicService } from '../../services/clinicServices.js';
 import { suggestionsFor } from '../../domain/serviceSuggestions.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
@@ -215,20 +215,27 @@ function servicesPanel(
   ctx: Ctx,
   clinic: ClinicRow,
   services: ClinicService[],
-  suggestions: string[],
+  suggestions: { en: string[]; ar: string[] },
   o: { serviceErrors?: FieldErrors; serviceTarget?: string; serviceValues?: Record<string, string> },
 ): SafeHtml {
   const mine = services.filter((s) => s.clinic_id === clinic.id);
-  const listId = `svc-suggest-${clinic.id.slice(0, 8)}`;
+  const key = clinic.id.slice(0, 8);
+  const lists = html`<datalist id="svc-en-${key}">${suggestions.en.map((s) => html`<option value="${s}"></option>`)}</datalist>
+    <datalist id="svc-ar-${key}">${suggestions.ar.map((s) => html`<option value="${s}"></option>`)}</datalist>`;
+  const names = (idPrefix: string, v: Record<string, string>, errors: FieldErrors | undefined, newOne: boolean) => html`
+    ${input(ctx, { idPrefix, name: 'serviceNameAr', label: ctx.t(newOne ? 'svc.newNameAr' : 'svc.nameAr'), value: v['serviceNameAr'], maxlength: 80, list: `svc-ar-${key}`, errors })}
+    ${input(ctx, { idPrefix, name: 'serviceName', label: ctx.t(newOne ? 'svc.newNameEn' : 'svc.nameEn'), value: v['serviceName'], maxlength: 80, list: `svc-en-${key}`, errors })}`;
   const row = (s: ClinicService) => {
     const isTarget = o.serviceTarget === s.id;
-    const v = isTarget && o.serviceValues ? o.serviceValues : { serviceName: s.name, servicePrice: String(s.price_egp), active: s.is_active ? 'yes' : '' };
+    const v = isTarget && o.serviceValues
+      ? o.serviceValues
+      : { serviceName: s.name, serviceNameAr: s.name_ar ?? '', servicePrice: String(s.price_egp), active: s.is_active ? 'yes' : '' };
     const errors = isTarget ? o.serviceErrors : undefined;
     const idPrefix = `s${s.id.slice(0, 8)}-`;
     return html`<li class="svc-row${s.is_active ? '' : ' svc-hidden'}">
       <form method="post" action="${href(ctx, `/dashboard/services/${s.id}`)}" class="svc-form">
         ${csrfField(ctx)}
-        ${input(ctx, { idPrefix, name: 'serviceName', label: ctx.t('svc.name'), value: v['serviceName'], maxlength: 80, errors, required: true })}
+        ${names(idPrefix, v, errors, false)}
         ${input(ctx, { idPrefix, name: 'servicePrice', label: ctx.t('svc.price'), value: v['servicePrice'], inputmode: 'numeric', errors, required: true })}
         <div class="field"><label class="check"><input type="checkbox" name="active" value="yes"${attrIf(v['active'] === 'yes', 'checked')}><span>${ctx.t('svc.active')}</span></label></div>
         <div class="field svc-save"><button class="btn btn-outline btn-sm" type="submit">${ctx.t('svc.save')}</button></div>
@@ -240,13 +247,14 @@ function servicesPanel(
   return html`<section class="stack-sm svc-panel" id="services-${clinic.id}">
     <h3>${ctx.t('svc.title')}</h3>
     <p class="small muted">${ctx.t('svc.lead')}</p>
+    ${lists}
     ${mine.length ? html`<ul class="svc-list">${mine.map(row)}</ul>` : ''}
     <form method="post" action="${href(ctx, `/dashboard/clinics/${clinic.id}/services`)}" class="svc-form svc-add">
       ${csrfField(ctx)}
-      ${input(ctx, { idPrefix: `n${clinic.id.slice(0, 8)}-`, name: 'serviceName', label: ctx.t('svc.newName'), value: nv['serviceName'], maxlength: 80, list: listId, hint: suggestions.length ? ctx.t('svc.suggestHint') : undefined, errors: isNew ? o.serviceErrors : undefined, required: true })}
-      ${input(ctx, { idPrefix: `n${clinic.id.slice(0, 8)}-`, name: 'servicePrice', label: ctx.t('svc.price'), value: nv['servicePrice'], inputmode: 'numeric', errors: isNew ? o.serviceErrors : undefined, required: true })}
+      ${names(`n${key}-`, nv, isNew ? o.serviceErrors : undefined, true)}
+      ${input(ctx, { idPrefix: `n${key}-`, name: 'servicePrice', label: ctx.t('svc.price'), value: nv['servicePrice'], inputmode: 'numeric', errors: isNew ? o.serviceErrors : undefined, required: true })}
       <div class="field svc-save"><button class="btn btn-primary btn-sm" type="submit">${ctx.t('svc.add')}</button></div>
-      ${suggestions.length ? html`<datalist id="${listId}">${suggestions.map((s) => html`<option value="${s}"></option>`)}</datalist>` : ''}
+      <p class="hint svc-hint">${ctx.t('svc.namesHint')}</p>
     </form>
   </section>`;
 }
@@ -268,7 +276,7 @@ export function clinicsPage(
   },
 ): SafeHtml {
   const specialtySlug = ref.specialties.find((s) => s.id === doctor.specialty_id)?.slug ?? null;
-  const suggestions = suggestionsFor(specialtySlug, ctx.locale);
+  const suggestions = { en: suggestionsFor(specialtySlug, 'en'), ar: suggestionsFor(specialtySlug, 'ar') };
   const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
   const form = (c: ClinicRow | null) => {
     const isTarget = (o.editing ?? null) === (c?.id ?? null);
@@ -518,7 +526,7 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
   const picked = values['visitType'] ?? '';
   const visit = picked.startsWith('svc:') && services.some((s) => `svc:${s.id}` === picked) ? picked : v.source ? 'follow_up' : picked === 'follow_up' ? 'follow_up' : 'new';
   const serviceOptions = services.map(
-    (s) => html`<label><input type="radio" name="visitType" value="svc:${s.id}"${attrIf(visit === `svc:${s.id}`, 'checked')}><span><bdi>${s.name}</bdi> · ${money(ctx, s.price_egp)}</span></label>`,
+    (s) => html`<label><input type="radio" name="visitType" value="svc:${s.id}"${attrIf(visit === `svc:${s.id}`, 'checked')}><span><bdi>${serviceName(s, ctx.locale)}</bdi> · ${money(ctx, s.price_egp)}</span></label>`,
   );
   const followUpPrice = clinic.followUpFee ?? clinic.fee;
 

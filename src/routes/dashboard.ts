@@ -352,8 +352,8 @@ export function dashboardRoutes(r: Router): void {
     const user = requireDoctor(ctx);
     if (!user) return;
     const clinicId = uuidParam(ctx, 'id');
-    const values = { serviceName: formValue(ctx, 'serviceName'), servicePrice: formValue(ctx, 'servicePrice') };
-    const errors = await addService(ctx.deps, user.id, clinicId, { name: values.serviceName, price: values.servicePrice }, ctx.ip);
+    const values = { serviceName: formValue(ctx, 'serviceName'), serviceNameAr: formValue(ctx, 'serviceNameAr'), servicePrice: formValue(ctx, 'servicePrice') };
+    const errors = await addService(ctx.deps, user.id, clinicId, { name: values.serviceName, nameAr: values.serviceNameAr, price: values.servicePrice }, ctx.ip);
     if (errors) return renderClinics(ctx, user, { serviceErrors: errors, serviceTarget: `new:${clinicId}`, serviceValues: values }, 422);
     redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'serviceSaved' }) + `#services-${clinicId}`);
   });
@@ -362,8 +362,8 @@ export function dashboardRoutes(r: Router): void {
     const user = requireDoctor(ctx);
     if (!user) return;
     const id = uuidParam(ctx, 'id');
-    const values = { serviceName: formValue(ctx, 'serviceName'), servicePrice: formValue(ctx, 'servicePrice'), active: formValue(ctx, 'active') };
-    const errors = await updateService(ctx.deps, user.id, id, { name: values.serviceName, price: values.servicePrice, active: values.active === 'yes' }, ctx.ip);
+    const values = { serviceName: formValue(ctx, 'serviceName'), serviceNameAr: formValue(ctx, 'serviceNameAr'), servicePrice: formValue(ctx, 'servicePrice'), active: formValue(ctx, 'active') };
+    const errors = await updateService(ctx.deps, user.id, id, { name: values.serviceName, nameAr: values.serviceNameAr, price: values.servicePrice, active: values.active === 'yes' }, ctx.ip);
     if (errors) return renderClinics(ctx, user, { serviceErrors: errors, serviceTarget: id, serviceValues: values }, 422);
     redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'serviceSaved' }));
   });

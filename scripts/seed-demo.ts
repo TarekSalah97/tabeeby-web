@@ -290,11 +290,11 @@ try {
     // A few services per demo doctor (names from the specialty suggestions), so booking a service can be tried.
     for (const { d, userId, clinicId } of doctors) {
       const picks = (SERVICE_SUGGESTIONS[d.specialty] ?? []).slice(0, 3);
-      for (const [i, [en]] of picks.entries()) {
+      for (const [i, [en, ar]] of picks.entries()) {
         await tx.query(
-          `insert into clinic_services (clinic_id, doctor_id, name, price_egp) values ($1, $2, $3, $4)
-           on conflict (clinic_id, lower(btrim(name))) do nothing`,
-          [clinicId, userId, en, Math.round((d.fee * (1.2 + i * 0.6)) / 50) * 50],
+          `insert into clinic_services (clinic_id, doctor_id, name, name_ar, price_egp) values ($1, $2, $3, $4, $5)
+           on conflict (clinic_id, lower(btrim(name))) do update set name_ar = coalesce(clinic_services.name_ar, excluded.name_ar)`,
+          [clinicId, userId, en, ar, Math.round((d.fee * (1.2 + i * 0.6)) / 50) * 50],
         );
       }
     }

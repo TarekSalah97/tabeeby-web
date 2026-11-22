@@ -6,6 +6,7 @@ export interface Visit {
   fee: number;
   serviceId?: string;
   serviceName?: string;
+  serviceNameAr?: string | null;
 }
 
 export interface ClinicPrices {

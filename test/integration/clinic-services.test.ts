@@ -118,3 +118,31 @@ test('the clinic books a service by phone at the doctor\'s price', async () => {
     "select visit_type, fee_egp, service_name from appointments where walk_in_name = 'Mona Walk-in'")).rows[0]!;
   assert.deepEqual(a, { visit_type: 'service', fee_egp: 450, service_name: 'Scaling and polishing' });
 });
+
+test('services have Arabic and English names; each page shows its own language; suggestions fill the other', async () => {
+  const { d, c } = await doctorClient({ specialty: 'dentistry' });
+  await c.post(`/en/dashboard/clinics/${d.clinicId}/services`, { serviceNameAr: 'تبييض الأسنان', serviceName: '', servicePrice: '1500' });
+  await c.post(`/en/dashboard/clinics/${d.clinicId}/services`, { serviceNameAr: 'جلسة تلميع خاصة', serviceName: 'Special polish', servicePrice: '400' });
+  const rows = (await h.db.query<{ name: string; name_ar: string }>('select name, name_ar from clinic_services where clinic_id = $1 order by price_egp', [d.clinicId])).rows;
+  assert.deepEqual(rows, [{ name: 'Special polish', name_ar: 'جلسة تلميع خاصة' }, { name: 'Teeth whitening', name_ar: 'تبييض الأسنان' }]);
+  assert.equal((await c.post(`/en/dashboard/clinics/${d.clinicId}/services`, { serviceNameAr: '', serviceName: '', servicePrice: '1' })).status, 422);
+
+  const anon = new Client(h.baseUrl);
+  const ar = await anon.get(`/doctors/${d.slug}`);
+  assert.match(ar.body, /تبييض الأسنان/);
+  assert.doesNotMatch(ar.body, /Teeth whitening/);
+  const en = await anon.get(`/en/doctors/${d.slug}`);
+  assert.match(en.body, /Teeth whitening/);
+  assert.doesNotMatch(en.body, /تبييض الأسنان/);
+
+  // The booking keeps both names; My bookings in Arabic shows the Arabic one.
+  const p = await createPatient(h.db);
+  const pc = new Client(h.baseUrl);
+  await login(pc, p.phone, p.password);
+  const slot = await firstSlotStart(pc, d.slug);
+  await pc.get(`/book?clinic=${slot.clinic}&start=${encodeURIComponent(slot.start)}`);
+  const white = (await h.db.query<{ id: string }>("select id from clinic_services where clinic_id = $1 and name = 'Teeth whitening'", [d.clinicId])).rows[0]!.id;
+  await pc.post('/book', { clinic: slot.clinic, start: slot.start, service: white });
+  assert.match((await pc.get('/appointments')).body, /تبييض الأسنان/);
+  assert.match((await pc.get('/en/appointments')).body, /Teeth whitening/);
+});

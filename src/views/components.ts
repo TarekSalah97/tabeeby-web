@@ -263,7 +263,7 @@ export function subMap(ctx: Ctx, ref: { specialties: { id: number; slug: string;
 }
 
 /** "New visit", "Follow-up", or the doctor's own service name. */
-export function visitLabel(ctx: Ctx, a: { visit_type: string; service_name: string | null }): string {
-  if (a.visit_type === 'service' && a.service_name) return a.service_name;
+export function visitLabel(ctx: Ctx, a: { visit_type: string; service_name: string | null; service_name_ar?: string | null }): string {
+  if (a.visit_type === 'service' && a.service_name) return ctx.locale === 'ar' ? a.service_name_ar ?? a.service_name : a.service_name;
   return ctx.t(a.visit_type === 'follow_up' ? 'book.followUp' : 'book.new');
 }

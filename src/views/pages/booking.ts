@@ -14,7 +14,7 @@ import { money } from './public.js';
 import { paidChip } from './payments.js';
 import { canReport, ISSUE_CATEGORIES, type IssueTarget } from '../../services/reliability.js';
 import type { VisitType, Visit } from '../../domain/visitPricing.js';
-import type { ClinicService } from '../../services/clinicServices.js';
+import { serviceName, type ClinicService } from '../../services/clinicServices.js';
 import type { LiveVisit } from '../../services/queue.js';
 import { queueCard } from './queue.js';
 
@@ -30,7 +30,7 @@ function visitChoice(ctx: Ctx, consult: Visit, services: ClinicService[], chosen
       <span class="visit-price">${money(ctx, fee)}</span></label>`;
   return html`<fieldset class="stack-sm"><legend class="label">${ctx.t('svc.whatFor')}</legend>
     ${option('', ctx.t(consult.type === 'follow_up' ? 'book.followUp' : 'svc.consultation'), consult.fee, consult.type === 'follow_up' ? ctx.t('svc.followUpNote') : undefined)}
-    ${services.map((s) => option(s.id, s.name, s.price_egp))}
+    ${services.map((s) => option(s.id, serviceName(s, ctx.locale), s.price_egp))}
     <p class="hint">${ctx.t('doctor.payAtClinic')}</p>
   </fieldset>`;
 }

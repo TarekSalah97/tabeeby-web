@@ -113,7 +113,7 @@ export async function quote(db: Queryable, patientId: string | null, target: Boo
   if (serviceId) {
     const svc = await bookableService(db, target.clinicId, serviceId);
     if (!svc) throw new DomainError('svc.err.unavailable');
-    return { type: 'service', fee: svc.price_egp, serviceId: svc.id, serviceName: svc.name };
+    return { type: 'service', fee: svc.price_egp, serviceId: svc.id, serviceName: svc.name, serviceNameAr: svc.name_ar };
   }
   const last = patientId ? await lastCompletedVisit(db, patientId, target.doctorId) : null;
   return visitForOnlineBooking(pricesOf(target), last, target.startsAt);
@@ -163,9 +163,9 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
       const target = await resolveSlot(deps, tx, req.clinicId, req.startsAt);
       const visit = await quote(tx, patient.id, target, req.serviceId);
       const { rows } = await tx.query<{ id: string }>(
-        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee, visit.serviceId ?? null, visit.serviceName ?? null],
+        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name, service_name_ar)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee, visit.serviceId ?? null, visit.serviceName ?? null, visit.serviceNameAr ?? null],
       );
       const id = rows[0]!.id;
       await closeOnBooking(tx, deps.cfg.TIME_ZONE, patient.id, target.clinicId, target.startsAt);
@@ -188,6 +188,7 @@ export interface PatientAppointment {
   status: AppointmentStatus;
   visit_type: 'new' | 'follow_up' | 'service';
   service_name: string | null;
+  service_name_ar: string | null;
   fee_egp: number;
   clinic_id: string;
   clinic_name: string;
@@ -208,7 +209,7 @@ export interface PatientAppointment {
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
   return (
     await db.query<PatientAppointment>(
-      `select a.id, a.starts_at, a.status, a.visit_type, a.service_name, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
+      `select a.id, a.starts_at, a.status, a.visit_type, a.service_name, a.service_name_ar, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
               c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
               u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
               pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by

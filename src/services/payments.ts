@@ -181,6 +181,7 @@ export interface Receipt {
   visit_at: Date;
   visit_type: 'new' | 'follow_up' | 'service';
   service_name: string | null;
+  service_name_ar: string | null;
   doctor_name: string;
   clinic_name: string;
   clinic_address: string;
@@ -192,7 +193,7 @@ export async function getReceipt(db: Queryable, viewer: SessionUser, appointment
   if (!scope) throw notFound();
   const { rows } = await db.query<Receipt>(
     `select p.id, p.amount_egp, p.method, p.status, p.paid_at, p.refunded_at, coalesce(pu.full_name, a.walk_in_name) as patient_name,
-            a.starts_at as visit_at, a.visit_type, a.service_name, du.full_name as doctor_name, c.name as clinic_name, c.address as clinic_address
+            a.starts_at as visit_at, a.visit_type, a.service_name, a.service_name_ar, du.full_name as doctor_name, c.name as clinic_name, c.address as clinic_address
        from payments p join appointments a on a.id = p.appointment_id left join users pu on pu.id = a.patient_id
        join users du on du.id = a.doctor_id join clinics c on c.id = a.clinic_id
       where a.id = $1 and ${scope} = $2

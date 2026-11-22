@@ -86,7 +86,7 @@ function symptomBar(ctx: Ctx): SafeHtml {
       <span class="symptom-bar-icon" aria-hidden="true">✦</span>
       <label class="symptom-bar-field"><span class="symptom-bar-label">${ctx.t('sc.barLabel')}</span>
         <input name="description" required minlength="${DESCRIPTION_MIN}" maxlength="${DESCRIPTION_MAX}" autocomplete="off" placeholder="${ctx.t('sc.barPlaceholder')}"></label>
-      <button class="btn" type="submit">${ctx.t('sc.barButton')}</button>
+      <button class="btn btn-lg" type="submit">${ctx.t('sc.barButton')}</button>
     </form>
   </div></section>`;
 }

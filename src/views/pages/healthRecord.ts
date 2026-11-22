@@ -3,7 +3,8 @@ import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
 import { alert, csrfField, icon } from '../components.js';
-import { formatFullDate, formatFullDateTime, formatNumber, type MessageKey } from '../../i18n/index.js';
+import { formatFullDate, formatFullDateTime, formatNumber, formatTime, type MessageKey } from '../../i18n/index.js';
+import { formatLinkCode } from '../../services/accountLink.js';
 import { labItemName } from './records.js';
 import { facilityShell } from './facilities.js';
 import type { OwnFacility } from '../../services/facilities.js';
@@ -71,7 +72,32 @@ function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
   </li>`;
 }
 
-export function healthRecordPage(ctx: Ctx, rec: HealthRecord, tab: HealthTab, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+/** "Seeing a doctor without booking online?" — the code that lets the doctor send things here. */
+function linkCodeCard(ctx: Ctx, code?: { code: string; expiresAt: Date }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  return html`<details class="panel link-code-card"${code ? html` open` : ''}>
+    <summary><strong>${ctx.t('link.patientTitle')}</strong></summary>
+    <p class="small muted">${ctx.t('link.patientLead')}</p>
+    ${code
+      ? html`<div class="link-code-show" aria-live="polite">
+          <span class="link-code-value" dir="ltr">${formatLinkCode(code.code)}</span>
+          <span class="small muted">${ctx.t('link.validUntil', { time: `\u2068${formatTime(code.expiresAt, ctx.locale, tz)}\u2069` })}</span>
+          <span class="small">${ctx.t('link.patientWarn')}</span>
+        </div>`
+      : ''}
+    <form method="post" action="${href(ctx, '/health-record/link-code')}">${csrfField(ctx)}
+      <button class="btn ${code ? 'btn-ghost' : 'btn-primary'} btn-sm" type="submit">${ctx.t(code ? 'link.newCode' : 'link.showCode')}</button>
+    </form>
+  </details>`;
+}
+
+export function healthRecordPage(
+  ctx: Ctx,
+  rec: HealthRecord,
+  tab: HealthTab,
+  notice?: { kind: 'success' | 'error'; key: MessageKey },
+  linkCode?: { code: string; expiresAt: Date },
+): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const counts: Record<HealthTab, number> = { prescriptions: rec.prescriptions.length, lab: rec.lab.length, imaging: rec.imaging.length };
   const label: Record<HealthTab, MessageKey> = { prescriptions: 'hr.tab.prescriptions', lab: 'hr.tab.lab', imaging: 'hr.tab.imaging' };
@@ -96,6 +122,7 @@ export function healthRecordPage(ctx: Ctx, rec: HealthRecord, tab: HealthTab, no
   const body = html`<div class="container page narrow stack-lg">
     <div><h1>${ctx.t('hr.title')}</h1><p class="muted">${ctx.t('hr.lead')}</p></div>
     ${notice ? alert(notice.kind, ctx.t(notice.key)) : ''}
+    ${linkCodeCard(ctx, linkCode)}
     ${tabs}
     <section class="stack" aria-labelledby="hr-section">
       <h2 id="hr-section" class="sr-only">${ctx.t(label[tab])}</h2>

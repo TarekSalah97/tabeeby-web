@@ -12,6 +12,7 @@ import {
   patientHealthRecord, patientOrderPart, centreChoices, sendOrderPart, cancelOrderPart, isSection,
   listCentreRequests, getCentreRequest, markReceived, addResultFile, removeResultFile, markReady, readResultFile, type ResultViewer,
 } from '../services/orderResults.js';
+import { createLinkCode } from '../services/accountLink.js';
 import { healthRecordPage, sendOrderPage, centreRequestsPage, centreRequestPage, isHealthTab } from '../views/pages/healthRecord.js';
 
 function notice(ctx: Ctx): { kind: 'success' | 'error'; key: MessageKey } | undefined {
@@ -41,6 +42,14 @@ export function healthRecordRoutes(r: Router): void {
     if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'prescriptions', ctx.path));
     const tab = ctx.query.get('tab') ?? '';
     sendHtml(ctx, 200, healthRecordPage(ctx, await patientHealthRecord(ctx.deps.db, ctx.user.id), isHealthTab(tab) ? tab : 'prescriptions', notice(ctx)));
+  });
+
+  // A short code the patient shows at the clinic so a walk-in file can be linked to this account.
+  // Shown on the page that made it (never put in an address, never stored in plain text).
+  r.post('/health-record/link-code', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const code = await createLinkCode(ctx.deps, user.id, ctx.ip);
+    sendHtml(ctx, 200, healthRecordPage(ctx, await patientHealthRecord(ctx.deps.db, user.id), 'prescriptions', undefined, code));
   });
 
   // The old address keeps working.

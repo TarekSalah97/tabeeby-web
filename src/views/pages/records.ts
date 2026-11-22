@@ -17,7 +17,7 @@ import {
   SEXES, MARITAL_STATUSES, HABITS, MEDICINE_FORMS, FREQUENCIES, TIMINGS, LAB_TESTS, LAB_GROUPS, labTest, ageOn,
 } from '../../domain/clinical.js';
 import { todayIn } from '../../domain/time.js';
-import { formatEgyptMobile } from '../../domain/phone.js';
+import { formatEgyptMobile, maskEgyptMobile } from '../../domain/phone.js';
 import { shell } from './dashboard.js';
 
 type Notice = { kind: 'success' | 'error'; key: MessageKey };
@@ -210,7 +210,44 @@ export function editRecordPage(ctx: Ctx, doctor: OwnDoctor, r: PatientRecord, o:
 
 // ---------------------------------------------------------------- patient file
 
-export function recordPage(ctx: Ctx, doctor: OwnDoctor, r: PatientRecord & { account_phone: string | null }, visits: VisitSummary[], notice?: Notice): SafeHtml {
+/**
+ * Link a walk-in file to the patient's own Tabeeby account with the code they show from their
+ * health record. Step 1 types the code; step 2 (link) confirms the account's name first.
+ */
+function linkPanel(ctx: Ctx, r: PatientRecord, link?: { owner: { name: string; phone: string }; code: string }): SafeHtml {
+  if (r.patient_user_id) return html``;
+  if (link) {
+    return html`<section class="panel stack link-confirm" role="alert">
+      <h2>${ctx.t('link.confirmTitle')}</h2>
+      <p>${ctx.t('link.confirmLead')}</p>
+      <p class="link-owner"><strong dir="auto">${link.owner.name}</strong> · <span dir="ltr">${maskEgyptMobile(link.owner.phone)}</span></p>
+      <div class="row-wrap">
+        <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}/link-code/confirm`)}">${csrfField(ctx)}
+          <input type="hidden" name="code" value="${link.code}">
+          <button class="btn btn-primary" type="submit">${ctx.t('link.confirmButton')}</button></form>
+        <a class="btn btn-ghost" href="${href(ctx, `/dashboard/patients/${r.id}`)}">${ctx.t('link.notThem')}</a>
+      </div>
+    </section>`;
+  }
+  return html`<details class="panel link-panel">
+    <summary><strong>${ctx.t('link.title')}</strong></summary>
+    <p class="small muted">${ctx.t('link.lead')}</p>
+    <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}/link-code`)}" class="link-form">${csrfField(ctx)}
+      <label class="sr-only" for="link-code">${ctx.t('link.codeLabel')}</label>
+      <input id="link-code" name="code" required maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" dir="ltr" placeholder="ABC-123" inputmode="text">
+      <button class="btn btn-outline" type="submit">${ctx.t('link.check')}</button>
+    </form>
+  </details>`;
+}
+
+export function recordPage(
+  ctx: Ctx,
+  doctor: OwnDoctor,
+  r: PatientRecord & { account_phone: string | null },
+  visits: VisitSummary[],
+  notice?: Notice,
+  link?: { owner: { name: string; phone: string }; code: string },
+): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const phone = r.phone_e164 ?? r.account_phone;
   const row = (label: MessageKey, value: HtmlValue) => html`<div><dt>${ctx.t(label)}</dt><dd>${value}</dd></div>`;
@@ -226,6 +263,7 @@ export function recordPage(ctx: Ctx, doctor: OwnDoctor, r: PatientRecord & { acc
       </div>
     </div>
     ${r.allergies ? alert('warning', html`<span class="prose">${r.allergies}</span>`, ctx.t('records.allergies')) : ''}
+    ${linkPanel(ctx, r, link)}
     <div class="card-grid two">
       <section class="panel stack">
         <h2>${ctx.t('records.personal')}</h2>

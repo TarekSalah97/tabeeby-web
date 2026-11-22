@@ -48,6 +48,7 @@ const NOTICES: Record<string, MessageKey> = {
   orderSent: 'hr.done.sent',
   serviceSaved: 'svc.saved',
   fileFoundByPhone: 'records.foundByPhone',
+  fileLinkedByCode: 'link.done',
   orderCancelled: 'hr.done.cancelled',
   orderReceived: 'hr.done.received',
   resultAdded: 'hr.done.fileAdded',

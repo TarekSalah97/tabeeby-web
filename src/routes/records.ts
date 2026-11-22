@@ -5,6 +5,7 @@ import { sendHtml, sendJson, redirect } from '../http/respond.js';
 import { hitRateLimit } from '../auth/rateLimit.js';
 import { assist } from '../services/demoAssistant.js';
 import { doctorOrderResults } from '../services/orderResults.js';
+import { checkLinkCode, confirmLinkCode } from '../services/accountLink.js';
 import { fieldAll } from '../http/body.js';
 import { notFound, tooManyRequests } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
@@ -180,6 +181,30 @@ export function recordsRoutes(r: Router): void {
     await auditRecordView(ctx.deps.db, d.user.id, id, ctx.ip);
     const notice = noticeFrom(ctx);
     sendHtml(ctx, 200, recordPage(ctx, d.doctor, record, await listVisits(ctx.deps.db, d.user.id, id), notice ? { kind: 'success', key: notice } : undefined));
+  });
+
+  // ---- link a walk-in file to the patient's Tabeeby account with the code they show
+  r.post('/dashboard/patients/:id/link-code', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const id = uuidParam(ctx, 'id');
+    const check = await checkLinkCode(ctx.deps, d.user.id, id, formValue(ctx, 'code'));
+    const record = await getRecord(ctx.deps.db, d.user.id, id);
+    const visits = await listVisits(ctx.deps.db, d.user.id, id);
+    if (!check.ok) return sendHtml(ctx, 422, recordPage(ctx, d.doctor, record, visits, { kind: 'error', key: check.error }));
+    sendHtml(ctx, 200, recordPage(ctx, d.doctor, record, visits, undefined, { owner: check.owner, code: check.code }));
+  });
+
+  r.post('/dashboard/patients/:id/link-code/confirm', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const id = uuidParam(ctx, 'id');
+    const problem = await confirmLinkCode(ctx.deps, d.user.id, id, formValue(ctx, 'code'), ctx.ip);
+    if (problem) {
+      const record = await getRecord(ctx.deps.db, d.user.id, id);
+      return sendHtml(ctx, 422, recordPage(ctx, d.doctor, record, await listVisits(ctx.deps.db, d.user.id, id), { kind: 'error', key: problem }));
+    }
+    redirect(ctx, href(ctx, `/dashboard/patients/${id}`, { ok: 'fileLinkedByCode' }));
   });
 
   r.get('/dashboard/patients/:id/edit', async (ctx) => {

@@ -95,7 +95,8 @@ export const GUIDE: readonly GuideRule[] = [
 
   // ---- teeth
   { words: ['braces', 'crooked teeth', 'تقويم', 'اسناني معوجه'], specialty: 'dentistry', subspecialty: 'orthodontics', reason: ['Crooked teeth and braces are handled by an orthodontist.', 'اعوجاج الأسنان والتقويم عند أخصائي التقويم.'] },
-  { words: ['toothache', 'tooth pain', 'root canal', 'sensitive teeth', 'ضرسي', 'سناني', 'الم الضرس', 'عصب', 'حشو عصب'], specialty: 'dentistry', subspecialty: 'endodontics', reason: ['Toothache and nerve pain are treated by a dentist (root canal specialist).', 'ألم الأسنان والعصب يعالجه طبيب الأسنان المتخصص في علاج العصب.'] },
+  { words: ['abscess', 'swollen gum', 'gum swelling', 'swelling in my gum', 'swollen jaw', 'tooth infection', 'خراج', 'ورم في اللثه', 'لثتي وارمه', 'خدي وارم'], specialty: 'dentistry', subspecialty: 'endodontics', urgency: 'soon', reason: ['A painful tooth with swelling may be an infection: see a dentist within a day or two. Go to emergency if the swelling spreads towards the eye or neck, or you have fever or trouble swallowing.', 'ألم السن مع التورم قد يكون التهابًا: اذهب لطبيب أسنان خلال يوم أو يومين. توجّه للطوارئ إذا امتد التورم للعين أو الرقبة أو كانت عندك حرارة أو صعوبة في البلع.'] },
+  { words: ['toothache', 'tooth pain', 'tooth hurts', 'molar', 'molars', 'wisdom tooth', 'root canal', 'sensitive teeth', 'ضرس', 'ضرسي', 'سناني', 'الم الضرس', 'ضرس العقل', 'عصب', 'حشو عصب'], specialty: 'dentistry', subspecialty: 'endodontics', reason: ['Toothache and nerve pain are treated by a dentist (root canal specialist).', 'ألم الأسنان والعصب يعالجه طبيب الأسنان المتخصص في علاج العصب.'] },
   { words: ['missing tooth', 'implant', 'زرعه', 'زراعه اسنان', 'سنه واقعه'], specialty: 'dentistry', subspecialty: 'implants', reason: ['Missing teeth can be replaced by an implant dentist.', 'الأسنان المفقودة يعوضها طبيب زراعة الأسنان.'] },
   { words: ['whitening', 'veneers', 'smile', 'تبييض', 'فينير', 'ابتسامه'], specialty: 'dentistry', subspecialty: 'cosmetic-dentistry', reason: ['Whitening and veneers are cosmetic dentistry.', 'التبييض والفينير من تجميل الأسنان.'] },
   { words: ['tooth', 'teeth', 'gums', 'dental', 'سنان', 'اسنان', 'لثه', 'سنه'], specialty: 'dentistry', reason: ['Teeth and gum problems are treated by a dentist.', 'مشاكل الأسنان واللثة يعالجها طبيب الأسنان.'] },
@@ -146,6 +147,12 @@ export function guideMatches(
     scored.push({ specialty, subspecialty, urgency: rule.urgency ?? 'routine', reason: rule.reason, score });
   }
   scored.sort((a, b) => b.score - a.score);
+  // A tooth problem with any swelling may be an infection: suggest seeing the dentist soon.
+  const dental = scored[0]?.specialty === 'dentistry' ? scored[0] : undefined;
+  if (dental && /swell|swollen|ورم|وارم|منفوخ/.test(text)) {
+    const infection = GUIDE.find((r) => r.words.includes('abscess'))!;
+    Object.assign(dental, { urgency: 'soon' as const, subspecialty: o.ageGroup === 'child' ? dental.subspecialty : 'endodontics', reason: infection.reason });
+  }
   const out: GuideMatch[] = [];
   for (const m of scored) {
     if (out.some((x) => x.specialty === m.specialty)) continue;

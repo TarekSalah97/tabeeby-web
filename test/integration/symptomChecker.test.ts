@@ -171,3 +171,12 @@ test('the description is never stored', async () => {
   );
   assert.equal(Number(rows[0]!.n), 0);
 });
+
+test('the free guide allows many questions per hour; the paid AI keeps a tight limit', async () => {
+  h.deps.ai = null;
+  const c = await visitor();
+  for (let i = 0; i < 20; i++) {
+    const r = await c.post('/en/symptom-checker', { description: `My knee hurts when I climb stairs ${i}` });
+    assert.doesNotMatch(r.body, /asked many times/, `question ${i + 1}`);
+  }
+});

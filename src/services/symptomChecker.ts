@@ -51,7 +51,9 @@ export interface SymptomResult {
 
 export const DESCRIPTION_MIN = 10;
 export const DESCRIPTION_MAX = 1000;
-const LIMIT_PER_IP = { limit: 8, window: 60 * 60 };
+/** Per device and hour: strict when each question costs money (AI), generous for the free built-in guide. */
+const LIMIT_PER_IP_AI = { limit: 8, window: 60 * 60 };
+const LIMIT_PER_IP_GUIDE = { limit: 60, window: 60 * 60 };
 
 // ---------------------------------------------------------------- emergency warning signs (no AI involved)
 
@@ -283,7 +285,8 @@ export async function checkSymptoms(
   if (description.length > DESCRIPTION_MAX) return { error: 'sc.err.long', field: 'description' };
   // Consent is only about sending the text to the AI provider; the built-in guide keeps it on Tabeeby.
   if (deps.ai && !o.consent) return { error: 'sc.err.consent', field: 'consent' };
-  if (!(await hitRateLimit(deps.db, `sc:ip:${o.ip}`, LIMIT_PER_IP.limit, LIMIT_PER_IP.window))) return { error: 'sc.err.tooMany' };
+  const perIp = deps.ai ? LIMIT_PER_IP_AI : LIMIT_PER_IP_GUIDE;
+  if (!(await hitRateLimit(deps.db, `sc:ip:${o.ip}`, perIp.limit, perIp.window))) return { error: 'sc.err.tooMany' };
 
   const redFlag = hasRedFlag(description);
   const clean = { ...input, description };

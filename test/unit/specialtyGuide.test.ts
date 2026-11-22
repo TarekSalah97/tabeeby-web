@@ -53,3 +53,11 @@ test('at most three suggestions, one per specialty; every rule has both language
   assert.equal(new Set(m.map((x) => x.specialty)).size, 3);
   for (const r of GUIDE) assert.ok(r.reason[0] && r.reason[1]);
 });
+
+test('a tooth with swelling goes to a dentist soon', () => {
+  const m = top('my right molar hurts a lot and has a small swelling around it. the swelling started yesterday')!;
+  assert.equal(m.specialty, 'dentistry');
+  assert.equal(m.urgency, 'soon');
+  assert.equal(top('ضرسي بيوجعني ووشي وارم')!.urgency, 'soon');
+  assert.equal(top('my ankle is swollen after a twist')!.specialty, 'orthopedics');
+});

@@ -102,13 +102,25 @@ export function doctorInboxPage(
   const v = o.values ?? settings;
   const content = html`
     <div><h1>${ctx.t('msg.title')}</h1><p class="muted">${ctx.t('msg.doctorLead')}</p></div>
+    <form method="post" action="${href(ctx, '/dashboard/messages/toggle')}" class="msg-switch ${settings.enabled ? 'is-on' : 'is-off'}">
+      ${csrfField(ctx)}
+      <input type="hidden" name="enabled" value="${settings.enabled ? 'no' : 'yes'}">
+      <div class="stack-sm">
+        <strong class="msg-switch-state">${ctx.t(settings.enabled ? 'msgset.switchOn' : 'msgset.switchOff')}</strong>
+        <span class="small muted">${ctx.t(settings.enabled ? 'msgset.switchOnHint' : 'msgset.switchOffHint')}</span>
+      </div>
+      <button class="switch" type="submit" role="switch" aria-checked="${settings.enabled ? 'true' : 'false'}" aria-label="${ctx.t('msgset.switchLabel')}">
+        <span class="switch-knob" aria-hidden="true"></span>
+        <span class="switch-text">${ctx.t(settings.enabled ? 'msgset.on' : 'msgset.off')}</span>
+      </button>
+    </form>
     <section class="panel flush">${inboxList(ctx, list, (c) => href(ctx, `/dashboard/messages/${c.id}`), settings.enabled ? 'msg.doctorEmpty' : 'msg.doctorEmptyOff')}</section>
-    <details class="panel"${attrIf(!settings.enabled || !!o.errors, 'open')}>
-      <summary class="h3">${ctx.t('msgset.title')} <span class="chip ${settings.enabled ? 'status-confirmed' : 'status-cancelled'}">${ctx.t(settings.enabled ? 'msgset.on' : 'msgset.off')}</span></summary>
+    <details class="panel"${attrIf(!!o.errors, 'open')}>
+      <summary class="h3">${ctx.t('msgset.hoursTitle')}</summary>
       <form method="post" action="${href(ctx, '/dashboard/messages/settings')}" class="stack" novalidate>
         ${csrfField(ctx)}
         <p class="muted">${ctx.t('msgset.lead')}</p>
-        <label class="check"><input type="checkbox" name="enabled" value="yes"${attrIf(v.enabled, 'checked')}><span>${ctx.t('msgset.enable')}</span></label>
+        <input type="hidden" name="enabled" value="${v.enabled ? 'yes' : 'no'}">
         <fieldset class="stack-sm"><legend class="label">${ctx.t('msgset.days')}</legend>
           ${o.errors?.['days'] ? html`<p class="field-error">${ctx.t(o.errors['days'])}</p>` : ''}
           <div class="row-wrap">${[0, 1, 2, 3, 4, 5, 6].map(

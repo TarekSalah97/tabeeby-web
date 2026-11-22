@@ -7,7 +7,7 @@ import type { SessionUser } from '../auth/sessions.js';
 import { getOwnDoctor } from '../services/doctors.js';
 import {
   listPatientConversations, listDoctorConversations, patientThread, doctorThread, sendFromPatient, replyFromDoctor,
-  setConversationBlocked, getMessagingSettings, saveMessagingSettings, unreadConversations,
+  setConversationBlocked, getMessagingSettings, saveMessagingSettings, setMessagingEnabled, unreadConversations,
 } from '../services/messaging.js';
 import { patientInboxPage, patientThreadPage, doctorInboxPage, doctorThreadPage } from '../views/pages/messaging.js';
 import { patientGatePage } from '../views/pages/auth.js';
@@ -75,6 +75,15 @@ export function messagingRoutes(r: Router): void {
       return renderInbox(ctx, user, { errors, values: { ...input, days: input.days.map(Number) } }, 422);
     }
     redirect(ctx, href(ctx, '/dashboard/messages', { ok: 'saved' }));
+  });
+
+  // One click to turn patient messages on or off.
+  r.post('/dashboard/messages/toggle', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const on = formValue(ctx, 'enabled') === 'yes';
+    await setMessagingEnabled(ctx.deps, user.id, on, ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/messages', { ok: on ? 'messagingOn' : 'messagingOff' }));
   });
 
   r.get('/dashboard/messages/:id', async (ctx) => {

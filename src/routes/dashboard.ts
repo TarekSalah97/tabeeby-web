@@ -16,6 +16,8 @@ import { changeStatus } from '../services/booking.js';
 import { ratingsFor } from '../services/reviews.js';
 import { todayPage, clinicsPage, hoursPage, profileEditPage, clinicBookPage, type HoursFormValues, type ClinicBookView } from '../views/pages/dashboard.js';
 import { bookByClinic, clampClinicDate, clinicSlots, followUpSource, noShowCounts, ownActiveClinics, CLINIC_BOOKING_DAYS, type ClinicBookingInput } from '../services/clinicBooking.js';
+import { doctorInsights, isPeriod } from '../services/insights.js';
+import { insightsPage } from '../views/pages/insights.js';
 import { activeServices, addService, updateService, listDoctorServices } from '../services/clinicServices.js';
 import type { FieldErrors } from '../services/accounts.js';
 import { recordPayment, refundPayment, paymentsFor, incomeReport, getReceipt, toCsv } from '../services/payments.js';
@@ -254,8 +256,20 @@ export function dashboardRoutes(r: Router): void {
     const clinic = clinics.find((c) => c.id === req.clinicId) ?? clinics.find((c) => c.id === source?.clinicId) ?? clinics[0]!;
     const today = todayIn(ctx.deps.cfg.TIME_ZONE, ctx.deps.now());
     const date = clampClinicDate(req.date, today);
-    const [slots, services] = await Promise.all([clinicSlots(ctx.deps, db, user.id, clinic.id, date), activeServices(db, [clinic.id])]);
-    sendHtml(ctx, status, clinicBookPage(ctx, doctor, { clinics, clinicId: clinic.id, date, today, lastDate: addDays(today, CLINIC_BOOKING_DAYS), slots, source, services, ...extra }));
+    const [slots, services, open] = await Promise.all([
+      clinicSlots(ctx.deps, db, user.id, clinic.id, date),
+      activeServices(db, [clinic.id]),
+      db.query<{ weekday: number }>('select distinct weekday from schedule_rules where clinic_id = $1', [clinic.id]),
+    ]);
+    const lastDate = addDays(today, CLINIC_BOOKING_DAYS);
+    // Month shown in the calendar: ?month=YYYY-MM within the bookable range, else the chosen day's month.
+    const askedMonth = ctx.query.get('month') ?? '';
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(askedMonth) && askedMonth >= today.slice(0, 7) && askedMonth <= lastDate.slice(0, 7) ? askedMonth : date.slice(0, 7);
+    sendHtml(ctx, status, clinicBookPage(ctx, doctor, {
+      clinics, clinicId: clinic.id, date, today, lastDate, slots, source, services, month,
+      openWeekdays: new Set(open.rows.map((r) => Number(r.weekday))),
+      ...extra,
+    }));
   };
 
   r.get('/dashboard/book', async (ctx) => {
@@ -366,6 +380,19 @@ export function dashboardRoutes(r: Router): void {
     const errors = await updateService(ctx.deps, user.id, id, { name: values.serviceName, nameAr: values.serviceNameAr, price: values.servicePrice, active: values.active === 'yes' }, ctx.ip);
     if (errors) return renderClinics(ctx, user, { serviceErrors: errors, serviceTarget: id, serviceValues: values }, 422);
     redirect(ctx, href(ctx, '/dashboard/clinics', { ok: 'serviceSaved' }));
+  });
+
+  // ---- insights: who the patients are and how the clinic is used (counts only)
+  r.get('/dashboard/insights', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const p = ctx.query.get('period') ?? '';
+    const period = isPeriod(p) ? p : '90d';
+    const [doctor, data] = await Promise.all([
+      getOwnDoctor(ctx.deps.db, user.id),
+      doctorInsights(ctx.deps.db, user.id, period, ctx.deps.now(), ctx.deps.cfg.TIME_ZONE),
+    ]);
+    sendHtml(ctx, 200, insightsPage(ctx, doctor, data));
   });
 
   r.get('/dashboard/hours', async (ctx) => {

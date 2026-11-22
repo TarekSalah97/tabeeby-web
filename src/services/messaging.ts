@@ -306,3 +306,9 @@ export async function messageButtonState(deps: Deps, patientId: string, doctorId
   if (!h?.enabled || !(await canPatientMessage(deps.db, patientId, doctorId))) return 'hidden';
   return isOpenNow(h, deps.now(), deps.cfg.TIME_ZONE) ? 'open' : 'closed';
 }
+
+/** The one-click on/off switch for patient messages (days and hours stay as they are). */
+export async function setMessagingEnabled(deps: Deps, doctorId: string, enabled: boolean, ip: string): Promise<void> {
+  await deps.db.query('update doctors set messaging_enabled = $2 where user_id = $1', [doctorId, enabled]);
+  await audit(deps.db, { actorId: doctorId, action: enabled ? 'messaging.on' : 'messaging.off', entityType: 'doctor', entityId: doctorId, ip });
+}

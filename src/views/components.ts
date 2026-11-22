@@ -267,3 +267,61 @@ export function visitLabel(ctx: Ctx, a: { visit_type: string; service_name: stri
   if (a.visit_type === 'service' && a.service_name) return ctx.locale === 'ar' ? a.service_name_ar ?? a.service_name : a.service_name;
   return ctx.t(a.visit_type === 'follow_up' ? 'book.followUp' : 'book.new');
 }
+
+export const WEEKDAY_SHORT: Record<'en' | 'ar', string[]> = {
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  ar: ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'],
+};
+const MONTHS: Record<'en' | 'ar', string[]> = {
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
+};
+
+/**
+ * A large month calendar made of plain links (works without JavaScript, easy to tap on a phone).
+ * Weeks start on Saturday, as in Egypt. Days outside [min, max] are shown but not clickable;
+ * days the clinic is closed are greyed (still clickable, the clinic may add extra hours).
+ */
+export function monthCalendar(
+  ctx: Ctx,
+  o: { month: string; selected: string; min: string; max: string; today: string; openWeekdays?: Set<number>; dayHref: (d: string) => string; monthHref: (m: string) => string },
+): SafeHtml {
+  const [y, m] = o.month.split('-').map(Number) as [number, number];
+  const first = `${o.month}-01`;
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); // 0 = Sunday
+  const lead = (firstWeekday + 1) % 7; // columns before day 1 when weeks start on Saturday
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const canPrev = `${prev}-31` >= o.min;
+  const canNext = `${next}-01` <= o.max;
+  const order = [6, 0, 1, 2, 3, 4, 5];
+  const cells: SafeHtml[] = [];
+  for (let i = 0; i < lead; i++) cells.push(html`<span class="cal-cell cal-empty" aria-hidden="true"></span>`);
+  for (let d = 1; d <= daysIn; d++) {
+    const date = `${o.month}-${String(d).padStart(2, '0')}`;
+    const wd = (firstWeekday + d - 1) % 7;
+    const inRange = date >= o.min && date <= o.max;
+    const closed = o.openWeekdays && !o.openWeekdays.has(wd);
+    const cls = ['cal-cell', date === o.selected ? 'is-selected' : '', date === o.today ? 'is-today' : '', closed ? 'is-closed' : ''].filter(Boolean).join(' ');
+    const label = `${d} ${MONTHS[ctx.locale][m - 1]}`;
+    cells.push(
+      inRange
+        ? html`<a class="${cls}" href="${o.dayHref(date)}" aria-label="${label}"${date === o.selected ? html` aria-current="date"` : ''}>${d}</a>`
+        : html`<span class="${cls} is-out" aria-disabled="true">${d}</span>`,
+    );
+  }
+  void first;
+  return html`<div class="cal" role="group" aria-label="${MONTHS[ctx.locale][m - 1]} ${y}">
+    <div class="cal-head">
+      ${canPrev ? html`<a class="cal-nav" href="${o.monthHref(prev)}" aria-label="${ctx.t('cal.prev')}">‹</a>` : html`<span class="cal-nav is-out">‹</span>`}
+      <strong class="cal-title">${MONTHS[ctx.locale][m - 1]} ${y}</strong>
+      ${canNext ? html`<a class="cal-nav" href="${o.monthHref(next)}" aria-label="${ctx.t('cal.next')}">›</a>` : html`<span class="cal-nav is-out">›</span>`}
+    </div>
+    <div class="cal-grid">
+      ${order.map((wd) => html`<span class="cal-wd">${WEEKDAY_SHORT[ctx.locale][wd]}</span>`)}
+      ${cells}
+    </div>
+    ${o.openWeekdays ? html`<p class="small muted cal-legend"><span class="cal-dot"></span>${ctx.t('cal.closedLegend')}</p>` : ''}
+  </div>`;
+}

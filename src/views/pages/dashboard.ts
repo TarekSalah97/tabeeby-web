@@ -4,7 +4,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel, monthCalendar } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -20,7 +20,7 @@ import type { PaymentMethod } from '../../services/payments.js';
 import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
 import type { Slot } from '../../domain/availability.js';
 
-export type Section = 'today' | 'messages' | 'income' | 'patients' | 'clinics' | 'hours' | 'profile';
+export type Section = 'today' | 'messages' | 'income' | 'insights' | 'patients' | 'clinics' | 'hours' | 'profile';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   // Menu: Schedule, Patients, Messages, Income (if the doctor uses it), Profile (which holds clinics and hours).
@@ -29,6 +29,7 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
     ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
     { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
     ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
+    { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
     { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
   ];
   const inProfile = section === 'profile' || section === 'clinics' || section === 'hours';
@@ -509,6 +510,10 @@ export interface ClinicBookView {
   error?: MessageKey;
   /** The clinic's own services besides the consultation and follow-up. */
   services?: ClinicService[];
+  /** Month shown in the calendar (YYYY-MM); defaults to the chosen day's month. */
+  month?: string;
+  /** Weekdays (0 = Sunday) this clinic has working hours. */
+  openWeekdays?: Set<number>;
 }
 
 /** The clinic books for someone: a phone call, a walk-in, or a follow-up from today's list. Two steps on one page: pick a day, then a time. */
@@ -543,15 +548,24 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
         const d = addDays(v.today, q.days);
         return d <= v.lastDate ? html`<a class="chip-link"${attrIf(d === v.date, 'aria-current="true"')} href="${dayHref(d)}">${ctx.t(q.label)}</a>` : '';
       })}</div>
-      <form method="get" action="${href(ctx, '/dashboard/book')}" class="cbook-day">
-        ${v.source ? html`<input type="hidden" name="from" value="${v.source.id}">` : ''}
-        ${v.clinics.length > 1
-          ? select(ctx, { name: 'clinic', label: ctx.t('dash.clinic'), value: clinic.id, options: v.clinics.map((c) => ({ value: c.id, label: c.name })) })
-          : html`<input type="hidden" name="clinic" value="${clinic.id}">`}
-        <div class="field"><label for="date">${ctx.t('cbook.date')}</label>
-          <input id="date" type="date" name="date" value="${v.date}" min="${v.today}" max="${v.lastDate}" required></div>
-        <div class="field"><button class="btn btn-outline" type="submit">${ctx.t('cbook.showTimes')}</button></div>
-      </form>
+      ${v.clinics.length > 1
+        ? html`<form method="get" action="${href(ctx, '/dashboard/book')}" class="cbook-day">
+            ${v.source ? html`<input type="hidden" name="from" value="${v.source.id}">` : ''}
+            <input type="hidden" name="date" value="${v.date}">
+            ${select(ctx, { name: 'clinic', label: ctx.t('dash.clinic'), value: clinic.id, options: v.clinics.map((c) => ({ value: c.id, label: c.name })) })}
+            <div class="field"><button class="btn btn-outline" type="submit">${ctx.t('cbook.showTimes')}</button></div>
+          </form>`
+        : ''}
+      ${monthCalendar(ctx, {
+        month: v.month ?? v.date.slice(0, 7),
+        selected: v.date,
+        min: v.today,
+        max: v.lastDate,
+        today: v.today,
+        openWeekdays: v.openWeekdays,
+        dayHref: (d) => href(ctx, '/dashboard/book', { clinic: clinic.id, date: d, ...(v.source ? { from: v.source.id } : {}) }) + '#cbook-times',
+        monthHref: (m) => href(ctx, '/dashboard/book', { clinic: clinic.id, date: v.date, month: m, ...(v.source ? { from: v.source.id } : {}) }),
+      })}
     </section>
     <form method="post" action="${href(ctx, '/dashboard/book')}" class="panel stack" novalidate>
       ${csrfField(ctx)}
@@ -559,7 +573,7 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
       <input type="hidden" name="date" value="${v.date}">
       ${v.source ? html`<input type="hidden" name="from" value="${v.source.id}">` : ''}
       <fieldset class="stack-sm">
-        <legend class="h3">${ctx.t('cbook.step2', { day: formatDate(new Date(`${v.date}T12:00:00Z`), ctx.locale, 'UTC') })}</legend>
+        <legend class="h3" id="cbook-times">${ctx.t('cbook.step2', { day: formatDate(new Date(`${v.date}T12:00:00Z`), ctx.locale, 'UTC') })}</legend>
         ${v.errors?.['start'] ? html`<p class="field-error" id="start-error">${ctx.t(v.errors['start'])}</p>` : ''}
         ${v.slots.length
           ? html`<div class="slot-grid slot-pick">${v.slots.map(

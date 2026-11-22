@@ -1390,4 +1390,7 @@ export const en = {
   'records.samePhoneNew': "Different person using the same phone (for example a family member)? Create a new file below.",
   'records.openThisFile': "Open this file",
   'records.createAnyway': "Create a new file for a different person",
+  'sc.barLabel': "Don't know which doctor you need?",
+  'sc.barPlaceholder': "Describe how you feel… e.g. headache and blurred vision for a week",
+  'sc.barButton': "Suggest a doctor",
 } as const;

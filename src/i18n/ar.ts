@@ -1393,4 +1393,7 @@ export const ar: Record<keyof typeof en, string> = {
   'records.samePhoneNew': "شخص مختلف يستخدم نفس الموبايل (مثل أحد أفراد الأسرة)؟ أنشئ ملفًا جديدًا بالأسفل.",
   'records.openThisFile': "افتح هذا الملف",
   'records.createAnyway': "أنشئ ملفًا جديدًا لشخص مختلف",
+  'sc.barLabel': "مش عارف تروح لأي دكتور؟",
+  'sc.barPlaceholder': "اكتب اللي حاسس بيه… مثلًا: صداع وزغللة من أسبوع",
+  'sc.barButton': "اقترح لي دكتور",
 };

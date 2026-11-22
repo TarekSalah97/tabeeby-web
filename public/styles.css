@@ -786,3 +786,15 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .visit-price { font-weight: 700; white-space: nowrap; }
 .svc-public summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .alert-panel { border-color: var(--accent); background: var(--accent-tint); }
+
+/* "Don't know which doctor you need?" bar at the top of the home page */
+.symptom-top { padding: 18px 0 4px; background: var(--bg); }
+.symptom-bar { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; background: linear-gradient(180deg, #f6f2ff, #fff); border: 1px solid #d9cff5; border-radius: 18px; box-shadow: var(--shadow); }
+.symptom-bar:focus-within { border-color: #6a4fc0; box-shadow: 0 0 0 3px #e6defb; }
+.symptom-bar-icon { color: #6a4fc0; font-size: 1.4rem; }
+.symptom-bar-field { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.symptom-bar-label { font-size: .8rem; font-weight: 700; color: #4b3794; }
+.symptom-bar input { border: 0; background: transparent; padding: 4px 0; font-size: 1.05rem; outline: none; width: 100%; min-height: 32px; }
+.symptom-bar .btn { white-space: nowrap; background: #6a4fc0; border-color: #6a4fc0; color: #fff; }
+.symptom-bar .btn:hover { background: #5a40ad; }
+@media (max-width: 640px) { .symptom-bar { flex-wrap: wrap; } .symptom-bar .btn { width: 100%; } }

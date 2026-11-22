@@ -3,6 +3,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
+import { DESCRIPTION_MIN, DESCRIPTION_MAX } from '../../services/symptomChecker.js';
 import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
@@ -74,10 +75,27 @@ function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null):
   </section>`;
 }
 
+/**
+ * "Don't know which doctor you need?" — the symptom guide as a search bar at the top of the home page.
+ * It posts the description (never puts it in the address bar) to the symptom checker.
+ */
+function symptomBar(ctx: Ctx): SafeHtml {
+  return html`<section class="symptom-top"><div class="container">
+    <form method="post" action="${href(ctx, '/symptom-checker')}" class="symptom-bar" role="search" aria-label="${ctx.t('sc.barLabel')}">
+      ${csrfField(ctx)}
+      <span class="symptom-bar-icon" aria-hidden="true">✦</span>
+      <label class="symptom-bar-field"><span class="symptom-bar-label">${ctx.t('sc.barLabel')}</span>
+        <input name="description" required minlength="${DESCRIPTION_MIN}" maxlength="${DESCRIPTION_MAX}" autocomplete="off" placeholder="${ctx.t('sc.barPlaceholder')}"></label>
+      <button class="btn" type="submit">${ctx.t('sc.barButton')}</button>
+    </form>
+  </div></section>`;
+}
+
 export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): SafeHtml {
   const conditions = ref.conditions.slice(0, 6);
   const examples = ref.conditions.filter((c) => c.subspecialty_id !== null).slice(0, 4);
   const body = html`
+  ${symptomBar(ctx)}
   ${patient ? patientQuickStart(ctx, ref, patient) : !ctx.user ? patientQuickStart(ctx, ref, null) : ''}
   <section class="hero">
     <div class="container hero-grid">
@@ -94,12 +112,6 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
     </div>
   </section>
 
-  <section class="container">
-    <div class="sc-promo">
-      <div class="stack-sm"><span class="pill small">${ctx.t(ctx.deps.ai ? 'sc.badge' : 'sc.badgeGuide')}</span><h2>${ctx.t('sc.promoTitle')}</h2><p class="lead-sm">${ctx.t(ctx.deps.ai ? 'sc.promoBody' : 'sc.promoBodyGuide')}</p></div>
-      <a class="btn btn-primary btn-lg" href="${href(ctx, '/symptom-checker')}">${ctx.t(ctx.deps.ai ? 'sc.promoCta' : 'sc.promoCtaGuide')}</a>
-    </div>
-  </section>
   <section class="container section-tight" aria-labelledby="near-title">
     <h2 id="near-title" class="h3">${ctx.t('home.nearTitle')}</h2>
     <div class="near-grid">

@@ -34,7 +34,9 @@ async function visitor(locale = '/en') {
 test('without an AI provider: the built-in guide answers, no consent box, honest label', async () => {
   h.deps.ai = null;
   const home = await new Client(h.baseUrl).get('/en');
-  assert.match(home.body, /symptom-checker/);
+  assert.match(home.body, /class="symptom-bar"/);
+  assert.match(home.body, /Don&#39;t know which doctor you need\?|Don't know which doctor you need\?/);
+  assert.ok(home.body.indexOf('symptom-bar') < home.body.indexOf('class="hero"'), 'the bar is at the top of the page');
   const c = await visitor();
   const page = await c.get('/en/symptom-checker');
   assert.equal(page.status, 200);

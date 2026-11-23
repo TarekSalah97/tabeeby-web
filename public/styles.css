@@ -999,3 +999,22 @@ input.dictating, textarea.dictating { border-color: #c0392b; box-shadow: 0 0 0 3
   .table.cards-on-phone .cell-actions > .btn, .table.cards-on-phone .cell-actions > a.btn { flex: 1 1 0; }
 }
 .site-header .mnav-panel .btn-outline, .site-header.dark .mnav-panel .btn-outline { color: var(--ink); background: var(--surface); border-color: var(--line); }
+
+/* Doctors | Pharmacies | Labs | Scan centres: one search, four things to find */
+.search-block { display: grid; gap: 10px; }
+.search-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 4px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 16px; width: fit-content; max-width: 100%; }
+.search-tabs::-webkit-scrollbar { display: none; }
+.search-tabs a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 12px; white-space: nowrap;
+  color: var(--muted); font-weight: 700; text-decoration: none; }
+.search-tabs a svg { width: 20px; height: 20px; flex: none; }
+.search-tabs a:hover { color: var(--ink); background: var(--bg); }
+.search-tabs a[aria-current="page"] { background: var(--primary); color: #fff; }
+.search-tabs a:focus-visible { outline: 3px solid #2f7de1; outline-offset: 1px; }
+@media (max-width: 640px) {
+  .search-tabs { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .search-tabs a { flex-direction: column; justify-content: center; gap: 4px; min-height: 60px; padding: 6px 2px; font-size: .78rem; text-align: center; white-space: normal; line-height: 1.2; }
+  .quick-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .quick-tile, .quick-tile.primary { font-size: .74rem; }
+  .quick-tile svg, .quick-tile.primary svg { width: 22px; height: 22px; padding: 12px; border-radius: 16px; }
+}

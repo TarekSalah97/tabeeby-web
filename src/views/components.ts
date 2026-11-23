@@ -140,6 +140,24 @@ export function dictateAttrs(ctx: Ctx, mode: 'text' | 'digits' = 'text', short =
     data-dictate-lang="${ctx.locale === 'ar' ? 'ar-EG' : 'en-US'}" data-dictate-other="${ctx.t('dictate.otherLang')}" data-dictate-denied="${ctx.t('dictate.denied')}"${mode === 'digits' ? html` data-dictate-mode="digits"` : ''}`;
 }
 
+export type SearchTab = 'doctors' | 'pharmacy' | 'lab' | 'radiology';
+
+/**
+ * One row of tabs for everything people search for: doctors, pharmacies, labs and scan centres.
+ * Shown above the home search box, on the doctor search page and on the pharmacy/lab/scan pages.
+ */
+export function searchTabs(ctx: Ctx, current: SearchTab): SafeHtml {
+  const tabs: [SearchTab, string, MessageKey, SafeHtml][] = [
+    ['doctors', '/search', 'tabs.doctors', icon.search],
+    ['pharmacy', '/pharmacies', 'tabs.pharmacies', icon.pill],
+    ['lab', '/labs', 'tabs.labs', icon.flask],
+    ['radiology', '/scan-centres', 'tabs.scans', icon.scan],
+  ];
+  return html`<nav class="search-tabs" aria-label="${ctx.t('tabs.label')}">${tabs.map(
+    ([k, path, label, ic]) => html`<a href="${href(ctx, path)}"${attrIf(k === current, 'aria-current="page"')}>${ic}<span>${ctx.t(label)}</span></a>`,
+  )}</nav>`;
+}
+
 export function input(ctx: Ctx, o: InputOpts): SafeHtml {
   const err = o.errors?.[o.name];
   const id = `${o.idPrefix ?? ''}${o.name}`;

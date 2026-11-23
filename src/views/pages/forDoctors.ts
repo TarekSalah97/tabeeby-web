@@ -10,11 +10,6 @@ import type { FieldErrors } from '../../services/accounts.js';
 import type { PositionInput } from '../../services/doctors.js';
 
 export function forDoctorsPage(ctx: Ctx): SafeHtml {
-  const plans: { name: MessageKey; who: MessageKey; price: string; items: MessageKey[]; featured: boolean; cta: MessageKey }[] = [
-    { name: 'plan.basic', who: 'plan.basicWho', price: '300', items: ['plan.b1', 'plan.b2', 'plan.b3', 'plan.b4'], featured: false, cta: 'plan.start' },
-    { name: 'plan.professional', who: 'plan.professionalWho', price: '700', items: ['plan.p1', 'plan.p2', 'plan.p3', 'plan.p4'], featured: true, cta: 'plan.start' },
-    { name: 'plan.clinic', who: 'plan.clinicWho', price: '1,500+', items: ['plan.c1', 'plan.c2', 'plan.c3'], featured: false, cta: 'plan.contact' },
-  ];
   const body = html`
   <section class="hero dark">
     <div class="container stack-lg hero-doctors">
@@ -31,21 +26,6 @@ export function forDoctorsPage(ctx: Ctx): SafeHtml {
     ${(['1', '2', '3', '4'] as const).map(
       (n) => html`<div class="feature"><span class="step-num">0${n}</span><strong>${ctx.t(`fd.f${n}Title` as MessageKey)}</strong><p>${ctx.t(`fd.f${n}Body` as MessageKey)}</p></div>`,
     )}
-  </section>
-  <section class="container section stack-lg" id="pricing">
-    <div><h2>${ctx.t('fd.pricingTitle')}</h2><p class="lead-sm">${ctx.t('fd.pricingLead')}</p></div>
-    <div class="card-grid three">
-      ${plans.map(
-        (p) => html`<div class="plan${p.featured ? ' featured' : ''}">
-          <div class="row-between"><strong class="plan-name">${ctx.t(p.name)}</strong>${p.featured ? html`<span class="pill small">${ctx.t('plan.mostChosen')}</span>` : ''}</div>
-          <p class="muted">${ctx.t(p.who)}</p>
-          <p class="price"><span dir="ltr">${p.price}</span> <span class="muted">${ctx.t('plan.perMonth')}</span></p>
-          <ul class="checklist">${p.items.map((i) => html`<li>${icon.check}<span>${ctx.t(i)}</span></li>`)}</ul>
-          <a class="btn ${p.featured ? 'btn-light' : 'btn-primary'} btn-block" href="${href(ctx, '/for-doctors/join')}">${ctx.t(p.cta)}</a>
-        </div>`,
-      )}
-    </div>
-    <p class="hint">${ctx.t('fd.pricingNote')}</p>
   </section>`;
   return layout(ctx, { title: ctx.t('fd.title'), description: ctx.t('fd.description'), body, variant: 'doctors' });
 }

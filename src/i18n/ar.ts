@@ -75,7 +75,7 @@ export const ar: Record<keyof typeof en, string> = {
   'home.doctorsKicker': 'للأطباء وأطباء الأسنان',
   'home.doctorsTitle': 'أدِر عيادتك — وليس مجرد صفحتك.',
   'home.doctorsLead': 'المرضى الجدد يجدونك على طبيبي، ونفس لوحة التحكم تنظّم يومك في كل العيادات التي تعمل بها.',
-  'home.doctorsCta': 'انضم مجانًا لمدة 3 شهور',
+  'home.doctorsCta': "أنشئ ملفك كطبيب",
 
   'search.title': 'ابحث عن طبيب',
   'search.whatLabel': 'التخصص أو الحالة أو اسم الطبيب',
@@ -220,9 +220,9 @@ export const ar: Record<keyof typeof en, string> = {
   'email.invalid': 'أدخل بريدًا إلكترونيًا صحيحًا.',
 
   'fd.title': 'طبيبي للأطباء — املأ جدولك وأدِر عيادتك',
-  'fd.description': 'يجدك المرضى الذين يبحثون عن تخصصك في منطقتك. أدِر حجوزاتك في كل عياداتك. أول 3 شهور مجانًا.',
+  'fd.description': "يجدك المرضى الذين يبحثون عن تخصصك في منطقتك. أدِر حجوزاتك في كل عياداتك.",
   'fd.kicker': 'للأطباء',
-  'fd.badge': 'أول 3 شهور مجانًا · بدون بطاقة دفع',
+  'fd.badge': "للأطباء وأطباء الأسنان الموثّقين",
   'fd.h1': 'املأ مواعيدك الفارغة، ثم أدِر عيادتك من شاشة واحدة.',
   'fd.lead': 'المرضى الذين يبحثون عن تخصصك في منطقتك يجدونك ويحجزون مباشرة في جدولك. مواعيد كل العيادات التي تعمل بها في مكان واحد.',
   'fd.ctaJoin': 'أنشئ ملفك',
@@ -1482,4 +1482,10 @@ export const ar: Record<keyof typeof en, string> = {
   'search.filtersToggle': "تصفية النتائج",
   'search.filtersActive': "{n} مُفعّل",
   'dictate.short': "تحدّث",
+  'tabs.label': "بتدوّر على إيه؟",
+  'tabs.doctors': "أطباء",
+  'tabs.pharmacies': "صيدليات",
+  'tabs.labs': "معامل تحاليل",
+  'tabs.scans': "مراكز أشعة",
+  'home.qPlaces': "صيدليات ومعامل",
 };

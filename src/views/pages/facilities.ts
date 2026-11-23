@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs } from '../components.js';
 import { pick, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
@@ -266,9 +266,7 @@ export function facilityListPage(ctx: Ctx, ref: ReferenceData, s: FacilitySearch
   const testsAsked = s.tests.filter((c) => LAB_TESTS.some((t) => t.code === c));
   const body = html`<div class="container page stack-lg">
     <div class="stack-sm">
-      <nav class="row-wrap kind-tabs" aria-label="${ctx.t('fac.browse')}">${FACILITY_KINDS.map(
-        (k) => html`<a class="chip-link" href="${href(ctx, KIND_PATH[k])}"${attrIf(k === s.kind, 'aria-current="true"')}>${ctx.t(`fac.list.${k}` as MessageKey)}</a>`,
-      )}</nav>
+      ${searchTabs(ctx, s.kind)}
       <h1>${ctx.t(`fac.list.${s.kind}` as MessageKey)}</h1>
       <p class="muted">${ctx.t(`fac.listLead.${s.kind}` as MessageKey)}</p>
     </div>

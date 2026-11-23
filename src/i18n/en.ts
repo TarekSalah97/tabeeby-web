@@ -72,7 +72,7 @@ export const en = {
   'home.doctorsKicker': 'For doctors & dentists',
   'home.doctorsTitle': 'Run your clinic — not just your listing.',
   'home.doctorsLead': 'New patients find you on Tabeeby. Then the same dashboard runs your day across every clinic you work at.',
-  'home.doctorsCta': 'Join free for 3 months',
+  'home.doctorsCta': "Create your doctor profile",
 
   'search.title': 'Find a doctor',
   'search.whatLabel': 'Specialty, condition or doctor',
@@ -217,9 +217,9 @@ export const en = {
   'email.invalid': 'Enter a valid email address.',
 
   'fd.title': 'Tabeeby for doctors — fill your schedule, run your clinic',
-  'fd.description': 'Get found by patients searching your specialty in your district. Manage bookings across all your clinics. First 3 months free.',
+  'fd.description': "Get found by patients searching your specialty in your district. Manage bookings across all your clinics.",
   'fd.kicker': 'for doctors',
-  'fd.badge': 'First 3 months free · no card needed',
+  'fd.badge': "For verified doctors and dentists",
   'fd.h1': 'Fill your empty slots. Then run your clinic from one screen.',
   'fd.lead': 'Patients searching your specialty in your district find you and book directly into your schedule. Appointments for every clinic you work at live in one place.',
   'fd.ctaJoin': 'Create your profile',
@@ -1479,4 +1479,10 @@ export const en = {
   'search.filtersToggle': "Filters",
   'search.filtersActive': "{n} on",
   'dictate.short': "Speak",
+  'tabs.label': "What are you looking for?",
+  'tabs.doctors': "Doctors",
+  'tabs.pharmacies': "Pharmacies",
+  'tabs.labs': "Labs",
+  'tabs.scans': "Scan centres",
+  'home.qPlaces': "Pharmacies & labs",
 } as const;

@@ -5,7 +5,7 @@ import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
 import { DESCRIPTION_MIN, DESCRIPTION_MAX } from '../../services/symptomChecker.js';
-import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap } from '../components.js';
+import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap, searchTabs } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -55,6 +55,7 @@ function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null):
       <h2 id="qs-title">${p ? ctx.t('home.welcomeBack', { name: first }) : ctx.t('home.visitorTitle')}</h2>
       <div class="quick-grid">
         <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/pharmacies')}">${icon.pill}<span>${ctx.t('home.qPlaces')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/health-record')}">${icon.record}<span>${ctx.t('home.qDocs')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.sparkle}<span>${ctx.t('home.qSymptoms')}</span></a>
@@ -104,7 +105,7 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
         <span class="pill">${ctx.t('home.badge')}</span>
         <h1>${ctx.t('home.h1')}</h1>
         <p class="lead">${ctx.t('home.lead')}</p>
-        ${searchForm(ctx, ref, {})}
+        <div class="search-block">${searchTabs(ctx, 'doctors')}${searchForm(ctx, ref, {})}</div>
         <div class="chips-row">
           <span class="muted">${ctx.t('home.popular')}</span>
           ${conditions.map((c) => html`<a class="chip-link" href="${href(ctx, '/search', { q: ctx.locale === 'ar' ? c.term_ar : c.term_en })}">${ctx.locale === 'ar' ? c.term_ar : c.term_en}</a>`)}
@@ -248,7 +249,7 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
 
   const active = [spec, f.subspecialtyId, district, f.insurerId].filter(Boolean).length;
   const body = html`
-  <div class="subheader"><div class="container">${searchForm(ctx, ref, f, true)}</div></div>
+  <div class="subheader"><div class="container search-block">${searchTabs(ctx, 'doctors')}${searchForm(ctx, ref, f, true)}</div></div>
   <div class="container page">
     <div class="results-head">
       <div><h1>${heading}</h1>

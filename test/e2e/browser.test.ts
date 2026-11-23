@@ -389,3 +389,60 @@ test('subspecialties appear as soon as a specialty is picked (search and doctor 
   assert.ok(!joinOpts.some((o) => /Interventional|Pediatric cardiology/i.test(o)));
   await page.close();
 });
+
+test('phones: one-line header with a working menu, filters folded until opened, voice typing on Add booking', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(h.baseUrl + '/');
+  const header = await page.locator('.site-header').boundingBox();
+  assert.ok(header && header.height < 90, `header too tall on a phone: ${header?.height}`);
+  assert.equal(await page.locator('.main-nav').isHidden(), true);
+  await page.locator('.mnav summary').click();
+  await page.locator('.mnav-panel').getByRole('link', { name: 'English' }).click();
+  await page.waitForURL(/\/en\/?$/);
+  await page.locator('.mnav summary').click();
+  await page.locator('.mnav-panel').getByRole('link', { name: 'Contact us' }).click();
+  await page.waitForURL(/\/en\/contact$/);
+
+  await page.goto(h.baseUrl + '/search');
+  assert.equal(await page.locator('.filters-box select[name=specialty]').isVisible(), false, 'filters folded on a phone');
+  await page.locator('.filters-summary').click();
+  assert.equal(await page.locator('.filters-box select[name=specialty]').isVisible(), true);
+
+  // Add booking: the name and mobile boxes can be filled by voice; spoken Arabic digits become a number.
+  const d = await createApprovedDoctor(h.db);
+  await page.addInitScript({
+    content: `window.SpeechRecognition = window.webkitSpeechRecognition = function () {
+      var self = this;
+      this.start = function () {
+        window.__continuous = self.continuous;
+        setTimeout(function () {
+          var box = document.activeElement;
+          var said = box && box.name === 'phone' ? '٠١٠ ١٢٣٤ ٥٦٧٨' : 'محمود إبراهيم';
+          var result = [{ transcript: said }];
+          result.isFinal = true;
+          self.onresult && self.onresult({ resultIndex: 0, results: [result] });
+          self.onend && self.onend();
+        }, 50);
+      };
+      this.stop = function () {};
+    };`,
+  });
+  await page.goto(h.baseUrl + '/login');
+  await page.locator('input[name=phone]').fill('0' + d.phone.slice(3));
+  await page.locator('input[name=password]').fill(d.password);
+  await page.locator('form button[type=submit]').first().click();
+  await page.waitForLoadState('load');
+  await page.goto(h.baseUrl + '/dashboard/book');
+  const mics = page.getByRole('button', { name: /تحدّث/ });
+  assert.equal(await mics.count(), 3, 'name, mobile and reason each have a microphone');
+  await mics.nth(0).click();
+  await page.waitForFunction(() => (document.querySelector('input[name=name]') as HTMLInputElement).value.length > 0);
+  assert.equal(await page.locator('input[name=name]').inputValue(), 'محمود إبراهيم');
+  assert.equal(await page.evaluate(() => (window as unknown as { __continuous: boolean }).__continuous), false);
+  await mics.nth(1).click();
+  await page.waitForFunction(() => (document.querySelector('input[name=phone]') as HTMLInputElement).value.length > 0);
+  assert.equal(await page.locator('input[name=phone]').inputValue(), '01012345678');
+  const overflow = (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
+  assert.ok(overflow <= 1, `too wide ${overflow}`);
+  await page.close();
+});

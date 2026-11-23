@@ -62,6 +62,15 @@ export const icon = {
   clock: trusted(
     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
   ),
+  menu: trusted(
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>',
+  ),
+  record: trusted(
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2.5"></rect><path d="M9 4.5V3h6v1.5M12 9.5v5M9.5 12h5M9 18h6"></path></svg>',
+  ),
+  sparkle: trusted(
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"></path><path d="M18.5 16v4M16.5 18h4"></path></svg>',
+  ),
   calendar: trusted(
     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>',
   ),
@@ -118,6 +127,17 @@ export interface InputOpts {
   list?: string;
   errors?: FieldErrors | undefined;
   extra?: SafeHtml;
+  /** Extra attributes on the <input>, e.g. dictateAttrs(). */
+  attrs?: SafeHtml;
+}
+
+/**
+ * Marks a text box for voice typing (doctor pages only; public/app.js adds the microphone button).
+ * mode 'digits' keeps only the numbers spoken (mobile numbers) and replaces what was there.
+ */
+export function dictateAttrs(ctx: Ctx, mode: 'text' | 'digits' = 'text', short = false): SafeHtml {
+  return html`data-dictate data-dictate-start="${ctx.t(short ? 'dictate.short' : 'dictate.start')}" data-dictate-stop="${ctx.t('dictate.stop')}" data-dictate-note="${ctx.t('dictate.note')}"
+    data-dictate-lang="${ctx.locale === 'ar' ? 'ar-EG' : 'en-US'}" data-dictate-other="${ctx.t('dictate.otherLang')}" data-dictate-denied="${ctx.t('dictate.denied')}"${mode === 'digits' ? html` data-dictate-mode="digits"` : ''}`;
 }
 
 export function input(ctx: Ctx, o: InputOpts): SafeHtml {
@@ -127,7 +147,7 @@ export function input(ctx: Ctx, o: InputOpts): SafeHtml {
   const control = html`<input id="${id}" name="${o.name}" type="${o.type ?? 'text'}" value="${o.value ?? ''}"
     ${o.autocomplete ? html`autocomplete="${o.autocomplete}"` : ''} ${o.inputmode ? html`inputmode="${o.inputmode}"` : ''}
     ${o.placeholder ? html`placeholder="${o.placeholder}"` : ''} ${o.maxlength ? html`maxlength="${o.maxlength}"` : ''} ${o.list ? html`list="${o.list}"` : ''}
-    ${describedBy ? html`aria-describedby="${describedBy}"` : ''}${attrIf(!!err, 'aria-invalid="true"')}${attrIf(!!o.required, 'required')}>`;
+    ${describedBy ? html`aria-describedby="${describedBy}"` : ''}${attrIf(!!err, 'aria-invalid="true"')}${attrIf(!!o.required, 'required')} ${o.attrs ?? ''}>`;
   return html`<div class="field${err ? ' has-error' : ''}">
     <label for="${id}">${o.label}</label>
     ${o.prefix || o.extra ? html`<div class="input-group" dir="ltr">${o.prefix ? html`<span class="input-prefix">${o.prefix}</span>` : ''}${control}${o.extra ?? ''}</div>` : control}

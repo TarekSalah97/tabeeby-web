@@ -891,3 +891,111 @@ a.cal-cell:hover { border-color: var(--primary); }
 /* Logo on dark backgrounds: a white tile behind the calendar */
 .dark .brand .logo-mark { color: var(--primary); }
 .dark .brand .logo-mark .lm-bg { fill: #fff; }
+
+/* ===========================================================================
+   Phone polish: one-line header with a menu, app-style shortcuts, compact
+   numbers on the doctor's dashboard, folded search filters, roomier taps.
+   =========================================================================== */
+.mnav-wrap { display: none; }
+.mnav { position: relative; }
+.mnav summary { list-style: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); cursor: pointer; }
+.mnav summary::-webkit-details-marker { display: none; }
+.mnav[open] summary { background: var(--primary-tint); border-color: var(--primary-line); color: var(--primary-dark); }
+.mnav.on-dark summary { background: transparent; border-color: rgba(255,255,255,.3); color: #fff; }
+.mnav-panel { position: absolute; inset-inline-end: 0; top: calc(100% + 8px); z-index: 40; width: min(300px, calc(100vw - 24px)); display: grid; gap: 6px;
+  padding: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 48px -20px rgba(15,31,28,.45); }
+.mnav-panel nav { display: grid; }
+.mnav-panel nav a, .mnav-lang { display: flex; align-items: center; min-height: 48px; padding: 0 12px; border-radius: 12px; color: var(--ink); text-decoration: none; font-weight: 600; }
+.mnav-panel nav a:hover, .mnav-lang:hover, .mnav-account > a:hover { background: var(--bg); }
+.mnav-lang { border-block-start: 1px solid var(--line); border-radius: 0; margin-block-start: 4px; padding-block-start: 4px; }
+.mnav-account { display: grid; gap: 8px; padding-block-start: 8px; border-block-start: 1px solid var(--line); }
+.mnav-account > a:not(.btn) { display: flex; align-items: center; min-height: 48px; padding: 0 12px; border-radius: 12px; color: var(--ink); text-decoration: none; font-weight: 600; }
+
+/* Search filters: a plain panel on wide screens, a fold-out box on phones */
+.filters-summary { display: none; }
+.filters-box > summary::-webkit-details-marker { display: none; }
+
+/* Voice typing in one-line boxes */
+.dictate-inline { margin-block-start: 6px; }
+input.dictating, textarea.dictating { border-color: #c0392b; box-shadow: 0 0 0 3px #f6d5d1; }
+
+@media (max-width: 900px) {
+  /* Header: logo + (sign in) + menu on one line */
+  .main-nav, .header-actions { display: none !important; }
+  .mnav-wrap { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+  .header-row { flex-wrap: nowrap; padding-block: 10px; gap: 10px; }
+  .brand-name { font-size: 1.2rem; }
+  .brand .logo-mark { width: 30px; height: 30px; }
+  .brand-kicker { display: none; }
+  .mnav-signin { min-height: 40px; border-radius: 12px; }
+  .demo-banner { font-size: .78rem; padding: 6px 12px; }
+
+  /* Search: filters fold away; the top search box keeps just the text and the button */
+  .filters { padding: 0; border-radius: 14px; flex-basis: 100%; }
+  .filters-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 16px; font-weight: 700; cursor: pointer; list-style: none; }
+  .filters-summary::after { content: '▾'; color: var(--muted); margin-inline-start: auto; }
+  .filters-box[open] .filters-summary::after { content: '▴'; }
+  .filters-box > form { padding: 4px 16px 16px; }
+  .search-form.compact { display: flex; gap: 8px; align-items: stretch; padding: 8px; }
+  .search-form.compact .search-field:not(.wide) { display: none; }
+  .search-form.compact .search-field.wide { flex: 1; min-width: 0; }
+  .search-form.compact .btn-search { width: auto; padding-inline: 16px; flex: none; }
+}
+
+@media (max-width: 640px) {
+  body { -webkit-text-size-adjust: 100%; }
+  h1 { font-size: clamp(1.5rem, 1.1rem + 2.4vw, 1.9rem); }
+  .panel { padding: 16px; border-radius: 18px; }
+
+  /* Home: shortcuts in one row like an app, each a tinted icon over a short label */
+  .quick-start { padding-block-start: 12px; }
+  .quick-start .panel { gap: 14px; }
+  .quick-start h2 { font-size: 1.25rem; }
+  .quick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .quick-tile, .quick-tile.primary { align-items: center; justify-content: flex-start; text-align: center; gap: 8px; min-height: 0; padding: 10px 2px;
+    background: transparent; border: 0; color: var(--ink); font-size: .8rem; font-weight: 700; }
+  .quick-tile svg, .quick-tile.primary svg { box-sizing: content-box; width: 24px; height: 24px; padding: 14px; border-radius: 18px;
+    background: var(--primary-tint); color: var(--primary); }
+  .quick-tile.primary svg { background: var(--primary); color: #fff; }
+  .quick-tile:hover, .quick-tile.primary:hover { background: transparent; color: var(--primary-dark); }
+  .admin-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-quick .quick-tile { background: var(--surface); border: 1px solid var(--line); padding: 14px 8px; }
+  .admin-quick .quick-tile svg { padding: 10px; }
+  .rebook-list li { flex-wrap: nowrap; padding: 10px 12px; }
+  .rebook-list li > :first-child { min-width: 0; }
+  .rebook-list .btn { flex: none; min-height: 40px; padding-inline: 12px; font-size: .88rem; }
+
+  /* Symptom bar: compact, no decoration */
+  .symptom-top { padding-block: 14px 0; }
+  .symptom-bar { min-height: 0; padding: 14px; gap: 10px; border-radius: 18px; }
+  .symptom-bar-icon { display: none; }
+  .symptom-bar-label { font-size: 1rem; }
+  .symptom-bar input { font-size: 1rem; min-height: 40px; }
+  .symptom-bar .btn { min-height: 50px; font-size: 1.02rem; padding: 0 16px; }
+
+  /* Doctor's dashboard: the day's numbers in a tight 3-across strip */
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .kpi { padding: 10px 12px; border-radius: 12px; gap: 2px; }
+  .kpi span { font-size: .74rem; line-height: 1.25; }
+  .kpi strong { font-size: 1.35rem; }
+
+  /* Visit types (with services): one full-width choice per line instead of squeezed columns */
+  .segmented-wrap { grid-template-columns: minmax(0, 1fr); }
+  .segmented-wrap span { justify-content: flex-start; padding-inline: 14px; text-align: start; }
+
+  /* Profile: smaller photo so the name and Book button show sooner */
+  .profile-head { gap: 16px; }
+  .profile-head .avatar { width: 72px; height: 72px; border-radius: 18px; font-size: 1.4rem; }
+}
+.filters-summary .count-badge { position: static; display: inline-grid; place-items: center; }
+.filters-summary .count-badge { background: var(--primary-tint); color: var(--primary-dark); height: auto; padding: 2px 10px; font-size: .8rem; }
+@media (max-width: 640px) {
+  /* Recording a payment on a visit card: method and amount side by side, the button full width */
+  .table.cards-on-phone .pay-form { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 8px; width: 100%; }
+  .table.cards-on-phone .pay-form select, .table.cards-on-phone .pay-form .pay-amount { max-width: none; width: 100%; height: 48px; min-height: 48px; border-radius: 12px; box-sizing: border-box; }
+  .table.cards-on-phone .pay-form .btn { grid-column: 1 / -1; min-height: 48px; }
+  .table.cards-on-phone .cell-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .table.cards-on-phone .cell-actions > .btn, .table.cards-on-phone .cell-actions > a.btn { flex: 1 1 0; }
+}
+.site-header .mnav-panel .btn-outline, .site-header.dark .mnav-panel .btn-outline { color: var(--ink); background: var(--surface); border-color: var(--line); }

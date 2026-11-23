@@ -1478,4 +1478,8 @@ export const ar: Record<keyof typeof en, string> = {
   'ins.noPatients': "لا توجد ملفات مرضى بزيارات في هذه الفترة بعد.",
   'ins.needFiles': "النوع والسن من ملفات المرضى. اطلب منا تفعيل ملفات المرضى لحسابك.",
   'ins.privacy': "النوع والسن من ملفات مرضاك الذين لهم زيارة في الفترة؛ وأعداد الزيارات من حجوزاتك. هذه الصفحة تظهر لك فقط.",
+  'nav.menu': "القائمة",
+  'search.filtersToggle': "تصفية النتائج",
+  'search.filtersActive': "{n} مُفعّل",
+  'dictate.short': "تحدّث",
 };

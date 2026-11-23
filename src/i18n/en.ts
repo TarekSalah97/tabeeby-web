@@ -1475,4 +1475,8 @@ export const en = {
   'ins.noPatients': "No patient files with a visit in this period yet.",
   'ins.needFiles': "Sex and age come from patient files. Ask us to turn on patient files for your account.",
   'ins.privacy': "Sex and age are counted from your patient files with a visit in the period; visit numbers from your bookings. Only you can see this page.",
+  'nav.menu': "Menu",
+  'search.filtersToggle': "Filters",
+  'search.filtersActive': "{n} on",
+  'dictate.short': "Speak",
 } as const;

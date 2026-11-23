@@ -4,7 +4,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel, monthCalendar } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel, monthCalendar, dictateAttrs } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -594,8 +594,8 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
                 </div></fieldset>`
             : ''}`
         : html`<div class="form-grid">
-            ${input(ctx, { name: 'name', label: ctx.t('cbook.name'), value: values['name'], autocomplete: 'off', maxlength: 120, errors: v.errors, required: true })}
-            ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: values['phone'], prefix: '+20', inputmode: 'tel', autocomplete: 'off', errors: v.errors, required: true })}
+            ${input(ctx, { name: 'name', label: ctx.t('cbook.name'), value: values['name'], autocomplete: 'off', maxlength: 120, errors: v.errors, required: true, attrs: dictateAttrs(ctx, 'text', true) })}
+            ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: values['phone'], prefix: '+20', inputmode: 'tel', autocomplete: 'off', errors: v.errors, required: true, attrs: dictateAttrs(ctx, 'digits', true) })}
           </div>
           <fieldset class="stack-sm">
             <legend class="label">${ctx.t('book.visitType')}</legend>
@@ -607,7 +607,7 @@ export function clinicBookPage(ctx: Ctx, doctor: OwnDoctor, v: ClinicBookView): 
           </fieldset>`}
       <div class="field">
         <label for="reason">${ctx.t('book.reason')} <span class="muted">(${ctx.t('common.optional')})</span></label>
-        <input id="reason" type="text" name="reason" maxlength="200" value="${values['reason'] ?? ''}">
+        <input id="reason" type="text" name="reason" maxlength="200" value="${values['reason'] ?? ''}" ${dictateAttrs(ctx, 'text', true)}>
       </div>
       <button class="btn btn-primary btn-lg btn-block" type="submit"${attrIf(!v.slots.length, 'disabled')}>${ctx.t('cbook.confirm')}</button>
       <p class="hint">${ctx.t(v.source?.patientId ? 'cbook.noticeAccount' : 'cbook.noticeWalkIn')}</p>

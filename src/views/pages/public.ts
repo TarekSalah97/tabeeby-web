@@ -56,8 +56,8 @@ function patientQuickStart(ctx: Ctx, ref: ReferenceData, p: PatientHome | null):
       <div class="quick-grid">
         <a class="quick-tile primary" href="${href(ctx, '/search')}">${icon.search}<span>${ctx.t('home.qFind')}</span></a>
         <a class="quick-tile" href="${href(ctx, '/appointments')}">${icon.calendar}<span>${ctx.t('home.qAppointments')}</span></a>
-        <a class="quick-tile" href="${href(ctx, '/health-record')}">${icon.check}<span>${ctx.t('home.qDocs')}</span></a>
-        <a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.shieldOutline}<span>${ctx.t('home.qSymptoms')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/health-record')}">${icon.record}<span>${ctx.t('home.qDocs')}</span></a>
+        <a class="quick-tile" href="${href(ctx, '/symptom-checker')}">${icon.sparkle}<span>${ctx.t('home.qSymptoms')}</span></a>
       </div>
       ${p?.next
         ? html`<a class="next-visit" href="${href(ctx, '/appointments')}"><span class="label">${ctx.t('home.nextVisit')}</span>
@@ -246,6 +246,7 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
       page: p,
     });
 
+  const active = [spec, f.subspecialtyId, district, f.insurerId].filter(Boolean).length;
   const body = html`
   <div class="subheader"><div class="container">${searchForm(ctx, ref, f, true)}</div></div>
   <div class="container page">
@@ -255,6 +256,8 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
     </div>
     <div class="results-layout">
       <aside class="filters" aria-label="${ctx.t('search.filters')}">
+        <details class="filters-box" open data-close-on-phone>
+        <summary class="filters-summary">${ctx.t('search.filtersToggle')}${active ? html` <span class="count-badge">${ctx.t('search.filtersActive', { n: formatNumber(active, ctx.locale) })}</span>` : ''}</summary>
         <form method="get" action="${href(ctx, '/search')}" class="stack">
           <input type="hidden" name="q" value="${f.q}">
           ${select(ctx, {
@@ -288,6 +291,7 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
           <button class="btn btn-primary btn-block" type="submit">${ctx.t('search.apply')}</button>
           <a class="btn btn-ghost btn-block" href="${href(ctx, '/search')}">${ctx.t('search.clear')}</a>
         </form>
+        </details>
       </aside>
       <div class="results">
         ${result.cards.length

@@ -33,6 +33,38 @@ function userMenu(ctx: Ctx): SafeHtml {
       <button type="submit" class="btn btn-outline">${ctx.t('nav.signOut')}</button></form>`;
 }
 
+/**
+ * Phones: the header is one line (logo, a sign-in button for visitors, and a menu button) and
+ * everything else opens from the menu, like most established booking sites. Works without JavaScript.
+ */
+function mobileMenu(ctx: Ctx, variant: string): SafeHtml {
+  const u = ctx.user;
+  const link = (path: string, label: string) => html`<a href="${href(ctx, path)}">${label}</a>`;
+  const account = !u
+    ? html`<a class="btn btn-outline btn-block" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>
+        <a class="btn btn-primary btn-block" href="${href(ctx, '/join')}">${ctx.t('nav.signUp')}</a>`
+    : html`${u.role === 'doctor' || u.role === 'facility'
+          ? link(u.role === 'doctor' ? '/dashboard' : '/facility', ctx.t('nav.dashboard'))
+          : u.role === 'admin' ? link('/admin', ctx.t('nav.admin')) : link('/appointments', ctx.t('nav.myAppointments'))}
+        <form method="post" action="${href(ctx, '/logout')}">${csrfField(ctx)}
+          <button type="submit" class="btn btn-outline btn-block">${ctx.t('nav.signOut')}</button></form>`;
+  return html`${!u ? html`<a class="btn btn-primary btn-sm mnav-signin" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>` : ''}
+    <details class="mnav${variant === 'doctors' ? ' on-dark' : ''}">
+      <summary aria-label="${ctx.t('nav.menu')}">${icon.menu}</summary>
+      <div class="mnav-panel">
+        <nav aria-label="${ctx.t('nav.main')}">
+          ${link('/search', ctx.t('nav.findDoctor'))}
+          ${u?.role !== 'doctor' && u?.role !== 'admin' ? link('/symptom-checker', ctx.t('nav.symptomChecker')) : ''}
+          ${link('/pharmacies', ctx.t('nav.pharmaciesLabs'))}
+          ${link('/for-doctors', ctx.t('nav.forDoctors'))}
+          ${link('/contact', ctx.t('help.footer'))}
+        </nav>
+        <a class="mnav-lang" href="${alternateHref(ctx)}" hreflang="${ctx.locale === 'ar' ? 'en' : 'ar'}" lang="${ctx.locale === 'ar' ? 'en' : 'ar'}">🌐 ${ctx.t('nav.language')}</a>
+        <div class="mnav-account">${account}</div>
+      </div>
+    </details>`;
+}
+
 /** Phone-only bottom bar for signed-in patients: the five things they do most, always one tap away. */
 function patientTabBar(ctx: Ctx): SafeHtml {
   const here = ctx.path;
@@ -47,7 +79,7 @@ function patientTabBar(ctx: Ctx): SafeHtml {
     ${item('/search', ctx.t('nav.findShort'), icon.search)}
     ${item('/appointments', ctx.t('nav.appointmentsShort'), icon.calendar)}
     ${item('/messages', ctx.t('nav.messagesShort'), icon.chat, ctx.unreadMessages)}
-    ${item('/health-record', ctx.t('nav.docsShort'), icon.check)}
+    ${item('/health-record', ctx.t('nav.docsShort'), icon.record)}
   </nav>`;
 }
 
@@ -92,6 +124,7 @@ ${ctx.deps.cfg.DEMO_MODE ? html`<div class="demo-banner" role="note">${ctx.t('de
       <a class="btn btn-outline lang-switch" href="${alternateHref(ctx)}" hreflang="${ctx.locale === 'ar' ? 'en' : 'ar'}" lang="${ctx.locale === 'ar' ? 'en' : 'ar'}">${ctx.t('nav.language')}</a>
       ${userMenu(ctx)}
     </div>
+    <div class="mnav-wrap">${mobileMenu(ctx, variant)}</div>
   </div>
 </header>
 <main id="main" tabindex="-1">${o.body}</main>

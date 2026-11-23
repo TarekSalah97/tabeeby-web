@@ -83,7 +83,7 @@
 // and nothing is saved until the doctor presses Save. Hidden where the browser cannot do it.
 (function () {
   var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var boxes = document.querySelectorAll('textarea[data-dictate]');
+  var boxes = document.querySelectorAll('textarea[data-dictate], input[data-dictate]');
   if (!Recognition || !boxes.length) return;
   var active = null; // { rec, button, box }
   var noteShown = false;
@@ -93,12 +93,22 @@
     try { active.rec.stop(); } catch (e) { /* already stopped */ }
     active.button.setAttribute('aria-pressed', 'false');
     active.button.textContent = '🎤 ' + active.box.getAttribute('data-dictate-start');
+    active.box.classList.remove('dictating');
     active = null;
   }
 
+  // Arabic-Indic and Persian digits to 0-9, then keep only the digits (for mobile numbers).
+  function digitsOnly(text) {
+    return text.replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[\u06F0-\u06F9]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
+      .replace(/\D/g, '');
+  }
+
   Array.prototype.forEach.call(boxes, function (box) {
+    var oneLine = box.tagName === 'INPUT';
+    var digits = box.getAttribute('data-dictate-mode') === 'digits';
     var bar = document.createElement('div');
-    bar.className = 'dictate-bar';
+    bar.className = 'dictate-bar' + (oneLine ? ' dictate-inline' : '');
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn btn-outline btn-sm';
@@ -121,9 +131,10 @@
     live.className = 'hint dictate-live';
     live.setAttribute('aria-live', 'polite');
     bar.appendChild(button);
-    bar.appendChild(switcher);
+    if (!digits) bar.appendChild(switcher);
     bar.appendChild(live);
-    box.parentNode.insertBefore(bar, box.nextSibling);
+    var anchor = box.closest('.input-group') || box; // keep the +20 box intact
+    anchor.parentNode.insertBefore(bar, anchor.nextSibling);
     if (!noteShown) {
       var note = document.createElement('p');
       note.className = 'hint';
@@ -137,13 +148,16 @@
       stop();
       var rec = new Recognition();
       rec.lang = lang;
-      rec.continuous = true;
+      rec.continuous = !oneLine; // a name or number is one short phrase
       rec.interimResults = true;
       rec.onresult = function (event) {
         var interim = '';
         for (var i = event.resultIndex; i < event.results.length; i++) {
           var text = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
+          if (event.results[i].isFinal && digits) {
+            box.value = digitsOnly(text).slice(0, Number(box.getAttribute('maxlength')) || 15);
+            box.dispatchEvent(new Event('input', { bubbles: true }));
+          } else if (event.results[i].isFinal) {
             var sep = box.value && !/\s$/.test(box.value) ? ' ' : '';
             var max = Number(box.getAttribute('maxlength')) || 100000;
             box.value = (box.value + sep + text.trim()).slice(0, max);
@@ -164,6 +178,7 @@
         active = { rec: rec, button: button, box: box };
         button.setAttribute('aria-pressed', 'true');
         button.textContent = '⏹ ' + box.getAttribute('data-dictate-stop');
+        box.classList.add('dictating');
         box.focus();
       } catch (e) { stop(); }
     });
@@ -301,4 +316,10 @@
         .then(function () { clearInterval(timer); btn.disabled = false; });
     });
   });
+})();
+
+// Search filters: open on wide screens, folded on phones so the doctors show first.
+(function () {
+  if (!window.matchMedia || !window.matchMedia('(max-width: 900px)').matches) return;
+  Array.prototype.forEach.call(document.querySelectorAll('details[data-close-on-phone]'), function (d) { d.open = false; });
 })();

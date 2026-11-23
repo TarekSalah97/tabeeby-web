@@ -207,6 +207,73 @@ async function refreshTodayQueue(tx: Queryable, doctor: { userId: string; clinic
   }
 }
 
+// Realistic reasons for a heart clinic; also how a restart finds (and replaces) these bookings.
+const SCHEDULE_REASONS = ['Chest pain on effort', 'Palpitations', 'Blood pressure check', 'ECG review', 'Shortness of breath', 'Echo results', 'Check-up before surgery'];
+const SCHEDULE_WALK_INS: [string, string][] = [
+  ['Mahmoud Ibrahim', '+201112345601'], ['Fatma Ali', '+201112345602'], ['Hossam Farouk', '+201112345603'],
+  ['Rania Sobhy', '+201112345604'], ['Ehab Mansour', '+201112345605'], ['Dina Lotfy', '+201112345606'],
+];
+const SCHEDULE_FROM = '10:00';
+const SCHEDULE_TO = '22:00';
+
+/**
+ * A busy but not full diary for the first demo doctor (Dr. Ahmed Hassan): the clinic opens every day
+ * 10:00–22:00, and about half of the remaining times today, tomorrow and the day after are booked
+ * (account patients and walk-ins, new visits and follow-ups). The other half stays free so the
+ * doctor and patients can still book. Rebuilt on every start, so the days follow the real date.
+ */
+async function refreshComingDays(tx: Queryable, doctor: { userId: string; clinicId: string }, patientIds: string[]): Promise<number> {
+  await tx.query('savepoint demo_days');
+  try {
+    await tx.query('delete from schedule_rules where clinic_id = $1', [doctor.clinicId]);
+    for (let day = 0; day < 7; day++) {
+      await tx.query(`insert into schedule_rules (clinic_id, weekday, start_time, end_time, slot_minutes) values ($1, $2, $3, $4, 30)`,
+        [doctor.clinicId, day, SCHEDULE_FROM, SCHEDULE_TO]);
+    }
+    await tx.query(`delete from appointments where doctor_id = $1 and reason = any($2::text[]) and status = 'confirmed' and arrived_at is null`,
+      [doctor.userId, SCHEDULE_REASONS]);
+    const half = 30 * 60_000;
+    const earliest = Date.now() + half; // today: only times that have not started yet
+    const today = todayIn(TZ, new Date());
+    let booked = 0;
+    let who = 0;
+    for (let offset = 0; offset < 3; offset++) {
+      const date = addDays(today, offset);
+      const from = zonedToUtc(date, SCHEDULE_FROM, TZ).getTime();
+      const to = zonedToUtc(date, SCHEDULE_TO, TZ).getTime();
+      for (let t = from, k = 0; t + half <= to; t += half, k++) {
+        // Book 3 of every 5 times (shifted per day) and leave the rest free.
+        if (t < earliest || [1, 4].includes((k + offset * 2) % 5)) continue;
+        const start = new Date(t);
+        const end = new Date(t + half);
+        const clash = await tx.query(
+          `select 1 from appointments where doctor_id = $1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2 limit 1`,
+          [doctor.userId, start, end],
+        );
+        if (clash.rows.length) continue;
+        const walkIn = who % 4 === 3 ? SCHEDULE_WALK_INS[(who >> 2) % SCHEDULE_WALK_INS.length]! : null;
+        // Patients 0–7 are in today's live queue; use the rest for the diary.
+        const patientId = walkIn ? null : patientIds[8 + (who % (patientIds.length - 8))]!;
+        const followUp = who % 3 === 1;
+        await tx.query(
+          `insert into appointments (doctor_id, clinic_id, patient_id, walk_in_name, walk_in_phone, booked_by, starts_at, ends_at, visit_type, reason, fee_egp)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [doctor.userId, doctor.clinicId, patientId, walkIn?.[0] ?? null, walkIn?.[1] ?? null, walkIn ? 'doctor' : 'patient',
+            start, end, followUp ? 'follow_up' : 'new', SCHEDULE_REASONS[who % SCHEDULE_REASONS.length]!, followUp ? 250 : 500],
+        );
+        who++;
+        booked++;
+      }
+    }
+    await tx.query('release savepoint demo_days');
+    return booked;
+  } catch (err) {
+    await tx.query('rollback to savepoint demo_days');
+    console.warn('Demo diary skipped:', err instanceof Error ? err.message : err);
+    return 0;
+  }
+}
+
 
 /**
  * Fictional results in the demo patients' health records: for the first six demo patients, every
@@ -314,8 +381,9 @@ try {
     const already = await tx.query('select 1 from patient_records where doctor_id = $1 limit 1', [doctors[0]!.userId]);
     if (already.rows.length) {
       const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
+      const days = await refreshComingDays(tx, doctors[0]!, patientIds);
       const res = await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
-      return `Accounts refreshed; visit history already present; ${q} visits in today's demo queue; ${res} new demo results.`;
+      return `Accounts refreshed; visit history already present; ${q} visits in today's demo queue; ${days} booked visits today to the day after tomorrow; ${res} new demo results.`;
     }
 
     let visits = 0;
@@ -434,8 +502,9 @@ try {
       }
     }
     const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
+    const days = await refreshComingDays(tx, doctors[0]!, patientIds);
     await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
-    return `Added ${visits} completed visits with notes across ${DOCTORS.length} doctors; ${q} visits in today's demo queue.`;
+    return `Added ${visits} completed visits with notes across ${DOCTORS.length} doctors; ${q} visits in today's demo queue; ${days} booked visits today to the day after tomorrow.`;
   });
   clearReferenceCache();
   console.log(summary);

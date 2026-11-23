@@ -65,7 +65,11 @@ ${o.description ? html`<meta name="description" content="${o.description}">` : '
 ${o.noindex || ctx.deps.cfg.DEMO_MODE ? html`<meta name="robots" content="noindex">` : ''}
 <link rel="alternate" hreflang="ar" href="${origin}${p || '/'}">
 <link rel="alternate" hreflang="en" href="${origin}/en${p}">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.svg?v=${assetVersion(STATIC_ROOT, 'favicon.svg')}" type="image/svg+xml">
+<link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#0F6B5C">
 ${ctx.locale === 'ar' ? html`<link rel="preload" href="/static/fonts/cairo.woff" as="font" type="font/woff" crossorigin>` : ''}
 <link rel="stylesheet" href="/static/styles.css?v=${assetVersion(STATIC_ROOT, 'styles.css')}">
 <script src="/static/app.js?v=${assetVersion(STATIC_ROOT, 'app.js')}" defer></script>

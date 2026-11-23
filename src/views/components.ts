@@ -29,7 +29,7 @@ export const icon = {
     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>',
   ),
   logoSmall: trusted(
-    '<svg width="22" height="22" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"></rect><path d="M18 9v18M9 18h18" stroke="#fff" stroke-width="4" stroke-linecap="round"></path></svg>',
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="4"></rect><path d="M8 3v4M16 3v4M12 10v7M8.5 13.5h7"></path></svg>',
   ),
   star: trusted(
     '<svg class="star" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8L12 2.8Z" fill="currentColor"></path></svg>',
@@ -46,8 +46,9 @@ export const icon = {
   bell: trusted(
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>',
   ),
+  // Logo: a booking calendar with a medical cross and a tick ("booked").
   logo: trusted(
-    '<svg class="logo-mark" width="34" height="34" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="currentColor"></rect><path d="M18 9v18M9 18h18" stroke="#fff" stroke-width="4" stroke-linecap="round"></path></svg>',
+    '<svg class="logo-mark" width="34" height="34" viewBox="0 0 36 36" aria-hidden="true"><rect class="lm-bg" width="36" height="36" rx="9" fill="none"></rect><rect x="3" y="6" width="30" height="27" rx="7" fill="currentColor"></rect><path d="M3 14v-1a7 7 0 0 1 7-7h16a7 7 0 0 1 7 7v1z" fill="#0A4F44"></path><rect x="10" y="2.5" width="3.6" height="8" rx="1.8" fill="#0A4F44"></rect><rect x="22.4" y="2.5" width="3.6" height="8" rx="1.8" fill="#0A4F44"></rect><rect x="15.5" y="17" width="5" height="13" rx="1.3" fill="#fff"></rect><rect x="11.5" y="21" width="13" height="5" rx="1.3" fill="#fff"></rect><circle cx="29" cy="29" r="6.6" fill="#F2705E" stroke="#fff" stroke-width="1.6"></circle><path d="M25.9 29.1l2.2 2.2 4-4.4" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>',
   ),
   search: trusted(
     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>',

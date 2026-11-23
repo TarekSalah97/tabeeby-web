@@ -1,0 +1,12 @@
+{
+  "name": "Tabeeby — طبيبي",
+  "short_name": "Tabeeby",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#E3F2EE",
+  "theme_color": "#0F6B5C",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

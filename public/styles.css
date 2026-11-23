@@ -109,8 +109,6 @@ img, svg { max-width: 100%; }
 .brand-name { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; }
 .brand-kicker { color: #7fd1bf; font-weight: 600; }
 .dark .brand { color: #fff; }
-.dark .brand .logo-mark { color: #fff; }
-.dark .brand .logo-mark path { stroke: var(--primary); }
 .main-nav { display: flex; flex-wrap: wrap; gap: 24px; font-weight: 500; }
 .main-nav a { color: inherit; text-decoration: none; }
 .main-nav a:hover { text-decoration: underline; }
@@ -890,3 +888,6 @@ a.cal-cell:hover { border-color: var(--primary); }
 .ins-fill.tone-f { background: #c0557a; }
 .ins-fill.tone-m { background: #2f6fa8; }
 .ins-day .small { white-space: nowrap; }
+/* Logo on dark backgrounds: a white tile behind the calendar */
+.dark .brand .logo-mark { color: var(--primary); }
+.dark .brand .logo-mark .lm-bg { fill: #fff; }

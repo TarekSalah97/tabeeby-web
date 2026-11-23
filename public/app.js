@@ -98,7 +98,15 @@
   }
 
   // Arabic-Indic and Persian digits to 0-9, then keep only the digits (for mobile numbers).
+  // Number words, in case the speech service writes them out ("zero one…", "صفر واحد…").
+  var WORDS = { zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+    'صفر': 0, 'واحد': 1, 'اتنين': 2, 'اثنين': 2, 'إثنين': 2, 'ثلاثة': 3, 'تلاتة': 3, 'اربعة': 4, 'أربعة': 4, 'خمسة': 5,
+    'ستة': 6, 'سبعة': 7, 'ثمانية': 8, 'تمانية': 8, 'تسعة': 9 };
   function digitsOnly(text) {
+    text = text.split(/\s+/).map(function (w) {
+      var k = w.toLowerCase().replace(/^و(?=\S{3,})/, ''); // Arabic "and" glued to a word
+      return Object.prototype.hasOwnProperty.call(WORDS, k) ? String(WORDS[k]) : w;
+    }).join(' ');
     return text.replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
       .replace(/[\u06F0-\u06F9]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
       .replace(/\D/g, '');
@@ -131,7 +139,7 @@
     live.className = 'hint dictate-live';
     live.setAttribute('aria-live', 'polite');
     bar.appendChild(button);
-    if (!digits) bar.appendChild(switcher);
+    bar.appendChild(switcher);
     bar.appendChild(live);
     var anchor = box.closest('.input-group') || box; // keep the +20 box intact
     anchor.parentNode.insertBefore(bar, anchor.nextSibling);

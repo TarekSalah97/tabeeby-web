@@ -415,9 +415,11 @@ test('phones: one-line header with a working menu, filters folded until opened, 
       var self = this;
       this.start = function () {
         window.__continuous = self.continuous;
+        window.__langs = (window.__langs || []).concat(self.lang);
         setTimeout(function () {
           var box = document.activeElement;
-          var said = box && box.name === 'phone' ? '٠١٠ ١٢٣٤ ٥٦٧٨' : 'محمود إبراهيم';
+          var english = self.lang === 'en-US';
+          var said = box && box.name === 'phone' ? (english ? 'zero one zero 1234 5678' : '٠١٠ ١٢٣٤ ٥٦٧٨') : (english ? 'Mahmoud Ibrahim' : 'محمود إبراهيم');
           var result = [{ transcript: said }];
           result.isFinal = true;
           self.onresult && self.onresult({ resultIndex: 0, results: [result] });
@@ -442,6 +444,20 @@ test('phones: one-line header with a working menu, filters folded until opened, 
   await mics.nth(1).click();
   await page.waitForFunction(() => (document.querySelector('input[name=phone]') as HTMLInputElement).value.length > 0);
   assert.equal(await page.locator('input[name=phone]').inputValue(), '01012345678');
+  // Every box, the mobile number included, can switch to English.
+  const switches = page.locator('.dictate-bar button', { hasText: /⇄/ });
+  assert.equal(await switches.count(), 3);
+  await switches.nth(1).click();
+  await page.locator('input[name=phone]').fill('');
+  await mics.nth(1).click();
+  await page.waitForFunction(() => (document.querySelector('input[name=phone]') as HTMLInputElement).value.length > 0);
+  assert.equal(await page.locator('input[name=phone]').inputValue(), '01012345678');
+  await switches.nth(0).click();
+  await page.locator('input[name=name]').fill('');
+  await mics.nth(0).click();
+  await page.waitForFunction(() => (document.querySelector('input[name=name]') as HTMLInputElement).value.length > 0);
+  assert.equal(await page.locator('input[name=name]').inputValue(), 'Mahmoud Ibrahim');
+  assert.deepEqual(await page.evaluate(() => (window as unknown as { __langs: string[] }).__langs), ['ar-EG', 'ar-EG', 'en-US', 'en-US']);
   const overflow = (await page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth')) as number;
   assert.ok(overflow <= 1, `too wide ${overflow}`);
   await page.close();

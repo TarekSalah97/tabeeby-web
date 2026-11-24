@@ -9,7 +9,7 @@ import type { SessionUser } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
   getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
-  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem, setShowIncome, setDoctorPhoto, removeDoctorPhoto,
+  listPositions, addPosition, deletePosition, updateProfile, getOwnSelections, toRanges, type ClinicInput, type DayHours, type RuleProblem, setShowIncome, setInstapayAddress, setDoctorPhoto, removeDoctorPhoto,
 } from '../services/doctors.js';
 import { doctorDay, upcomingWeekCount } from '../services/dashboard.js';
 import { changeStatus } from '../services/booking.js';
@@ -194,6 +194,13 @@ export function dashboardRoutes(r: Router): void {
     if (!user) return;
     await removeDoctorPhoto(ctx.deps, user.id, ctx.ip);
     redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'photoRemoved' }));
+  });
+
+  r.post('/dashboard/settings/instapay', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const err = await setInstapayAddress(ctx.deps, user.id, formValue(ctx, 'instapay').slice(0, 120), ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/profile', err ? { error: err } : { ok: 'instapay' }));
   });
 
   r.post('/dashboard/settings/income', async (ctx) => {

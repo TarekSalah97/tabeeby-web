@@ -29,7 +29,11 @@ function joinForm(phone: string, extra: Record<string, string | string[]> = {}, 
     ...extra,
   };
   for (const [k, v] of Object.entries(fields)) for (const x of Array.isArray(v) ? v : [v]) f.append(k, x);
-  if (card) f.append('card', card, 'card.pdf');
+  if (card) {
+    f.append('card', card, 'card.pdf');
+    // The national ID is required too (a PNG photo here).
+    f.append('doc_national_id', new Blob([Buffer.from('89504e470d0a1a0a0000', 'hex')], { type: 'image/png' }), 'id.png');
+  }
   return f;
 }
 
@@ -48,6 +52,8 @@ test('doctor joins, is hidden until approved, sets up hours, then runs a visit',
   );
   assert.equal(bad.status, 422);
   assert.match(bad.body, /Upload your syndicate membership card/);
+  assert.match(bad.body, /National ID card/);
+  assert.match(bad.body, /Upload this document/);
   assert.match(bad.body, /Choose subspecialties that belong to your specialty/);
   assert.match(bad.body, /start date can’t be in the future/);
 
@@ -72,6 +78,8 @@ test('doctor joins, is hidden until approved, sets up hours, then runs a visit',
     [phone],
   );
   assert.equal(d[0]!.verification_status, 'pending');
+  const kinds = (await h.db.query<{ kind: string }>('select kind from verification_documents where doctor_id = $1 order by kind', [d[0]!.user_id])).rows.map((r) => r.kind);
+  assert.deepEqual(kinds, ['national_id', 'syndicate_card']);
 
   // Experience: 2021–2023 and 2022–2024 overlap → 3 years.
   const profile = await doc.get('/en/dashboard/profile');

@@ -1,3 +1,4 @@
+import type { DoctorDocKind } from '../domain/documents.js';
 import type { Deps } from '../http/context.js';
 import type { Queryable } from '../db/db.js';
 import { audit } from './audit.js';
@@ -33,7 +34,7 @@ export interface ReviewDetail extends ReviewListItem {
   verification_note: string | null;
   phone_verified_at: Date | null;
   records_enabled: boolean;
-  documents: { id: string; mime_type: string; size_bytes: number; uploaded_at: Date }[];
+  documents: { id: string; kind: DoctorDocKind; mime_type: string; size_bytes: number; uploaded_at: Date }[];
   positions: { title: string; workplace: string; start: string; end: string | null }[];
   subspecialtyIds: number[];
 }
@@ -49,7 +50,7 @@ export async function getForReview(db: Queryable, doctorId: string): Promise<Rev
   if (!d) throw notFound();
   const [docs, positions, subs] = await Promise.all([
     db.query<ReviewDetail['documents'][number]>(
-      'select id, mime_type, size_bytes, uploaded_at from verification_documents where doctor_id = $1 order by uploaded_at desc',
+      'select id, kind, mime_type, size_bytes, uploaded_at from verification_documents where doctor_id = $1 order by uploaded_at',
       [doctorId],
     ),
     db.query<ReviewDetail['positions'][number]>(

@@ -59,7 +59,7 @@ export function adminDoctorPage(ctx: Ctx, ref: ReferenceData, d: ReviewDetail, e
     <section class="panel stack">
       <h2>${ctx.t('admin.documents')}</h2>
       <p class="hint">${ctx.t('admin.accessNote')}</p>
-      ${d.documents.map((doc) => html`<p><a class="btn btn-outline" href="${href(ctx, `/admin/documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
+      ${d.documents.map((doc) => html`<p class="row-wrap"><strong>${ctx.t(`docs.kind.${doc.kind}` as MessageKey)}</strong> <a class="btn btn-outline btn-sm" href="${href(ctx, `/admin/documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
         <span class="muted"> ${doc.mime_type} · ${Math.round(doc.size_bytes / 1024)} KB</span></p>`)}
     </section>
     ${d.positions.length ? html`<section class="panel stack"><h2>${ctx.t('doctor.experienceSection')}</h2>
@@ -161,7 +161,7 @@ export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityRevie
     <section class="panel stack">
       <h2>${ctx.t('admin.documents')}</h2>
       <p class="hint">${ctx.t('adm.facDocHint')}</p>
-      ${f.documents.map((doc) => html`<p><a class="btn btn-outline" href="${href(ctx, `/admin/facility-documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
+      ${f.documents.map((doc) => html`<p class="row-wrap"><strong>${ctx.t(`docs.kind.${doc.kind}` as MessageKey)}</strong> <a class="btn btn-outline btn-sm" href="${href(ctx, `/admin/facility-documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
         <span class="muted"> ${doc.mime_type} · ${Math.round(doc.size_bytes / 1024)} KB</span></p>`)}
     </section>
     <section class="panel row-wrap align-start">

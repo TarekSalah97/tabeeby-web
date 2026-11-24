@@ -24,6 +24,20 @@ export interface BookingRequest {
   reason: string;
   /** One of the clinic's services, or empty for a consultation (new or follow-up, decided here). */
   serviceId?: string;
+  /** How the patient plans to pay ('cash' when not given). */
+  payChoice?: string;
+}
+
+/** Ways a patient can choose to pay when booking. Nothing is charged online yet. */
+export const PAY_CHOICES = ['cash', 'card_clinic', 'instapay'] as const;
+export type PayChoice = (typeof PAY_CHOICES)[number];
+
+/** Checks the patient's choice against what this doctor accepts (InstaPay only with an address). */
+export function checkPayChoice(raw: string | undefined, target: Pick<BookingTarget, 'instapayAddress'>): PayChoice {
+  const choice = raw || 'cash';
+  if (!(PAY_CHOICES as readonly string[]).includes(choice)) throw new DomainError('payopt.invalid');
+  if (choice === 'instapay' && !target.instapayAddress) throw new DomainError('payopt.invalid');
+  return choice as PayChoice;
 }
 
 export interface BookingTarget {
@@ -37,6 +51,8 @@ export interface BookingTarget {
   doctorId: string;
   doctorName: string;
   doctorSlug: string;
+  /** The doctor's InstaPay address (IPA, e.g. name@instapay), when they accept InstaPay. */
+  instapayAddress: string | null;
   startsAt: Date;
   endsAt: Date;
 }
@@ -48,10 +64,10 @@ export interface BookingTarget {
 export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, startsAt: Date): Promise<BookingTarget> {
   const { rows } = await db.query<{
     clinic_id: string; name: string; address: string; fee_egp: number; follow_up_fee_egp: number | null; follow_up_days: number;
-    phone_e164: string | null; doctor_id: string; full_name: string; slug: string;
+    phone_e164: string | null; doctor_id: string; full_name: string; slug: string; instapay_address: string | null;
   }>(
     `select c.id as clinic_id, c.name, c.address, c.fee_egp, c.follow_up_fee_egp, c.follow_up_days, c.phone_e164,
-            d.user_id as doctor_id, u.full_name, d.slug
+            d.user_id as doctor_id, u.full_name, d.slug, d.instapay_address
        from clinics c join doctors d on d.user_id = c.doctor_id join users u on u.id = d.user_id
       where c.id = $1 and c.is_active and d.verification_status = 'approved' and u.status = 'active'`,
     [clinicId],
@@ -77,6 +93,7 @@ export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, s
     doctorId: c.doctor_id,
     doctorName: c.full_name,
     doctorSlug: c.slug,
+    instapayAddress: c.instapay_address,
     startsAt: slot.startsAt,
     endsAt: slot.endsAt,
   };
@@ -162,10 +179,11 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
 
       const target = await resolveSlot(deps, tx, req.clinicId, req.startsAt);
       const visit = await quote(tx, patient.id, target, req.serviceId);
+      const payChoice = checkPayChoice(req.payChoice, target);
       const { rows } = await tx.query<{ id: string }>(
-        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name, service_name_ar)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee, visit.serviceId ?? null, visit.serviceName ?? null, visit.serviceNameAr ?? null],
+        `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name, service_name_ar, pay_choice)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
+        [target.doctorId, target.clinicId, patient.id, target.startsAt, target.endsAt, visit.type, reason || null, visit.fee, visit.serviceId ?? null, visit.serviceName ?? null, visit.serviceNameAr ?? null, payChoice],
       );
       const id = rows[0]!.id;
       await closeOnBooking(tx, deps.cfg.TIME_ZONE, patient.id, target.clinicId, target.startsAt);
@@ -204,6 +222,9 @@ export interface PatientAppointment {
   paid_amount: number | null;
   paid_method: PaymentMethod | null;
   cancelled_by: 'patient' | 'doctor' | 'admin' | null;
+  pay_choice: PayChoice;
+  pay_ref: string | null;
+  instapay_address: string | null;
 }
 
 export async function listPatientAppointments(db: Queryable, patientId: string): Promise<PatientAppointment[]> {
@@ -212,7 +233,8 @@ export async function listPatientAppointments(db: Queryable, patientId: string):
       `select a.id, a.starts_at, a.status, a.visit_type, a.service_name, a.service_name_ar, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
               c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
               u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
-              pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by
+              pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by,
+              a.pay_choice, a.pay_ref, d.instapay_address
          from appointments a join clinics c on c.id = a.clinic_id join districts dist on dist.id = c.district_id
          join doctors d on d.user_id = a.doctor_id join users u on u.id = a.doctor_id
          left join reviews r on r.appointment_id = a.id
@@ -296,5 +318,24 @@ export async function changeStatus(
       );
     }
     await audit(tx, { actorId: actor.id, action: `appointment.${to}`, entityType: 'appointment', entityId: appt.id, metadata: { from: appt.status, ...(patientAsked ? { patientAsked } : {}) }, ip });
+  });
+}
+
+/**
+ * The patient adds (or corrects) the InstaPay transfer reference for one of their own upcoming
+ * visits, so the clinic can match the transfer. Only for visits booked to be paid by InstaPay.
+ */
+export async function setPayReference(deps: Deps, patient: SessionUser, appointmentId: string, raw: string, ip: string): Promise<void> {
+  const ref = raw.trim().replace(/\s+/g, ' ');
+  if (ref.length < 3 || ref.length > 40) throw new DomainError('payopt.refInvalid');
+  await deps.db.transaction(async (tx) => {
+    const r = await tx.query(
+      `update appointments set pay_ref = $3
+        where id = $1 and patient_id = $2 and pay_choice = 'instapay' and status in ('confirmed', 'arrived')
+          and not exists (select 1 from payments p where p.appointment_id = appointments.id and p.status = 'paid')`,
+      [appointmentId, patient.id, ref],
+    );
+    if (!r.rowCount) throw notFound();
+    await audit(tx, { actorId: patient.id, action: 'appointment.pay_ref', entityType: 'appointment', entityId: appointmentId, ip });
   });
 }

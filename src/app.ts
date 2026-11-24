@@ -203,7 +203,8 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
         }
         const type = (req.headers['content-type'] ?? '').toLowerCase();
         if (type.startsWith('multipart/form-data')) {
-          const body = await readBody(req, deps.cfg.MAX_UPLOAD_BYTES + 256 * 1024);
+          // Sign-up can carry several documents: each file is checked against MAX_UPLOAD_BYTES on its own.
+          const body = await readBody(req, deps.cfg.MAX_FORM_UPLOAD_BYTES);
           const parsed = parseMultipart(body, req.headers['content-type'] ?? '');
           ctx.form = parsed.fields;
           ctx.files = parsed.files;

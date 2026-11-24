@@ -4,6 +4,8 @@ import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import type { Locale, MessageKey } from '../i18n/index.js';
 import { normalizeEgyptMobile, normalizeDigits } from '../domain/phone.js';
+import { DOCTOR_DOCS } from '../domain/documents.js';
+import { checkDocuments, storeDocuments, removeDocuments, insertDocuments } from './documents.js';
 import { checkPasswordPolicy, hashPassword } from '../auth/password.js';
 import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { validatePosition, type PositionRange } from '../domain/experience.js';
@@ -39,7 +41,8 @@ export interface DoctorSignup {
   subspecialtyIds: number[];
   graduationYear: number;
   positions: PositionInput[];
-  card: UploadedFile | undefined;
+  /** All uploaded sign-up documents (syndicate card, national ID, licences). */
+  files: UploadedFile[];
   consent: boolean;
   locale: Locale;
   ip: string;
@@ -99,18 +102,15 @@ export async function registerDoctor(deps: Deps, input: DoctorSignup): Promise<{
   const { positions, error: posErr } = cleanPositions(input.positions, now);
   if (posErr) errors['positions'] = posErr;
 
-  let cardType: ReturnType<typeof sniffDocumentType> = null;
-  if (!input.card) errors['card'] = 'join.cardRequired';
-  else if (input.card.data.length > cfg.MAX_UPLOAD_BYTES) errors['card'] = 'join.cardTooLarge';
-  else if (!(cardType = sniffDocumentType(input.card.data))) errors['card'] = 'join.cardInvalid';
+  const docs = checkDocuments(cfg, DOCTOR_DOCS, input.files, errors);
 
   if (!input.consent) errors['consent'] = 'auth.consentRequired';
-  if (Object.keys(errors).length || !phone || !input.card || !cardType) return { errors };
+  if (Object.keys(errors).length || !phone) return { errors };
 
   if (!(await hitRateLimit(db, `signup:ip:${input.ip}`, LIMITS.signupPerIp.limit, LIMITS.signupPerIp.window))) throw tooManyRequests();
 
   const passwordHash = await hashPassword(input.password);
-  const storageKey = await storage.put(input.card.data, cardType.ext);
+  const keys = await storeDocuments(storage, docs);
   try {
     const userId = await db.transaction(async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
@@ -132,17 +132,13 @@ export async function registerDoctor(deps: Deps, input: DoctorSignup): Promise<{
         );
       }
       for (const p of positions) await insertPosition(tx, id, p);
-      await tx.query(
-        `insert into verification_documents (doctor_id, kind, storage_key, mime_type, size_bytes, sha256)
-         values ($1, 'syndicate_card', $2, $3, $4, $5)`,
-        [id, storageKey, cardType!.mime, input.card!.data.length, crypto.createHash('sha256').update(input.card!.data).digest('hex')],
-      );
+      await insertDocuments(tx, 'verification_documents', id, docs, keys);
       await audit(tx, { actorId: id, action: 'doctor.signup', entityType: 'doctor', entityId: id, ip: input.ip });
       return id;
     });
     return { userId };
   } catch (e) {
-    await storage.remove(storageKey);
+    await removeDocuments(storage, keys);
     if (isUniqueViolation(e, 'users_phone_e164_key')) return { errors: { phone: 'auth.phoneTaken' } };
     if (isUniqueViolation(e, 'users_email_key')) return { errors: { email: 'join.emailTaken' } };
     throw e;
@@ -178,8 +174,23 @@ export interface OwnDoctor {
   verification_note: string | null;
   /** The doctor chose to use the Income section and payment buttons. */
   show_income: boolean;
+  instapay_address: string | null;
   /** Set when the doctor has a photo (its last change, for cache-busting). */
   photo_version: number | null;
+}
+
+/**
+ * The doctor's InstaPay address (IPA such as name@instapay, or the mobile number linked to InstaPay).
+ * Empty turns InstaPay off for new bookings.
+ */
+export async function setInstapayAddress(deps: Deps, doctorId: string, raw: string, ip: string): Promise<MessageKey | null> {
+  const value = normalizeDigits(raw).trim().replace(/\s+/g, '');
+  if (value && !/^([a-z0-9._-]{2,60}@instapay|01[0125]\d{8})$/i.test(value)) return 'payopt.addressInvalid';
+  await deps.db.transaction(async (tx) => {
+    await tx.query('update doctors set instapay_address = $2, updated_at = now() where user_id = $1', [doctorId, value ? value.toLowerCase() : null]);
+    await audit(tx, { actorId: doctorId, action: 'doctor.instapay', entityType: 'doctor', entityId: doctorId, metadata: { on: !!value }, ip });
+  });
+  return null;
 }
 
 export async function setShowIncome(deps: Deps, doctorId: string, show: boolean, ip: string): Promise<void> {
@@ -192,7 +203,7 @@ export async function setShowIncome(deps: Deps, doctorId: string, show: boolean,
 export async function getOwnDoctor(db: Queryable, userId: string): Promise<OwnDoctor> {
   const { rows } = await db.query<OwnDoctor>(
     `select d.user_id, d.slug, d.kind, u.full_name, d.title_en, d.title_ar, d.bio, d.specialty_id, d.graduation_year,
-            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income,
+            d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income, d.instapay_address,
             case when d.photo_key is not null then floor(extract(epoch from d.photo_updated_at) * 1000)::float8 end as photo_version
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [userId],

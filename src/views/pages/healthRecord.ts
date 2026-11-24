@@ -9,6 +9,11 @@ import { labItemName } from './records.js';
 import { facilityShell } from './facilities.js';
 import type { OwnFacility } from '../../services/facilities.js';
 import {
+  PHARMACY_REPLIES, MAX_PATIENT_NOTE, MAX_PHARMACY_NOTE,
+  type PharmacyChoice, type PharmacyInboxItem, type RxItem,
+} from '../../services/pharmacyRequests.js';
+import type { PrescriptionSummary } from '../../services/orderResults.js';
+import {
   MAX_FACILITY_NOTE,
   type CentreChoice, type CentreRequest, type HealthRecord, type OrderPart, type RequestStatus, type ResultFile, type Section,
 } from '../../services/orderResults.js';
@@ -38,6 +43,136 @@ export function resultLinks(ctx: Ctx, files: ResultFile[]): SafeHtml {
   )}</ul>`;
 }
 
+const RX_OPEN = ['sent', 'ready', 'out_for_delivery', 'partly_available'];
+
+/** Where the prescription was sent and the pharmacy's answer, or the button to send it. */
+function pharmacyBlock(ctx: Ctx, p: PrescriptionSummary): SafeHtml {
+  const q = p.pharmacy;
+  const sendBtn = (label: MessageKey) => html`<div><a class="btn btn-primary btn-sm" href="${href(ctx, `/health-record/prescriptions/${p.id}/send`)}">${icon.pill}${ctx.t(label)}</a></div>`;
+  if (!q) return sendBtn('rxsend.title');
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  return html`<div class="hr-request stack-sm">
+    <div class="row-between"><span>${ctx.t('rxsend.sentTo')} <a href="${href(ctx, `/pharmacies/${q.pharmacy_slug}`)}"><bdi>${q.pharmacy_name}</bdi></a>
+      <span class="muted small">${sep(ctx)}${formatFullDateTime(q.replied_at ?? q.created_at, ctx.locale, tz)}</span></span>
+      <span class="chip hr-status rx-${q.status}">${ctx.t(`rxsend.status.${q.status}` as MessageKey)}</span></div>
+    ${q.total_egp !== null ? html`<p><strong>${ctx.t('rxsend.total')}:</strong> ${ctx.t('common.egp', { amount: formatNumber(q.total_egp, ctx.locale) })}</p>` : ''}
+    ${q.pharmacy_note ? html`<p class="hr-note" dir="auto">${q.pharmacy_note}</p>` : ''}
+    ${contactButtons(ctx, q.pharmacy_phone, q.pharmacy_whatsapp)}
+    ${q.status === 'sent'
+      ? html`<form method="post" action="${href(ctx, `/health-record/pharmacy-requests/${q.id}/cancel`)}" class="inline-form">${csrfField(ctx)}
+          <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('rxsend.cancel')}</button></form>`
+      : ''}
+  </div>
+  ${RX_OPEN.includes(q.status) ? '' : sendBtn('rxsend.sendAgain')}`;
+}
+
+/** The patient picks a pharmacy for one prescription. */
+export function sendToPharmacyPage(
+  ctx: Ctx,
+  rx: { id: string; issued_at: Date; doctor_name: string; items: RxItem[] },
+  choices: PharmacyChoice[],
+  o: { error?: MessageKey; values?: { facility?: string; delivery?: boolean; note?: string } } = {},
+): SafeHtml {
+  const v = o.values ?? {};
+  const body = html`<div class="container page narrow stack-lg">
+    <a href="${href(ctx, '/health-record')}">← ${ctx.t('hr.title')}</a>
+    <div><h1>${ctx.t('rxsend.title')}</h1><p class="muted">${ctx.t('rxsend.lead')}</p></div>
+    <section class="panel stack-sm">
+      <span class="muted small">${ctx.t('rxsend.prescribedBy')} <bdi>${rx.doctor_name}</bdi>${sep(ctx)}${formatFullDate(rx.issued_at, ctx.locale, ctx.deps.cfg.TIME_ZONE)}</span>
+      <ul class="hr-tests">${rx.items.map((it) => html`<li dir="auto"><strong>${it.medicine}</strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${it.form}`)})</span></li>`)}</ul>
+    </section>
+    ${o.error ? alert('error', ctx.t(o.error)) : ''}
+    ${choices.length
+      ? html`<form method="post" action="${href(ctx, `/health-record/prescriptions/${rx.id}/send`)}" class="stack">
+          ${csrfField(ctx)}
+          <fieldset class="stack-sm"><legend class="label">${ctx.t('rxsend.choose')}</legend>
+            ${choices.map(
+              (c, i) => html`<label class="hr-choice"><input type="radio" name="facility" value="${c.user_id}"${attrIf(v.facility ? v.facility === c.user_id : i === 0, 'checked')} required>
+                <span class="stack-sm"><strong><bdi>${c.name}</bdi></strong>
+                  <span class="small muted">${[ctx.locale === 'ar' ? c.district_ar : c.district_en, c.home_service ? ctx.t('rxsend.delivers') : null].filter(Boolean).join(sep(ctx))}</span></span></label>`,
+            )}
+          </fieldset>
+          <fieldset class="stack-sm"><legend class="label">${ctx.t('rxsend.how')}</legend>
+            <label class="check"><input type="radio" name="delivery" value="no"${attrIf(!v.delivery, 'checked')}> <span>${ctx.t('rxsend.pickup')}</span></label>
+            ${choices.some((c) => c.home_service) ? html`<label class="check"><input type="radio" name="delivery" value="yes"${attrIf(!!v.delivery, 'checked')}> <span>${ctx.t('rxsend.delivery')}</span></label>` : ''}
+          </fieldset>
+          <div class="field"><label for="rx-note">${ctx.t('rxsend.note')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+            <textarea id="rx-note" name="note" rows="2" maxlength="${MAX_PATIENT_NOTE}">${v.note ?? ''}</textarea>
+            <p class="hint">${ctx.t('rxsend.noteHint')}</p></div>
+          <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('rxsend.send')}</button></div>
+        </form>`
+      : html`<div class="empty"><p>${ctx.t('rxsend.none')}</p><a class="btn btn-outline" href="${href(ctx, `/prescriptions/${rx.id}`)}">${ctx.t('rx.print')}</a></div>`}
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('rxsend.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+// ---------------------------------------------------------------- pharmacy side
+
+export function pharmacyInboxPage(ctx: Ctx, f: OwnFacility, list: PharmacyInboxItem[], notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const content = html`<div class="stack-sm"><h1>${ctx.t('rxsend.inbox')}</h1><p class="muted">${ctx.t('rxsend.inboxLead')}</p></div>
+    ${list.length
+      ? html`<ul class="appt-list">${list.map(
+          (r) => html`<li class="appt-row">
+            <div class="stack-sm">
+              <strong><bdi>${r.patient_name}</bdi></strong>
+              <span class="small muted">${formatFullDateTime(r.created_at, ctx.locale, tz)}${sep(ctx)}${ctx.t(r.delivery ? 'rxsend.wantsDelivery' : 'rxsend.wantsPickup')}</span>
+              <span class="chip hr-status rx-${r.status}">${ctx.t(`rxsend.status.${r.status}` as MessageKey)}</span>
+            </div>
+            <a class="btn ${r.status === 'sent' ? 'btn-primary' : 'btn-ghost'}" href="${href(ctx, `/facility/prescriptions/${r.id}`)}">${ctx.t('mydocs.open')}</a>
+          </li>`,
+        )}</ul>`
+      : html`<div class="empty"><p>${ctx.t('rxsend.inboxNone')}</p></div>`}`;
+  return facilityShell(ctx, f, 'prescriptions', content, notice);
+}
+
+export function pharmacyRequestPage(ctx: Ctx, f: OwnFacility, r: PharmacyInboxItem & { items: RxItem[] }, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const open = RX_OPEN.includes(r.status);
+  const replies = r.delivery ? PHARMACY_REPLIES : PHARMACY_REPLIES.filter((x) => x !== 'out_for_delivery');
+  const content = html`<a href="${href(ctx, '/facility/prescriptions')}">← ${ctx.t('rxsend.inbox')}</a>
+    <div class="stack-sm"><h1><bdi>${r.patient_name}</bdi></h1>
+      <p class="muted"><a href="tel:${r.patient_phone}" dir="ltr">${r.patient_phone}</a>${sep(ctx)}${ctx.t('rxsend.prescribedBy')} <bdi>${r.doctor_name}</bdi>${sep(ctx)}${formatFullDate(r.issued_at, ctx.locale, tz)}</p>
+      ${contactButtons(ctx, r.patient_phone, r.patient_phone)}
+      <span class="chip hr-status rx-${r.status}">${ctx.t(`rxsend.status.${r.status}` as MessageKey)}</span></div>
+    ${r.prescription_voided ? alert('warning', ctx.t('rxsend.voided')) : ''}
+    <section class="panel stack">
+      <h2>${ctx.t('rx.title')}</h2>
+      <ol class="rx-print-list">${r.items.map((it) => html`<li><strong><bdi>${it.medicine}</bdi></strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${it.form}`)})</span>
+        <div class="muted small"><bdi>${it.dose}</bdi>${sep(ctx)}${ctx.t.dynamic(`rx.freq.${it.frequency}`)}${it.duration ? html`${sep(ctx)}<bdi>${it.duration}</bdi>` : ''}</div></li>`)}</ol>
+      <p><span class="pill small">${ctx.t(r.delivery ? 'rxsend.wantsDelivery' : 'rxsend.wantsPickup')}</span></p>
+      ${r.patient_note ? html`<p class="hr-note" dir="auto"><strong>${ctx.t('rxsend.patientNote')}:</strong> ${r.patient_note}</p>` : ''}
+    </section>
+    ${open && !r.prescription_voided
+      ? html`<form method="post" action="${href(ctx, `/facility/prescriptions/${r.id}/reply`)}" class="panel stack">${csrfField(ctx)}
+          <fieldset class="stack-sm"><legend class="label">${ctx.t('rxsend.reply')}</legend>
+            ${replies.map((x) => html`<label class="check"><input type="radio" name="status" value="${x}"${attrIf(r.status === x, 'checked')} required> <span>${ctx.t(`rxsend.status.${x}` as MessageKey)}</span></label>`)}
+          </fieldset>
+          <div class="field"><label for="total">${ctx.t('rxsend.totalEgp')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+            <input id="total" name="total" inputmode="numeric" maxlength="8" value="${r.total_egp ?? ''}" dir="ltr"></div>
+          <div class="field"><label for="reply-note">${ctx.t('rxsend.replyNote')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+            <textarea id="reply-note" name="note" rows="3" maxlength="${MAX_PHARMACY_NOTE}">${r.pharmacy_note ?? ''}</textarea>
+            <p class="hint">${ctx.t('rxsend.replyNoteHint')}</p></div>
+          <div class="row-wrap"><button class="btn btn-primary btn-lg" type="submit">${ctx.t('rxsend.sendReply')}</button></div>
+        </form>
+        ${r.status !== 'sent'
+          ? html`<form method="post" action="${href(ctx, `/facility/prescriptions/${r.id}/done`)}">${csrfField(ctx)}
+              <button class="btn btn-outline" type="submit">${ctx.t('rxsend.markDone')}</button></form>`
+          : ''}`
+      : html`${r.total_egp !== null ? html`<p><strong>${ctx.t('rxsend.total')}:</strong> ${ctx.t('common.egp', { amount: formatNumber(r.total_egp, ctx.locale) })}</p>` : ''}
+          ${r.pharmacy_note ? html`<p class="hr-note" dir="auto">${r.pharmacy_note}</p>` : ''}`}`;
+  return facilityShell(ctx, f, 'prescriptions', content, notice);
+}
+
+/** Call / WhatsApp buttons for a pharmacy, lab or scan centre. */
+export function contactButtons(ctx: Ctx, phone: string | null, whatsapp: string | null): SafeHtml {
+  if (!phone && !whatsapp) return html``;
+  return html`<div class="row-wrap">
+    ${phone ? html`<a class="btn btn-ghost btn-sm" href="tel:${phone}">${icon.phone}${ctx.t('rxsend.call')}</a>` : ''}
+    ${whatsapp ? html`<a class="btn btn-ghost btn-sm" href="https://wa.me/${whatsapp.replace('+', '')}" target="_blank" rel="noopener noreferrer">${icon.chat}${ctx.t('rxsend.whatsapp')}</a>` : ''}
+  </div>`;
+}
+
 function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const r = p.request;
@@ -60,6 +195,8 @@ function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
           ${r.status === 'ready'
             ? html`${r.facilityNote ? html`<p class="hr-note" dir="auto">${r.facilityNote}</p>` : ''}${resultLinks(ctx, r.results)}`
             : html`<p class="small muted">${ctx.t(r.status === 'sent' ? 'hr.waitingReceive' : 'hr.waitingResults')}</p>`}
+          ${r.facilityInstructions ? html`<p class="hr-note" dir="auto"><strong>${ctx.t('hr.instructionsFrom')}:</strong> ${r.facilityInstructions}</p>` : ''}
+          ${contactButtons(ctx, r.facilityPhone, r.facilityWhatsapp)}
           ${r.status === 'sent'
             ? html`<form method="post" action="${href(ctx, `/health-record/requests/${r.id}/cancel`)}" class="inline-form">${csrfField(ctx)}
                 <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('hr.cancelSend')}</button></form>`
@@ -113,6 +250,7 @@ export function healthRecordPage(
             <a class="btn btn-outline btn-sm" href="${href(ctx, `/prescriptions/${p.id}`)}">${ctx.t('mydocs.open')}</a></div>
           <span class="muted small">${ctx.t('hr.prescribedBy')} <a href="${href(ctx, `/doctors/${p.doctor_slug}`)}"><bdi>${p.doctor_name}</bdi></a></span>
           <ul class="hr-tests">${p.medicines.map((m) => html`<li dir="auto">${m}</li>`)}</ul>
+          ${pharmacyBlock(ctx, p)}
         </li>`,
       )}</ul>`
     : html`<div class="empty"><p>${ctx.t('hr.none.prescriptions')}</p></div>`;
@@ -156,6 +294,12 @@ export function sendOrderPage(ctx: Ctx, part: OrderPart, choices: CentreChoice[]
                   ].filter(Boolean).join(sep(ctx))}</span></span></label>`,
             )}
           </fieldset>
+          ${choices.some((c) => c.home_service)
+            ? html`<label class="check"><input type="checkbox" name="homeVisit" value="yes"> <span>${ctx.t('hr.homeVisit')}</span></label>`
+            : ''}
+          <div class="field"><label for="send-note">${ctx.t('hr.sendNote')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+            <textarea id="send-note" name="note" rows="2" maxlength="300"></textarea>
+            <p class="hint">${ctx.t('hr.sendNoteHint')}</p></div>
           <p class="hint">${ctx.t('hr.sendPrivacy')}</p>
           <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('hr.sendButton')}</button></div>
         </form>`
@@ -200,10 +344,16 @@ export function centreRequestPage(ctx: Ctx, f: OwnFacility, r: CentreRequest, no
     <section class="panel stack"><h2>${ctx.t('hr.centre.requested')}</h2>
       <ul class="hr-tests">${r.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
       ${r.notes ? html`<p class="small" dir="auto"><strong>${ctx.t('hr.doctorNotes')}:</strong> ${r.notes}</p>` : ''}
+      ${r.home_visit ? html`<p><span class="pill small">${ctx.t('hr.wantsHomeVisit')}</span></p>` : ''}
+      ${r.patient_note ? html`<p class="hr-note" dir="auto"><strong>${ctx.t('hr.patientNote')}:</strong> ${r.patient_note}</p>` : ''}
+      ${r.facility_instructions ? html`<p class="small" dir="auto"><strong>${ctx.t('hr.centre.instructions')}:</strong> ${r.facility_instructions}</p>` : ''}
     </section>
     ${r.status === 'sent'
-      ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/received`)}">${csrfField(ctx)}
-          <button class="btn btn-primary btn-lg" type="submit">${ctx.t('hr.centre.markReceived')}</button>
+      ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/received`)}" class="panel stack">${csrfField(ctx)}
+          <div class="field"><label for="instructions">${ctx.t('hr.centre.instructions')}</label>
+            <textarea id="instructions" name="instructions" rows="2" maxlength="500"></textarea>
+            <p class="hint">${ctx.t('hr.centre.instructionsHint')}</p></div>
+          <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('hr.centre.markReceived')}</button></div>
           <p class="hint">${ctx.t('hr.centre.markReceivedHint')}</p></form>`
       : html`<section class="panel stack"><h2>${ctx.t('hr.centre.results')}</h2>
           ${r.results.length

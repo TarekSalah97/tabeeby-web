@@ -227,7 +227,7 @@ export function authRoutes(r: Router): void {
       subspecialtyIds: values.subspecialties.map(Number).filter(Number.isInteger),
       graduationYear: Number(values.graduationYear),
       positions,
-      card: ctx.files.find((x) => x.field === 'card'),
+      files: ctx.files,
       consent: field(f, 'consent') === 'yes',
       locale: ctx.locale,
       ip: ctx.ip,

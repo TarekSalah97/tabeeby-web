@@ -1,4 +1,5 @@
 import type { OrderPart } from '../../services/orderResults.js';
+import { PHOTOS_PER_UPLOAD, type VisitPhoto } from '../../services/visitPhotos.js';
 import { html, attrIf, type SafeHtml, type HtmlValue } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href, alternateHref } from '../../http/context.js';
@@ -401,6 +402,23 @@ function notesFields(ctx: Ctx, v: Partial<NotesValues>, errors: FieldErrors | un
     ${textArea(ctx, { idPrefix, name: 'plan', label: ctx.t('visit.plan'), value: v.plan, rows: 3, maxlength: 4000, hint: ctx.t('visit.planHint') })}`;
 }
 
+/**
+ * Two ways to add photos to a visit: open the camera, or pick existing images. Both feed the same
+ * "photos" field (the page script copies camera shots into it).
+ */
+function photoPickers(ctx: Ctx, prefix: string): SafeHtml {
+  return html`<div class="photo-pickers stack-sm">
+    <span class="label">${ctx.t('vphoto.title')} <span class="muted">(${ctx.t('common.optional')})</span></span>
+    <div class="row-wrap">
+      <label class="btn btn-outline btn-sm" for="${prefix}-camera">📷 ${ctx.t('vphoto.take')}</label>
+      <input id="${prefix}-camera" class="sr-only" type="file" name="photos" accept="image/*" capture="environment">
+      <label class="btn btn-outline btn-sm" for="${prefix}-pick">🖼 ${ctx.t('vphoto.choose')}</label>
+      <input id="${prefix}-pick" class="sr-only" type="file" name="photos" accept="image/jpeg,image/png" multiple>
+    </div>
+    <p class="hint" data-photo-count>${ctx.t('vphoto.hint', { n: PHOTOS_PER_UPLOAD })}</p>
+  </div>`;
+}
+
 // ---------------------------------------------------------------- new visit
 
 export function newVisitPage(
@@ -414,12 +432,13 @@ export function newVisitPage(
     <div><h1>${ctx.t('visit.new')}</h1><p class="muted">${[r.full_name, patientFacts(ctx, r)].filter(Boolean).join(sep(ctx))}</p></div>
     ${o.notice ? alert('info', ctx.t(o.notice)) : ''}
     ${r.allergies ? alert('warning', html`<span class="prose">${r.allergies}</span>`, ctx.t('records.allergies')) : ''}
-    <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}/visits`)}" class="stack-lg" novalidate>
+    <form method="post" action="${href(ctx, `/dashboard/patients/${r.id}/visits`)}" class="stack-lg" enctype="multipart/form-data" novalidate>
       ${csrfField(ctx)}
       ${o.appointmentId ? html`<input type="hidden" name="appointment" value="${o.appointmentId}">` : ''}
       ${o.errors?.general ? alert('error', ctx.t(o.errors.general)) : ''}
       ${o.errors && (o.errors.fields || o.errors.rx || o.errors.lab) ? alert('error', ctx.t('visit.err.nothingSaved')) : ''}
-      <section class="panel stack"><h2>${ctx.t('visit.notes')}</h2>${notesFields(ctx, o.notes ?? {}, o.errors?.fields, '', r.id)}</section>
+      <section class="panel stack"><h2>${ctx.t('visit.notes')}</h2>${notesFields(ctx, o.notes ?? {}, o.errors?.fields, '', r.id)}
+        ${photoPickers(ctx, 'new')}</section>
       <section class="panel stack"><h2>${ctx.t('rx.title')}</h2><p class="hint">${ctx.t('rx.lead')}</p>${rxFields(ctx, o.rx, o.errors?.rx)}</section>
       <section class="panel stack"><h2>${ctx.t('lab.title')}</h2><p class="hint">${ctx.t('lab.lead')}</p>${labFields(ctx, o.lab, o.errors?.lab)}</section>
       <div class="row-wrap"><button class="btn btn-primary btn-lg" type="submit">${ctx.t('visit.save')}</button>
@@ -470,6 +489,7 @@ export function visitPage(
     labError?: OrderProblem;
     notice?: Notice;
     error?: MessageKey;
+    photos?: VisitPhoto[];
     /** Where the patient sent each order part ("<labOrderId>:lab|imaging") and the released results. */
     orderResults?: Map<string, OrderPart['request']>;
   },
@@ -492,6 +512,19 @@ export function visitPage(
         ${noteRow('visit.diagnosis', v.diagnosis)}
         ${noteRow('visit.plan', v.plan)}
       </dl>
+      <div class="stack-sm" id="photos">
+        <h3 class="h4">${ctx.t('vphoto.title')}</h3>
+        ${o.photos?.length
+          ? html`<div class="photo-grid">${o.photos.map((p) => html`<figure class="visit-photo">
+              <a href="${href(ctx, `/dashboard/visit-photos/${p.id}`)}" target="_blank" rel="noopener"><img src="${href(ctx, `/dashboard/visit-photos/${p.id}`)}" alt="${ctx.t('vphoto.alt', { date: formatDateTime(p.created_at, ctx.locale, tz) })}" loading="lazy"></a>
+              <form method="post" action="${href(ctx, `/dashboard/visit-photos/${p.id}/remove`)}">${csrfField(ctx)}<button type="submit" class="btn btn-ghost btn-sm danger" data-confirm="${ctx.t('vphoto.removeConfirm')}">${ctx.t('vphoto.remove')}</button></form>
+            </figure>`)}</div>`
+          : html`<p class="muted small">${ctx.t('vphoto.none')}</p>`}
+        <form method="post" action="${href(ctx, `/dashboard/visits/${v.id}/photos`)}" enctype="multipart/form-data" class="stack-sm" data-photo-form>${csrfField(ctx)}
+          ${photoPickers(ctx, 'visit')}
+          <div><button type="submit" class="btn btn-primary btn-sm" data-photo-submit>${ctx.t('vphoto.upload')}</button></div>
+        </form>
+      </div>
       ${v.updated_at.getTime() - v.created_at.getTime() > 1000 ? html`<p class="hint">${ctx.t('visit.edited', { date: formatDateTime(v.updated_at, ctx.locale, tz) })}</p>` : ''}
       <details${attrIf(!!o.notesErrors, 'open')}><summary class="btn btn-outline btn-sm">${ctx.t('visit.editNotes')}</summary>
         <form method="post" action="${href(ctx, `/dashboard/visits/${v.id}`)}" class="stack" novalidate>${csrfField(ctx)}

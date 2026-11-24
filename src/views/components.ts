@@ -5,6 +5,7 @@ import type { MessageKey } from '../i18n/index.js';
 import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
 import { displayYears } from '../domain/experience.js';
+import { docField, type DocKind } from '../domain/documents.js';
 
 export const icon = {
   user: trusted(
@@ -70,6 +71,18 @@ export const icon = {
   ),
   sparkle: trusted(
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"></path><path d="M18.5 16v4M16.5 18h4"></path></svg>',
+  ),
+  cash: trusted(
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle><path d="M6 9.5v5M18 9.5v5"></path></svg>',
+  ),
+  card: trusted(
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 10h19M6.5 15h4"></path></svg>',
+  ),
+  instapay: trusted(
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M13 7l-3 5h4l-3 5"></path></svg>',
+  ),
+  lock: trusted(
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>',
   ),
   calendar: trusted(
     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>',
@@ -156,6 +169,32 @@ export function searchTabs(ctx: Ctx, current: SearchTab): SafeHtml {
   return html`<nav class="search-tabs" aria-label="${ctx.t('tabs.label')}">${tabs.map(
     ([k, path, label, ic]) => html`<a href="${href(ctx, path)}"${attrIf(k === current, 'aria-current="page"')}>${ic}<span>${ctx.t(label)}</span></a>`,
   )}</nav>`;
+}
+
+/**
+ * Upload boxes for sign-up documents. On phones the picker offers the camera too.
+ * `onlyFor` marks a document needed only for one facility kind (the page script shows or hides it).
+ */
+export function documentFields(ctx: Ctx, specs: readonly { kind: DocKind; required: boolean }[], errors: FieldErrors | undefined, onlyFor: Partial<Record<DocKind, string>> = {}): SafeHtml {
+  return html`<fieldset class="stack docs-fieldset span-all">
+    <legend>${ctx.t('docs.title')}</legend>
+    <p class="hint">${ctx.t('docs.lead')}</p>
+    <div class="docs-grid">${specs.map((d) => {
+      const name = docField(d.kind);
+      const id = `doc-${d.kind}`;
+      const label = ctx.t(`docs.kind.${d.kind}` as MessageKey);
+      return html`<div class="field doc-field${errors?.[name] ? ' has-error' : ''}"${onlyFor[d.kind] ? html` data-only-kind="${onlyFor[d.kind]}"` : ''}>
+        <label class="dropzone" for="${id}">
+          ${icon.upload}
+          <span class="stack-sm"><strong>${label}</strong>
+            <span class="hint">${d.required ? html`<span class="req-tag">${ctx.t('docs.required.tag')}</span>` : ctx.t('docs.optional')} · ${ctx.t('docs.takePhoto')}</span>
+            <span class="file-name small" data-file-name></span></span>
+          <input id="${id}" name="${name}" type="file" accept="image/*,application/pdf"${attrIf(d.required && !onlyFor[d.kind], 'required')}>
+        </label>
+        ${fieldError(ctx, errors, name)}
+      </div>`;
+    })}</div>
+  </fieldset>`;
 }
 
 export function input(ctx: Ctx, o: InputOpts): SafeHtml {

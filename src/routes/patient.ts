@@ -8,7 +8,7 @@ import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { emailCodePage, patientGatePage } from '../views/pages/auth.js';
 import { startSession, demoEmailCode } from './helpers.js';
 import type { SessionUser } from '../auth/sessions.js';
-import { book, resolveSlot, changeStatus, listPatientAppointments, quote } from '../services/booking.js';
+import { book, resolveSlot, changeStatus, listPatientAppointments, quote, setPayReference } from '../services/booking.js';
 import { confirmPage, appointmentsPage, reviewPage, guestConfirmPage, issuePage } from '../views/pages/booking.js';
 import { getReceipt } from '../services/payments.js';
 import { issueTarget, patientIssues, reportIssue } from '../services/reliability.js';
@@ -29,6 +29,9 @@ async function doctorSlugForClinic(ctx: Ctx, clinicId: string): Promise<string |
 }
 
 const domainKey = (e: DomainError): MessageKey => (isMessageKey(e.messageKey) ? e.messageKey : 'error.badRequest');
+
+/** "+2010•••••5678": enough for the patient to recognise their number. */
+const maskPhone = (e164: string): string => (e164.length > 6 ? `\u2066${e164.slice(0, 5)}•••••${e164.slice(-4)}\u2069` : '');
 
 export function patientRoutes(r: Router): void {
   r.get('/book', async (ctx) => {
@@ -73,8 +76,9 @@ export function patientRoutes(r: Router): void {
     const reason = formValue(ctx, 'reason');
     const service = formValue(ctx, 'service');
     if (service && !isUuid(service)) throw badRequest();
+    const pay = formValue(ctx, 'pay').slice(0, 20);
     try {
-      await book(ctx.deps, user, { clinicId, startsAt: start, reason, serviceId: service || undefined }, ctx.ip);
+      await book(ctx.deps, user, { clinicId, startsAt: start, reason, serviceId: service || undefined, payChoice: pay }, ctx.ip);
       redirect(ctx, href(ctx, '/appointments', { ok: smsEnabled(ctx.deps.cfg) ? 'booked' : 'bookedNoSms' }));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
@@ -86,7 +90,7 @@ export function patientRoutes(r: Router): void {
       if (key === 'booking.verifyPhoneFirst') return redirect(ctx, href(ctx, '/verify-phone'));
       try {
         const target = await resolveSlot(ctx.deps, ctx.deps.db, clinicId, start);
-        sendHtml(ctx, 409, confirmPage(ctx, target, await quote(ctx.deps.db, user.id, target), { error: key, reason, services: await activeServices(ctx.deps.db, [clinicId]), serviceId: service }));
+        sendHtml(ctx, 409, confirmPage(ctx, target, await quote(ctx.deps.db, user.id, target), { error: key, reason, services: await activeServices(ctx.deps.db, [clinicId]), serviceId: service, pay }));
       } catch {
         redirect(ctx, href(ctx, '/appointments', { error: key }));
       }
@@ -106,6 +110,8 @@ export function patientRoutes(r: Router): void {
       email: formValue(ctx, 'email'),
       reason: formValue(ctx, 'reason'),
       service: isUuid(formValue(ctx, 'service')) ? formValue(ctx, 'service') : '',
+      pay: formValue(ctx, 'pay').slice(0, 20),
+      codeBy: formValue(ctx, 'codeBy') === 'sms' ? 'sms' : 'email',
     } as const;
     try {
       const result = await startGuestBooking(ctx.deps, {
@@ -113,6 +119,7 @@ export function patientRoutes(r: Router): void {
         startsAt: start,
         ...values,
         serviceId: values.service || undefined,
+        payChoice: values.pay,
         consent: formValue(ctx, 'consent') === 'yes',
         locale: ctx.locale,
         ip: ctx.ip,
@@ -134,14 +141,15 @@ export function patientRoutes(r: Router): void {
     const pending = await pendingEmailCode(ctx.deps.db, id, 'guest_booking');
     const clinicId = pending ? String((pending.payload as { clinicId?: string }).clinicId ?? '') : '';
     const slug = isUuid(clinicId) ? await doctorSlugForClinic(ctx, clinicId) : null;
+    const bySms = (pending?.payload as { channel?: string } | undefined)?.channel === 'sms';
     sendHtml(
       ctx,
       pending ? status : 410,
       emailCodePage(ctx, {
         action: href(ctx, `/book/guest/${id}`),
-        maskedEmail: pending ? maskEmail(pending.email) : '',
-        title: 'guest.codeTitle',
-        lead: 'guest.codeLead',
+        maskedEmail: pending ? (bySms ? maskPhone(String((pending.payload as { phone?: string }).phone ?? '')) : maskEmail(pending.email)) : '',
+        title: bySms ? 'guest.codeTitleSms' : 'guest.codeTitle',
+        lead: bySms ? 'guest.codeLeadSms' : 'guest.codeLead',
         error: pending ? error : (error ?? 'emailCode.expired'),
         startOver: slug ? href(ctx, `/doctors/${slug}`, { clinic: clinicId }) : href(ctx, '/search'),
         demoCode: pending ? await demoEmailCode(ctx, pending.email) : null,
@@ -162,10 +170,10 @@ export function patientRoutes(r: Router): void {
     if ('error' in result) return guestCodePage(ctx, id, 422, result.error);
     const req = result.request;
     await startSession(ctx, result.userId, 'patient');
-    const user: SessionUser = { id: result.userId, role: 'patient', fullName: req.fullName, phone: req.phone, phoneVerified: false, locale: req.locale };
+    const user: SessionUser = { id: result.userId, role: 'patient', fullName: req.fullName, phone: req.phone, phoneVerified: req.channel === 'sms', locale: req.locale };
     const start = new Date(req.startsAt);
     try {
-      await book(ctx.deps, user, { clinicId: req.clinicId, startsAt: start, reason: req.reason, serviceId: req.serviceId && isUuid(req.serviceId) ? req.serviceId : undefined }, ctx.ip);
+      await book(ctx.deps, user, { clinicId: req.clinicId, startsAt: start, reason: req.reason, serviceId: req.serviceId && isUuid(req.serviceId) ? req.serviceId : undefined, payChoice: req.payChoice }, ctx.ip);
       redirect(ctx, href(ctx, '/appointments', { ok: 'bookedGuest' }));
     } catch (e) {
       if (!(e instanceof DomainError)) throw e;
@@ -282,6 +290,18 @@ export function patientRoutes(r: Router): void {
     const user = requireUser(ctx, 'patient');
     await leaveWaitlist(ctx.deps, user, uuidParam(ctx, 'id'), ctx.ip);
     redirect(ctx, href(ctx, '/appointments', { ok: 'waitlistLeft' }));
+  });
+
+  r.post('/appointments/:id/pay-ref', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const id = uuidParam(ctx, 'id');
+    try {
+      await setPayReference(ctx.deps, user, id, formValue(ctx, 'ref'), ctx.ip);
+      redirect(ctx, href(ctx, '/appointments', { ok: 'payRef' }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/appointments', { error: domainKey(e) }));
+    }
   });
 
   r.post('/appointments/:id/cancel', async (ctx) => {

@@ -48,7 +48,31 @@ export class HttpSmsProvider implements SmsProvider {
   }
 }
 
+/**
+ * Brevo transactional SMS (same API key as Brevo email; SMS credits are bought separately in Brevo).
+ * https://developers.brevo.com/docs/transactional-sms-endpoints
+ */
+export class BrevoSmsProvider implements SmsProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly sender: string,
+  ) {}
+
+  async send(to: string, body: string): Promise<void> {
+    const res = await fetch('https://api.brevo.com/v3/transactionalSMS/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json', 'api-key': this.apiKey },
+      // Alphanumeric sender names are limited to 11 characters.
+      body: JSON.stringify({ sender: this.sender.slice(0, 11), recipient: to.replace(/^\+/, ''), content: body, type: 'transactional' }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    // Never include the response body in errors: it can echo the phone number.
+    if (!res.ok) throw new Error(`sms provider responded ${res.status}`);
+  }
+}
+
 export function createSmsProvider(cfg: Config): SmsProvider {
+  if (cfg.SMS_PROVIDER === 'brevo') return new BrevoSmsProvider(cfg.BREVO_API_KEY!, cfg.SMS_SENDER_ID);
   if (cfg.SMS_PROVIDER === 'http') return new HttpSmsProvider(cfg.SMS_HTTP_URL!, cfg.SMS_HTTP_TOKEN!, cfg.SMS_SENDER_ID);
   if (cfg.SMS_PROVIDER === 'none') return new NoSmsProvider();
   return new ConsoleSmsProvider();

@@ -70,7 +70,7 @@ export function facilityRoutes(r: Router): void {
       email: values['email']!,
       password: f['password']?.[0] ?? '',
       licenceNumber: values['licenceNumber']!,
-      licence: ctx.files.find((x) => x.field === 'licence'),
+      files: ctx.files,
       consent: field(f, 'consent') === 'yes',
       locale: ctx.locale,
       ip: ctx.ip,

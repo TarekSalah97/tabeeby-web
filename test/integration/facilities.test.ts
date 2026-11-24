@@ -21,7 +21,11 @@ function joinForm(phone: string, extra: Record<string, string> = {}, file: Blob 
     phone: '0' + phone.slice(3), email: `p${crypto.randomBytes(3).toString('hex')}@example.com`, password: 'Nile-pharmacy-pass-2026', consent: 'yes', ...extra,
   };
   for (const [k, v] of Object.entries(fields)) f.append(k, v);
-  if (file) f.append('licence', file, 'licence.pdf');
+  if (file) {
+    f.append('licence', file, 'licence.pdf');
+    f.append('doc_manager_syndicate_card', PDF(), 'card.pdf');
+    f.append('doc_manager_national_id', PDF(), 'id.pdf');
+  }
   return f;
 }
 
@@ -65,9 +69,14 @@ test('a pharmacy signs up with its licence, prepares its page, and appears after
   assert.equal(bad.status, 422);
   assert.match(bad.body, /Choose the type of place/);
   assert.match(bad.body, /licence number/);
-  assert.match(bad.body, /Upload a photo or PDF of your licence/);
+  assert.match(bad.body, /Upload this document/);
+  assert.match(bad.body, /Responsible manager’s syndicate card/);
   const disguised = await c.postMultipart('/en/facilities/join', joinForm(phone, {}, new Blob(['<html>x</html>'], { type: 'application/pdf' })));
   assert.match(disguised.body, /must be a JPG, PNG or PDF/);
+  // A scan centre also needs its radiation licence.
+  const scan = await c.postMultipart('/en/facilities/join', joinForm(phone, { kind: 'radiology' }));
+  assert.equal(scan.status, 422);
+  assert.match(scan.body, /Radiation licence/);
 
   const ok = await c.postMultipart('/en/facilities/join', joinForm(phone));
   assert.equal(ok.status, 303, ok.body.slice(0, 300));

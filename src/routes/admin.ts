@@ -11,7 +11,7 @@ import { listReviewsForAdmin, setReviewVisibility } from '../services/reviews.js
 import { DomainError, notFound } from '../http/errors.js';
 import { isMessageKey } from '../i18n/index.js';
 import { errorFrom, formValue, noticeFrom, uuidParam } from './helpers.js';
-import { adminStats, parseRange, searchAccounts, setAccountStatus, clearNoShows, listAudit, outboxOverview, retryFailedMessages } from '../services/adminConsole.js';
+import { adminStats, parseRange, searchAccounts, recentAccounts, removeAccount, setAccountStatus, clearNoShows, listAudit, outboxOverview, retryFailedMessages } from '../services/adminConsole.js';
 import { adminDashboardPage, adminAccountsPage, adminAuditPage, adminMessagesPage } from '../views/pages/adminConsole.js';
 import { smsEnabled, emailEnabled } from '../config.js';
 
@@ -35,16 +35,21 @@ export function adminRoutes(r: Router): void {
     requireUser(ctx, 'admin');
     const q = (ctx.query.get('q') ?? '').slice(0, 120);
     const results = q.trim().length >= 2 ? await searchAccounts(ctx.deps.db, q, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : null;
-    sendHtml(ctx, 200, adminAccountsPage(ctx, { q, results, notice: noticeFrom(ctx), error: errorFrom(ctx) }));
+    const recent = results === null ? await recentAccounts(ctx.deps.db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : undefined;
+    sendHtml(ctx, 200, adminAccountsPage(ctx, { q, results, recent, notice: noticeFrom(ctx), error: errorFrom(ctx) }));
   });
 
   r.post('/admin/accounts/:id/:action', async (ctx) => {
     const admin = requireUser(ctx, 'admin');
     const id = uuidParam(ctx, 'id');
     const action = ctx.params['action'];
-    if (action !== 'suspend' && action !== 'reactivate' && action !== 'clear-no-shows') throw notFound();
+    if (action !== 'suspend' && action !== 'reactivate' && action !== 'clear-no-shows' && action !== 'remove') throw notFound();
     const q = formValue(ctx, 'q').slice(0, 120) || undefined;
     try {
+      if (action === 'remove') {
+        await removeAccount(ctx.deps, admin, id, formValue(ctx, 'confirm'), ctx.ip);
+        return redirect(ctx, href(ctx, '/admin/accounts', { q, ok: 'accountRemoved' }));
+      }
       if (action === 'clear-no-shows') {
         await clearNoShows(ctx.deps, admin, id, ctx.ip);
         return redirect(ctx, href(ctx, '/admin/accounts', { q, ok: 'noShowsCleared' }));

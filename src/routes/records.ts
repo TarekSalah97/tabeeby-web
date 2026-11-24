@@ -1,3 +1,5 @@
+import { addVisitPhotos, listVisitPhotos, readVisitPhoto, removeVisitPhoto } from '../services/visitPhotos.js';
+import { applyDocumentHeaders } from '../http/security.js';
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser } from '../http/context.js';
@@ -78,13 +80,14 @@ function optionalUuid(v: string | null | undefined): string | null {
 async function renderVisit(ctx: Ctx, d: { user: SessionUser; doctor: OwnDoctor }, encounterId: string, extra: Partial<Parameters<typeof visitPage>[4]> = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const visit = await getVisit(db, d.user.id, encounterId);
-  const [record, medicines, orderResults] = await Promise.all([
+  const [record, medicines, orderResults, photos] = await Promise.all([
     getRecord(db, d.user.id, visit.record_id),
     listDoctorMedicines(db, d.user.id),
     doctorOrderResults(db, d.user.id, visit.labOrders.map((l) => l.id)),
+    listVisitPhotos(db, d.user.id, encounterId),
   ]);
   const notice = noticeFrom(ctx);
-  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, orderResults, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
+  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, orderResults, photos, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
 }
 
 /** Whole years between a YYYY-MM-DD birth date and now. */
@@ -260,7 +263,37 @@ export function recordsRoutes(r: Router): void {
       const [record, medicines] = await Promise.all([getRecord(ctx.deps.db, d.user.id, id), listDoctorMedicines(ctx.deps.db, d.user.id)]);
       return sendHtml(ctx, 422, newVisitPage(ctx, d.doctor, record, { appointmentId, notes, rx, lab, errors: result.errors, medicines }));
     }
-    redirect(ctx, href(ctx, `/dashboard/visits/${result.id}`, { ok: 'visitSaved' }));
+    // Photos chosen on the new-visit form are added once the visit exists.
+    const photoError = ctx.files.some((f) => f.field === 'photos' && f.data.length > 0)
+      ? await addVisitPhotos(ctx.deps, d.user.id, result.id, ctx.files, ctx.ip)
+      : null;
+    redirect(ctx, href(ctx, `/dashboard/visits/${result.id}`, photoError ? { error: photoError } : { ok: 'visitSaved' }));
+  });
+
+  r.post('/dashboard/visits/:id/photos', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const id = uuidParam(ctx, 'id');
+    const err = await addVisitPhotos(ctx.deps, d.user.id, id, ctx.files, ctx.ip);
+    redirect(ctx, href(ctx, `/dashboard/visits/${id}`, err ? { error: err } : { ok: 'photosAdded' }) + '#photos');
+  });
+
+  r.get('/dashboard/visit-photos/:id', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const photo = await readVisitPhoto(ctx.deps, d.user.id, uuidParam(ctx, 'id'));
+    applyDocumentHeaders(ctx.res);
+    ctx.res.statusCode = 200;
+    ctx.res.setHeader('Content-Type', photo.mime);
+    ctx.res.setHeader('Content-Disposition', 'inline');
+    ctx.res.end(photo.data);
+  });
+
+  r.post('/dashboard/visit-photos/:id/remove', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const visitId = await removeVisitPhoto(ctx.deps, d.user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, `/dashboard/visits/${visitId}`, { ok: 'photoRemovedVisit' }) + '#photos');
   });
 
   r.get('/dashboard/visits/:id', async (ctx) => {

@@ -3,11 +3,12 @@ import type { Ctx } from '../../http/context.js';
 import { displayYears } from '../../domain/experience.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary, subMap } from '../components.js';
+import { alert, consentField, csrfField, fieldError, icon, input, passwordInput, select, errorSummary, subMap, documentFields } from '../components.js';
 import { pick, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { PositionInput } from '../../services/doctors.js';
+import { DOCTOR_DOCS } from '../../domain/documents.js';
 
 export function forDoctorsPage(ctx: Ctx): SafeHtml {
   const body = html`
@@ -93,16 +94,9 @@ export function joinPage(ctx: Ctx, ref: ReferenceData, o: { values?: Record<stri
           errors: o.errors,
         })}
         </div>
-        <div class="field span-all${o.errors?.['card'] ? ' has-error' : ''}">
-          <span class="label" id="card-label">${ctx.t('join.card')}</span>
-          <label class="dropzone" for="card">
-            ${icon.upload}
-            <span class="stack-sm"><strong>${ctx.t('join.card')}</strong><span class="hint" id="card-hint">${ctx.t('join.cardHint')}</span></span>
-            <input id="card" name="card" type="file" accept="image/jpeg,image/png,application/pdf" required aria-describedby="card-hint" aria-labelledby="card-label">
-          </label>
-          ${fieldError(ctx, o.errors, 'card')}
-        </div>
       </fieldset>
+
+      ${documentFields(ctx, DOCTOR_DOCS, o.errors)}
 
       <fieldset class="stack">
         <legend>${ctx.t('join.experience')}</legend>

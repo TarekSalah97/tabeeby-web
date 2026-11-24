@@ -2,10 +2,11 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs, documentFields } from '../components.js';
 import { pick, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
+import { facilityDocs } from '../../domain/documents.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import {
@@ -60,15 +61,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
         ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: v['phone'], prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('facjoin.phoneHint'), errors: o.errors, required: true })}
         ${input(ctx, { name: 'email', label: ctx.t('join.email'), type: 'email', value: v['email'], autocomplete: 'email', maxlength: 254, errors: o.errors, required: true })}
         ${passwordInput(ctx, { name: 'password', label: ctx.t('auth.password'), autocomplete: 'new-password', hint: ctx.t('auth.passwordHint'), errors: o.errors, required: true })}
-        <div class="field span-all${o.errors?.['licence'] ? ' has-error' : ''}">
-          <span class="label" id="licence-label">${ctx.t('facjoin.licence')}</span>
-          <label class="dropzone" for="licence">
-            ${icon.upload}
-            <span class="stack-sm"><strong>${ctx.t('facjoin.licence')}</strong><span class="hint" id="licence-hint">${ctx.t('facjoin.licenceHint')}</span></span>
-            <input id="licence" name="licence" type="file" accept="image/jpeg,image/png,application/pdf" required aria-describedby="licence-hint" aria-labelledby="licence-label">
-          </label>
-          ${fieldError(ctx, o.errors, 'licence')}
-        </div>
+        ${documentFields(ctx, facilityDocs('radiology'), o.errors, { radiation_licence: 'radiology' })}
       </div>
       ${consentField(ctx, o.errors)}
       <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('facjoin.submit')}</button>
@@ -82,7 +75,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests';
+export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions';
 
 export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
@@ -93,7 +86,7 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
           { key: 'requests' as const, path: '/facility/requests', label: 'facdash.nav.requests' as const },
           { key: 'prices' as const, path: '/facility/prices', label: 'facdash.nav.prices' as const },
         ]
-      : []),
+      : [{ key: 'prescriptions' as const, path: '/facility/prescriptions', label: 'rxsend.inbox' as const }]),
   ];
   const status = f.verification_status;
   const banner =

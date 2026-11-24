@@ -133,11 +133,64 @@ export async function searchAccounts(db: Queryable, rawQuery: string, noShowWind
                   and a.starts_at > now() - make_interval(days => $4)
                   and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)) as no_shows
          from users u left join doctors d on d.user_id = u.id
-        where u.full_name ilike $1 or u.email = $2 or u.phone_e164 = $3
+        where u.status <> 'removed' and (u.full_name ilike $1 or u.email = $2 or u.phone_e164 = $3)
         order by u.created_at desc limit 30`,
       [like, q.toLowerCase(), phone ?? '', noShowWindowDays],
     )
   ).rows;
+}
+
+/** The newest accounts (all kinds), so the admin can find test accounts without searching. */
+export async function recentAccounts(db: Queryable, noShowWindowDays: number, limit = 60): Promise<AccountRow[]> {
+  return (
+    await db.query<AccountRow>(
+      `select u.id, u.role, u.full_name, u.phone_e164, u.email, u.status, u.created_at, d.verification_status,
+              (select count(*)::int from appointments a where (a.patient_id = u.id or a.doctor_id = u.id)
+                  and a.status in ('confirmed', 'arrived') and a.starts_at > now()) as upcoming,
+              (select count(*)::int from appointments a where a.patient_id = u.id and a.status = 'no_show' and not a.no_show_waived
+                  and a.starts_at > now() - make_interval(days => $1)
+                  and (u.no_show_cleared_at is null or a.starts_at > u.no_show_cleared_at)) as no_shows
+         from users u left join doctors d on d.user_id = u.id
+        where u.status <> 'removed' and u.role <> 'admin'
+        order by u.created_at desc limit $2`,
+      [noShowWindowDays, limit],
+    )
+  ).rows;
+}
+
+/**
+ * Removes an account for good (e.g. a test account on the live site). Personal details are
+ * wiped and sign-in stops; its upcoming visits are cancelled; a doctor or pharmacy/lab disappears
+ * from search. Visit, medical and payment history stays (anonymous) because those records are
+ * never deleted. The mobile number and email become free to register again.
+ */
+export async function removeAccount(deps: Deps, admin: SessionUser, userId: string, confirmWord: string, ip: string): Promise<void> {
+  if (admin.role !== 'admin') throw notFound();
+  if (!/^(remove|حذف)$/i.test(confirmWord.trim())) throw new DomainError('adm.removeConfirmWord');
+  if (userId === admin.id) throw new DomainError('adm.cannotSuspendAdmin');
+  await deps.db.transaction(async (tx) => {
+    const { rows } = await tx.query<{ role: string; status: string }>('select role, status from users where id = $1 for update', [userId]);
+    const u = rows[0];
+    if (!u || u.status === 'removed') throw notFound();
+    if (u.role === 'admin') throw new DomainError('adm.cannotSuspendAdmin');
+    await tx.query(
+      `update appointments set status = 'cancelled', cancelled_by = 'admin', cancelled_at = now(), updated_at = now()
+        where (patient_id = $1 or doctor_id = $1) and status in ('confirmed', 'arrived') and starts_at > now()`,
+      [userId],
+    );
+    if (u.role === 'doctor') await tx.query(`update doctors set verification_status = 'suspended', updated_at = now() where user_id = $1`, [userId]);
+    if (u.role === 'facility') await tx.query(`update facilities set verification_status = 'suspended', updated_at = now() where user_id = $1`, [userId]);
+    // Doctors' own files about this person stay with the doctors, unlinked from the closed account.
+    await tx.query('update patient_records set patient_user_id = null where patient_user_id = $1', [userId]);
+    await tx.query(
+      `update users set status = 'removed', full_name = 'Removed account', phone_e164 = 'removed:' || id::text, email = null,
+              email_verified_at = null, phone_verified_at = null, password_hash = 'removed', updated_at = now()
+        where id = $1`,
+      [userId],
+    );
+    await destroyUserSessions(tx, userId);
+    await audit(tx, { actorId: admin.id, action: 'account.remove', entityType: 'user', entityId: userId, metadata: { role: u.role }, ip });
+  });
 }
 
 /** Lets a patient book online again after no-shows paused it. Older no-shows stop counting. */

@@ -144,7 +144,7 @@ export async function bookByClinic(deps: Deps, doctor: SessionUser, input: Clini
       const target: BookingTarget = {
         clinicId: clinic.id, clinicName: clinic.name, clinicAddress: clinic.address, clinicPhone: clinic.phone,
         fee: clinic.fee, followUpFee: clinic.followUpFee, followUpDays: clinic.followUpDays,
-        doctorId: doctor.id, doctorName: doctor.fullName, doctorSlug: '', startsAt: slot.startsAt, endsAt: slot.endsAt,
+        doctorId: doctor.id, doctorName: doctor.fullName, doctorSlug: '', instapayAddress: null, startsAt: slot.startsAt, endsAt: slot.endsAt,
       };
       if (patientId) {
         const p = await tx.query<{ phone_e164: string; preferred_locale: Locale; full_name: string; email: string | null }>(

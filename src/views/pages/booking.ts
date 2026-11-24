@@ -1,3 +1,4 @@
+import { smsEnabled } from '../../config.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
@@ -35,6 +36,29 @@ function visitChoice(ctx: Ctx, consult: Visit, services: ClinicService[], chosen
   </fieldset>`;
 }
 
+/**
+ * How the patient will pay. Cash and card at the clinic are always there; InstaPay when the
+ * doctor has an InstaPay address; online card, Fawry and wallets are shown as coming soon.
+ */
+function payChoice(ctx: Ctx, target: BookingTarget, fee: number, chosen: string): SafeHtml {
+  const current = chosen || 'cash';
+  const option = (value: string, ic: SafeHtml, title: string, note: string) =>
+    html`<label class="pay-option"><input type="radio" name="pay" value="${value}"${attrIf(current === value, 'checked')}>
+      <span class="pay-icon" aria-hidden="true">${ic}</span>
+      <span class="stack-sm"><strong>${title}</strong><span class="small muted">${note}</span></span></label>`;
+  return html`<fieldset class="stack-sm pay-choice"><legend class="label">${ctx.t('payopt.title')}</legend>
+    ${option('cash', icon.cash, ctx.t('payopt.cash'), ctx.t('payopt.cashNote'))}
+    ${option('card_clinic', icon.card, ctx.t('payopt.card_clinic'), ctx.t('payopt.card_clinicNote'))}
+    ${target.instapayAddress
+      ? option('instapay', icon.instapay, ctx.t('payopt.instapay'), ctx.t('payopt.instapayNote', { fee: money(ctx, fee), address: target.instapayAddress }))
+      : ''}
+    <div class="pay-option disabled" aria-disabled="true"><span class="pay-icon" aria-hidden="true">${icon.wallet}</span>
+      <span class="stack-sm"><strong>${ctx.t('payopt.online')}</strong><span class="small muted">${ctx.t('payopt.onlineNote')}</span></span>
+      <span class="pill small">${ctx.t('payopt.soon')}</span></div>
+    <p class="hint pay-secure">${icon.lock} ${ctx.t('payopt.secure')}</p>
+  </fieldset>`;
+}
+
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
 function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number }): SafeHtml {
   const followUp = visit.type === 'follow_up';
@@ -47,7 +71,7 @@ export function confirmPage(
   ctx: Ctx,
   target: BookingTarget,
   visit: Visit,
-  o: { error?: MessageKey; reason?: string; services?: ClinicService[]; serviceId?: string },
+  o: { error?: MessageKey; reason?: string; services?: ClinicService[]; serviceId?: string; pay?: string },
 ): SafeHtml {
   const services = o.services ?? [];
   const tz = ctx.deps.cfg.TIME_ZONE;
@@ -71,6 +95,7 @@ export function confirmPage(
           <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${o.reason ?? ''}</textarea>
           <p class="hint" id="reason-hint">${ctx.t('book.reasonHint')}</p>
         </div>
+        ${payChoice(ctx, target, visit.fee, o.pay ?? '')}
         <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('book.confirm')}</button>
         <p class="hint center">${ctx.t('book.cancelPolicy', { hours: ctx.deps.cfg.CANCEL_CUTOFF_HOURS })}</p>
       </form>
@@ -101,6 +126,13 @@ export function appointmentsPage(
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto"><strong>${a.doctor_name}</strong></a> · <span dir="auto">${a.clinic_name}</span></span>
       <span class="muted" dir="auto">${a.clinic_address} · ${district(a)} · ${a.visit_type !== 'new' ? html`<bdi>${visitLabel(ctx, a)}</bdi> · ` : ''}${money(ctx, a.fee_egp)}</span>
       ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
+      ${a.pay_choice === 'instapay' && a.paid_amount === null && (a.status === 'confirmed' || a.status === 'arrived')
+        ? html`<form method="post" action="${href(ctx, `/appointments/${a.id}/pay-ref`)}" class="pay-ref stack-sm">${csrfField(ctx)}
+            <span class="small"><strong>${ctx.t('payopt.instapay')}</strong> · ${a.instapay_address ? ctx.t('payopt.sendTo', { fee: money(ctx, a.fee_egp), address: a.instapay_address }) : ''}</span>
+            <div class="row-wrap"><label class="sr-only" for="ref-${a.id}">${ctx.t('payopt.refLabel')}</label>
+              <input id="ref-${a.id}" name="ref" maxlength="40" value="${a.pay_ref ?? ''}" placeholder="${ctx.t('payopt.refLabel')}" dir="ltr" autocomplete="off">
+              <button class="btn btn-outline btn-sm" type="submit">${ctx.t('payopt.refSave')}</button></div></form>`
+        : ''}
       <div>${statusChip(ctx, a.status)}</div>
     </div>
     <div class="appt-actions">
@@ -130,6 +162,13 @@ export function appointmentsPage(
       <span><a href="${href(ctx, `/doctors/${a.doctor_slug}`)}" dir="auto">${a.doctor_name}</a> · <span dir="auto">${a.clinic_name}</span></span>
       <div class="row-wrap">${statusChip(ctx, a.status)}${a.my_rating ? starRow(ctx, a.my_rating) : ''}</div>
       ${a.paid_amount !== null && a.paid_method ? paidChip(ctx, { amount: a.paid_amount, method: a.paid_method }, href(ctx, `/appointments/${a.id}/receipt`)) : ''}
+      ${a.pay_choice === 'instapay' && a.paid_amount === null && (a.status === 'confirmed' || a.status === 'arrived')
+        ? html`<form method="post" action="${href(ctx, `/appointments/${a.id}/pay-ref`)}" class="pay-ref stack-sm">${csrfField(ctx)}
+            <span class="small"><strong>${ctx.t('payopt.instapay')}</strong> · ${a.instapay_address ? ctx.t('payopt.sendTo', { fee: money(ctx, a.fee_egp), address: a.instapay_address }) : ''}</span>
+            <div class="row-wrap"><label class="sr-only" for="ref-${a.id}">${ctx.t('payopt.refLabel')}</label>
+              <input id="ref-${a.id}" name="ref" maxlength="40" value="${a.pay_ref ?? ''}" placeholder="${ctx.t('payopt.refLabel')}" dir="ltr" autocomplete="off">
+              <button class="btn btn-outline btn-sm" type="submit">${ctx.t('payopt.refSave')}</button></div></form>`
+        : ''}
       ${issueLine(a)}
     </div>
     <div class="appt-actions">
@@ -254,6 +293,14 @@ export function guestConfirmPage(
           <textarea id="reason" name="reason" maxlength="200" rows="3" aria-describedby="reason-hint">${v['reason'] ?? ''}</textarea>
           <p class="hint" id="reason-hint">${ctx.t('book.reasonHint')}</p>
         </div>
+        ${payChoice(ctx, target, target.fee, v['pay'] ?? '')}
+        ${smsEnabled(ctx.deps.cfg)
+          ? html`<fieldset class="stack-sm"><legend class="label">${ctx.t('guest.codeBy')}</legend>
+              <div class="row-wrap">
+                <label class="check"><input type="radio" name="codeBy" value="email"${attrIf(v['codeBy'] !== 'sms', 'checked')}> <span>${ctx.t('guest.codeByEmail')}</span></label>
+                <label class="check"><input type="radio" name="codeBy" value="sms"${attrIf(v['codeBy'] === 'sms', 'checked')}> <span>${ctx.t('guest.codeBySms')}</span></label>
+              </div></fieldset>`
+          : ''}
         ${consentField(ctx, o.errors)}
         <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('guest.sendCode')}</button>
         <p class="hint center">${ctx.t('book.cancelPolicy', { hours: ctx.deps.cfg.CANCEL_CUTOFF_HOURS })}</p>

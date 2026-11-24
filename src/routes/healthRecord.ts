@@ -13,7 +13,10 @@ import {
   listCentreRequests, getCentreRequest, markReceived, addResultFile, removeResultFile, markReady, readResultFile, type ResultViewer,
 } from '../services/orderResults.js';
 import { createLinkCode } from '../services/accountLink.js';
-import { healthRecordPage, sendOrderPage, centreRequestsPage, centreRequestPage, isHealthTab } from '../views/pages/healthRecord.js';
+import { healthRecordPage, sendOrderPage, centreRequestsPage, centreRequestPage, isHealthTab, sendToPharmacyPage, pharmacyInboxPage, pharmacyRequestPage } from '../views/pages/healthRecord.js';
+import {
+  patientPrescription, pharmacyChoices, sendToPharmacy, cancelPharmacyRequest, listPharmacyInbox, getPharmacyRequest, replyToRequest, completeRequest,
+} from '../services/pharmacyRequests.js';
 
 function notice(ctx: Ctx): { kind: 'success' | 'error'; key: MessageKey } | undefined {
   const n = noticeFrom(ctx);
@@ -36,7 +39,67 @@ async function requireCentre(ctx: Ctx) {
   return f;
 }
 
+/** A signed-in pharmacy. */
+async function requirePharmacy(ctx: Ctx) {
+  const user = requireUser(ctx, 'facility');
+  const f = await getOwnFacility(ctx.deps.db, user.id);
+  if (f.kind !== 'pharmacy') throw notFound();
+  return f;
+}
+
 export function healthRecordRoutes(r: Router): void {
+  // ---- patient → pharmacy: send a prescription, see the answer
+  r.get('/health-record/prescriptions/:id/send', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const rx = await patientPrescription(ctx.deps.db, user.id, uuidParam(ctx, 'id'));
+    sendHtml(ctx, 200, sendToPharmacyPage(ctx, rx, await pharmacyChoices(ctx.deps.db)));
+  });
+
+  r.post('/health-record/prescriptions/:id/send', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const id = uuidParam(ctx, 'id');
+    const values = { facility: formValue(ctx, 'facility'), delivery: formValue(ctx, 'delivery') === 'yes', note: formValue(ctx, 'note') };
+    const problem = isUuid(values.facility)
+      ? await sendToPharmacy(ctx.deps, user.id, id, { facilityId: values.facility, delivery: values.delivery, note: values.note }, ctx.ip)
+      : 'rxsend.err.choose';
+    if (problem) {
+      const rx = await patientPrescription(ctx.deps.db, user.id, id);
+      return sendHtml(ctx, 422, sendToPharmacyPage(ctx, rx, await pharmacyChoices(ctx.deps.db), { error: problem, values }));
+    }
+    redirect(ctx, href(ctx, '/health-record', { ok: 'rxSent' }));
+  });
+
+  r.post('/health-record/pharmacy-requests/:id/cancel', async (ctx) => {
+    const user = requireUser(ctx, 'patient');
+    const problem = await cancelPharmacyRequest(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/health-record', problem ? { error: problem } : { ok: 'rxRequestCancelled' }));
+  });
+
+  // ---- pharmacy inbox
+  r.get('/facility/prescriptions', async (ctx) => {
+    const f = await requirePharmacy(ctx);
+    sendHtml(ctx, 200, pharmacyInboxPage(ctx, f, await listPharmacyInbox(ctx.deps.db, f.user_id), notice(ctx)));
+  });
+
+  r.get('/facility/prescriptions/:id', async (ctx) => {
+    const f = await requirePharmacy(ctx);
+    sendHtml(ctx, 200, pharmacyRequestPage(ctx, f, await getPharmacyRequest(ctx.deps.db, f.user_id, uuidParam(ctx, 'id')), notice(ctx)));
+  });
+
+  r.post('/facility/prescriptions/:id/reply', async (ctx) => {
+    const f = await requirePharmacy(ctx);
+    const id = uuidParam(ctx, 'id');
+    const problem = await replyToRequest(ctx.deps, f.user_id, id, { status: formValue(ctx, 'status'), total: formValue(ctx, 'total'), note: formValue(ctx, 'note') }, ctx.ip);
+    redirect(ctx, href(ctx, `/facility/prescriptions/${id}`, problem ? { error: problem } : { ok: 'rxReplied' }));
+  });
+
+  r.post('/facility/prescriptions/:id/done', async (ctx) => {
+    const f = await requirePharmacy(ctx);
+    const id = uuidParam(ctx, 'id');
+    const problem = await completeRequest(ctx.deps, f.user_id, id, ctx.ip);
+    redirect(ctx, href(ctx, problem ? `/facility/prescriptions/${id}` : '/facility/prescriptions', problem ? { error: problem } : { ok: 'rxCompleted' }));
+  });
+
   // ---- patient: one place for prescriptions, lab tests and imaging
   r.get('/health-record', async (ctx) => {
     if (ctx.user?.role !== 'patient') return sendHtml(ctx, 200, patientGatePage(ctx, 'prescriptions', ctx.path));
@@ -67,7 +130,9 @@ export function healthRecordRoutes(r: Router): void {
     const id = uuidParam(ctx, 'id');
     const section = sectionParam(ctx);
     const facility = formValue(ctx, 'facility');
-    const problem = isUuid(facility) ? await sendOrderPart(ctx.deps, user.id, id, section, facility, ctx.ip) : 'hr.err.chooseCentre';
+    const problem = isUuid(facility)
+      ? await sendOrderPart(ctx.deps, user.id, id, section, facility, ctx.ip, { note: formValue(ctx, 'note'), homeVisit: formValue(ctx, 'homeVisit') === 'yes' })
+      : 'hr.err.chooseCentre';
     if (problem) {
       const part = await patientOrderPart(ctx.deps.db, user.id, id, section);
       return sendHtml(ctx, 422, sendOrderPage(ctx, part, await centreChoices(ctx.deps.db, part), problem));
@@ -113,7 +178,7 @@ export function healthRecordRoutes(r: Router): void {
   r.post('/facility/requests/:id/received', async (ctx) => {
     const f = await requireCentre(ctx);
     const id = uuidParam(ctx, 'id');
-    await markReceived(ctx.deps, f.user_id, id, ctx.ip);
+    await markReceived(ctx.deps, f.user_id, id, ctx.ip, formValue(ctx, 'instructions'));
     redirect(ctx, href(ctx, `/facility/requests/${id}`, { ok: 'orderReceived' }));
   });
 

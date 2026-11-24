@@ -1,3 +1,4 @@
+import { latestPharmacyRequests, type PatientPharmacyRequest } from './pharmacyRequests.js';
 import type { Deps } from '../http/context.js';
 import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
@@ -62,6 +63,9 @@ export interface OrderPart {
     facilitySlug: string;
     facilityKind: 'lab' | 'radiology';
     facilityNote: string | null;
+    facilityInstructions: string | null;
+    facilityPhone: string | null;
+    facilityWhatsapp: string | null;
     createdAt: Date;
     readyAt: Date | null;
     results: ResultFile[];
@@ -74,6 +78,8 @@ export interface PrescriptionSummary {
   doctor_name: string;
   doctor_slug: string;
   medicines: string[];
+  /** The latest request to a pharmacy for this prescription, if any. */
+  pharmacy: PatientPharmacyRequest | null;
 }
 
 export interface HealthRecord {
@@ -93,6 +99,9 @@ interface RequestRow {
   facility_slug: string;
   facility_kind: 'lab' | 'radiology';
   facility_note: string | null;
+  facility_instructions: string | null;
+  facility_phone: string | null;
+  facility_whatsapp: string | null;
   created_at: Date;
   ready_at: Date | null;
 }
@@ -103,7 +112,7 @@ async function openRequestsFor(db: Queryable, labOrderIds: string[]): Promise<Ma
   const ph = labOrderIds.map((_, i) => `$${i + 1}`).join(', ');
   const { rows } = await db.query<RequestRow>(
     `select q.id, q.lab_order_id, q.section, q.status, f.name as facility_name, f.slug as facility_slug, f.kind as facility_kind,
-            q.facility_note, q.created_at, q.ready_at
+            q.facility_note, q.facility_instructions, f.phone_e164 as facility_phone, f.whatsapp_e164 as facility_whatsapp, q.created_at, q.ready_at
        from order_requests q join facilities f on f.user_id = q.facility_id
       where q.lab_order_id in (${ph}) and q.status <> 'cancelled'`,
     labOrderIds,
@@ -117,6 +126,9 @@ async function openRequestsFor(db: Queryable, labOrderIds: string[]): Promise<Ma
       facilitySlug: r.facility_slug,
       facilityKind: r.facility_kind,
       facilityNote: r.facility_note,
+      facilityInstructions: r.facility_instructions,
+      facilityPhone: r.facility_phone,
+      facilityWhatsapp: r.facility_whatsapp,
       createdAt: r.created_at,
       readyAt: r.ready_at,
       // The patient and doctor only see files once the centre says the results are ready.
@@ -217,8 +229,8 @@ export async function patientHealthRecord(db: Queryable, patientId: string): Pro
     );
     for (const r of rows) meds.set(r.prescription_id, [...(meds.get(r.prescription_id) ?? []), r.medicine]);
   }
-  const parts = await partsOf(db, orders.rows);
-  return { prescriptions: rx.rows.map((r) => ({ ...r, medicines: meds.get(r.id) ?? [] })), ...parts };
+  const [parts, pharmacy] = await Promise.all([partsOf(db, orders.rows), latestPharmacyRequests(db, patientId, rx.rows.map((r) => r.id))]);
+  return { prescriptions: rx.rows.map((r) => ({ ...r, medicines: meds.get(r.id) ?? [], pharmacy: pharmacy.get(r.id) ?? null })), ...parts };
 }
 
 /** One part of one of the patient's own orders. */
@@ -271,22 +283,25 @@ export async function sendOrderPart(
   section: Section,
   facilityId: string,
   ip: string,
+  extra: { note?: string; homeVisit?: boolean } = {},
 ): Promise<MessageKey | null> {
   const part = await patientOrderPart(deps.db, patientId, labOrderId, section);
   if (part.request) return 'hr.err.alreadySent';
-  const f = await deps.db.query<{ name: string; phone_e164: string; preferred_locale: Locale }>(
-    `select f.name, u.phone_e164, u.preferred_locale from facilities f join users u on u.id = f.user_id
+  const note = (extra.note ?? '').trim().slice(0, 300);
+  const f = await deps.db.query<{ name: string; phone_e164: string; preferred_locale: Locale; home_service: boolean }>(
+    `select f.name, u.phone_e164, u.preferred_locale, f.home_service from facilities f join users u on u.id = f.user_id
       where f.user_id = $1 and f.kind = $2 and f.verification_status = 'approved' and u.status = 'active'`,
     [facilityId, facilityKindFor(section)],
   );
   const centre = f.rows[0];
   if (!centre) return 'hr.err.chooseCentre';
+  if (extra.homeVisit && !centre.home_service) return 'hr.err.noHomeVisit';
   try {
     await deps.db.transaction(async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
-        `insert into order_requests (lab_order_id, section, patient_id, facility_id, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $5) returning id`,
-        [labOrderId, section, patientId, facilityId, deps.now()],
+        `insert into order_requests (lab_order_id, section, patient_id, facility_id, created_at, updated_at, patient_note, home_visit)
+         values ($1, $2, $3, $4, $5, $5, $6, $7) returning id`,
+        [labOrderId, section, patientId, facilityId, deps.now(), note || null, !!extra.homeVisit],
       );
       const t = translator(centre.preferred_locale);
       await enqueueSms(tx, centre.phone_e164, t('hr.sms.newRequest', { link: `${deps.cfg.PUBLIC_ORIGIN}${centre.preferred_locale === 'en' ? '/en' : ''}/facility/requests` }));
@@ -330,11 +345,14 @@ export interface CentreRequest {
   items: { test_code: string | null; test_name: string | null }[];
   results: ResultFile[];
   facility_note: string | null;
+  patient_note: string | null;
+  home_visit: boolean;
+  facility_instructions: string | null;
 }
 
 export async function listCentreRequests(db: Queryable, facilityId: string): Promise<CentreRequest[]> {
   const { rows } = await db.query<Omit<CentreRequest, 'items' | 'results'> & { lab_order_id: string }>(
-    `select q.id, q.status, q.section, q.created_at, q.lab_order_id, q.facility_note, p.full_name as patient_name, p.phone_e164 as patient_phone,
+    `select q.id, q.status, q.section, q.created_at, q.lab_order_id, q.facility_note, q.patient_note, q.home_visit, q.facility_instructions, p.full_name as patient_name, p.phone_e164 as patient_phone,
             du.full_name as doctor_name, l.issued_at, l.notes, l.status = 'voided' as order_voided
        from order_requests q join users p on p.id = q.patient_id join lab_orders l on l.id = q.lab_order_id
        join users du on du.id = l.doctor_id
@@ -357,13 +375,26 @@ export async function getCentreRequest(db: Queryable, facilityId: string, id: st
   return found;
 }
 
-export async function markReceived(deps: Deps, facilityId: string, id: string, ip: string): Promise<void> {
-  const res = await deps.db.query(
-    `update order_requests set status = 'received', received_at = $3, updated_at = $3 where id = $1 and facility_id = $2 and status = 'sent'`,
-    [id, facilityId, deps.now()],
-  );
-  if (!res.rowCount) throw notFound();
-  await audit(deps.db, { actorId: facilityId, action: 'order.received', entityType: 'order_request', entityId: id, ip });
+/** The centre picks the request up, optionally with instructions for the patient (sent by SMS). */
+export async function markReceived(deps: Deps, facilityId: string, id: string, ip: string, instructionsRaw = ''): Promise<void> {
+  const instructions = instructionsRaw.trim().slice(0, 500);
+  await deps.db.transaction(async (tx) => {
+    const res = await tx.query<{ patient_id: string }>(
+      `update order_requests set status = 'received', received_at = $3, updated_at = $3, facility_instructions = $4
+        where id = $1 and facility_id = $2 and status = 'sent' returning patient_id`,
+      [id, facilityId, deps.now(), instructions || null],
+    );
+    if (!res.rows[0]) throw notFound();
+    if (instructions) {
+      const p = await tx.query<{ phone_e164: string; preferred_locale: Locale; name: string }>(
+        'select u.phone_e164, u.preferred_locale, f.name from users u, facilities f where u.id = $1 and f.user_id = $2',
+        [res.rows[0].patient_id, facilityId],
+      );
+      const row = p.rows[0]!;
+      await enqueueSms(tx, row.phone_e164, translator(row.preferred_locale)('hr.sms.instructions', { centre: row.name, text: instructions.slice(0, 120) }));
+    }
+    await audit(tx, { actorId: facilityId, action: 'order.received', entityType: 'order_request', entityId: id, ip });
+  });
 }
 
 export async function addResultFile(deps: Deps, facilityId: string, id: string, file: UploadedFile | undefined, ip: string): Promise<MessageKey | null> {

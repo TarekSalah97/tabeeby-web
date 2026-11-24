@@ -47,6 +47,8 @@ const schema = z
     /** 'db' stores uploads in PostgreSQL — for hosts whose disk is wiped on restart. */
     STORAGE_DRIVER: z.enum(['disk', 'db']).default('disk'),
     MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+    /** Whole upload form (several documents at sign-up, several photos on a visit). */
+    MAX_FORM_UPLOAD_BYTES: z.coerce.number().int().positive().default(30 * 1024 * 1024),
 
     /**
      * Per-IP request budget per minute (pages, and form submissions). Protects against floods and
@@ -68,8 +70,11 @@ const schema = z
         return list as string[];
       }),
 
-    /** 'none' = run without SMS: no phone verification, no confirmations or reminders. */
-    SMS_PROVIDER: z.enum(['console', 'http', 'none']).default('console'),
+    /**
+     * 'none' = run without SMS: no phone verification, no confirmations or reminders.
+     * 'brevo' = Brevo transactional SMS with BREVO_API_KEY (needs SMS credits in Brevo).
+     */
+    SMS_PROVIDER: z.enum(['console', 'http', 'brevo', 'none']).default('console'),
     SMS_HTTP_URL: z.string().url().optional(),
     SMS_HTTP_TOKEN: z.string().optional(),
     SMS_SENDER_ID: z.string().default('Tabeeby'),
@@ -136,6 +141,9 @@ const schema = z
     }
     if (cfg.EMAIL_PROVIDER === 'console' && !cfg.DEMO_MODE) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_PROVIDER'], message: 'console email provider is not allowed in production' });
+    }
+    if (cfg.SMS_PROVIDER === 'brevo' && !cfg.BREVO_API_KEY) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['BREVO_API_KEY'], message: 'BREVO_API_KEY is required for SMS_PROVIDER=brevo' });
     }
     if (cfg.SMS_PROVIDER === 'http' && (!cfg.SMS_HTTP_URL || !cfg.SMS_HTTP_TOKEN)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SMS_HTTP_URL'], message: 'SMS_HTTP_URL and SMS_HTTP_TOKEN are required' });

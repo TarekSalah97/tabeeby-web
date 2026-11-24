@@ -193,3 +193,11 @@ features without touching real data. It must use its **own database** — never 
 On start it migrates and loads the demo data (safe to repeat). Every page shows a "Demo site" banner,
 search engines are told not to index it, and the sign-in page lists the logins:
 doctors 01000000101–109, patients 01000000201–224, password `demo-password-2026`.
+
+
+## Email and SMS with Brevo
+
+- Email (codes and confirmations): set `BREVO_API_KEY` and `EMAIL_FROM` (a sender address confirmed in Brevo).
+- SMS (optional, paid per message): buy SMS credits in Brevo, then set `SMS_PROVIDER=brevo` (same `BREVO_API_KEY`) and
+  optionally `SMS_SENDER_ID` (up to 11 letters, default `Tabeeby`). Turning SMS on also turns on mobile verification at sign-up,
+  booking confirmations and reminders by SMS, and the "SMS to my mobile" choice for guest codes.

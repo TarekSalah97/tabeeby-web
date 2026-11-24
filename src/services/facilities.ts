@@ -10,7 +10,8 @@ import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { destroyUserSessions } from '../auth/sessions.js';
 import { isOpenAt, type OpeningHours } from '../domain/facilityHours.js';
 import { labTest } from '../domain/clinical.js';
-import { sniffDocumentType } from '../storage/files.js';
+import { facilityDocs, type FacilityDocKind } from '../domain/documents.js';
+import { checkDocuments, storeDocuments, removeDocuments, insertDocuments } from './documents.js';
 import type { UploadedFile } from '../http/body.js';
 import { audit } from './audit.js';
 import { enqueueSms } from './outbox.js';
@@ -61,7 +62,8 @@ export interface FacilitySignup {
   email: string;
   password: string;
   licenceNumber: string;
-  licence: UploadedFile | undefined;
+  /** All uploaded sign-up documents (licence, manager's card and ID, ...). */
+  files: UploadedFile[];
   consent: boolean;
   locale: Locale;
   ip: string;
@@ -83,18 +85,14 @@ export async function registerFacility(deps: Deps, input: FacilitySignup): Promi
   const pwErr = checkPasswordPolicy(input.password, [input.contactName, name, email.split('@')[0] ?? '']);
   if (pwErr) errors['password'] = pwErr;
   if (licence.length < 3 || licence.length > 40) errors['licenceNumber'] = 'fac.licenceInvalid';
-  let docType: ReturnType<typeof sniffDocumentType> = null;
-  if (!input.licence) errors['licence'] = 'fac.licenceFileRequired';
-  else if (input.licence.data.length > cfg.MAX_UPLOAD_BYTES) errors['licence'] = 'join.cardTooLarge';
-  else if (!(docType = sniffDocumentType(input.licence.data))) errors['licence'] = 'join.cardInvalid';
+  const docs = checkDocuments(cfg, facilityDocs(input.kind), input.files, errors);
   if (!input.consent) errors['consent'] = 'auth.consentRequired';
-  if (Object.keys(errors).length || !phone || !input.licence || !docType || !isFacilityKind(input.kind)) return { errors };
+  if (Object.keys(errors).length || !phone || !isFacilityKind(input.kind)) return { errors };
   const kind = input.kind;
 
   if (!(await hitRateLimit(db, `signup:ip:${input.ip}`, LIMITS.signupPerIp.limit, LIMITS.signupPerIp.window))) throw tooManyRequests();
   const passwordHash = await hashPassword(input.password);
-  const file = input.licence;
-  const storageKey = await storage.put(file.data, docType.ext);
+  const keys = await storeDocuments(storage, docs);
   try {
     const userId = await db.transaction(async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
@@ -108,16 +106,13 @@ export async function registerFacility(deps: Deps, input: FacilitySignup): Promi
         `insert into facilities (user_id, kind, slug, name, licence_number, phone_e164) values ($1, $2, $3, $4, $5, $6)`,
         [id, kind, slug, name, licence, phone],
       );
-      await tx.query(
-        `insert into facility_documents (facility_id, kind, storage_key, mime_type, size_bytes, sha256) values ($1, 'licence', $2, $3, $4, $5)`,
-        [id, storageKey, docType!.mime, file.data.length, crypto.createHash('sha256').update(file.data).digest('hex')],
-      );
+      await insertDocuments(tx, 'facility_documents', id, docs, keys);
       await audit(tx, { actorId: id, action: 'facility.signup', entityType: 'facility', entityId: id, metadata: { kind }, ip: input.ip });
       return id;
     });
     return { userId };
   } catch (e) {
-    await storage.remove(storageKey);
+    await removeDocuments(storage, keys);
     if (isUniqueViolation(e, 'users_phone_e164_key')) return { errors: { phone: 'auth.phoneTaken' } };
     if (isUniqueViolation(e, 'users_email_key')) return { errors: { email: 'join.emailTaken' } };
     throw e;
@@ -453,7 +448,7 @@ export interface FacilityReviewDetail extends FacilityReviewItem {
   phone_e164: string;
   email: string | null;
   verification_note: string | null;
-  documents: { id: string; mime_type: string; size_bytes: number; uploaded_at: Date }[];
+  documents: { id: string; kind: FacilityDocKind; mime_type: string; size_bytes: number; uploaded_at: Date }[];
   branches: BranchRow[];
 }
 
@@ -466,7 +461,7 @@ export async function getFacilityForReview(db: Queryable, id: string): Promise<F
   );
   if (!rows[0]) throw notFound();
   const [docs, branches] = await Promise.all([
-    db.query<FacilityReviewDetail['documents'][number]>('select id, mime_type, size_bytes, uploaded_at from facility_documents where facility_id = $1 order by uploaded_at desc', [id]),
+    db.query<FacilityReviewDetail['documents'][number]>('select id, kind, mime_type, size_bytes, uploaded_at from facility_documents where facility_id = $1 order by uploaded_at', [id]),
     listOwnBranches(db, id),
   ]);
   return { ...rows[0], documents: docs.rows, branches };

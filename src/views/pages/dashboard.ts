@@ -183,7 +183,10 @@ export function todayPage(
                         noShowsOf(a) ? html`<span class="chip status-cancelled">${ctx.t('cbook.noShows', { n: noShowsOf(a) })}</span>` : ''}</span>`
                     : ''}<a class="muted" dir="ltr" href="tel:${a.patient_phone}">${formatEgyptMobile(a.patient_phone)}</a>${a.patient_email ? html`<a class="muted small" dir="ltr" href="mailto:${a.patient_email}">${a.patient_email}</a>` : ''}</span></td>
                 <td data-label="${ctx.t('dash.clinic')}">${a.clinic_name}</td>
-                <td data-label="${ctx.t('dash.type')}"><bdi>${visitLabel(ctx, a)}</bdi> <span class="muted small">· ${money(ctx, a.fee_egp)}</span></td>
+                <td data-label="${ctx.t('dash.type')}"><bdi>${visitLabel(ctx, a)}</bdi> <span class="muted small">· ${money(ctx, a.fee_egp)}</span>${
+                  a.pay_choice !== 'cash'
+                    ? html`<br><span class="pill small pay-pill">${ctx.t(`payopt.${a.pay_choice}` as MessageKey)}${a.pay_choice === 'instapay' ? html` · <bdi dir="ltr">${a.pay_ref ?? ctx.t('payopt.noRef')}</bdi>` : ''}</span>`
+                    : ''}</td>
                 <td class="muted" data-label="${ctx.t('dash.reason')}">${a.reason ?? '—'}</td>
                 <td data-label="${ctx.t('dash.status')}">${statusChip(ctx, a.status)}</td>
                 <td class="cell-actions"><div class="row-wrap">
@@ -433,6 +436,15 @@ export function profileEditPage(
         <span class="muted small">${ctx.t('dash.incomeToggleHint')}</span></div>
       <input type="hidden" name="show" value="${doctor.show_income ? 'no' : 'yes'}">
       <button type="submit" class="btn ${doctor.show_income ? 'btn-outline' : 'btn-primary'}">${ctx.t(doctor.show_income ? 'dash.incomeTurnOff' : 'dash.incomeTurnOn')}</button>
+    </form>
+    <form method="post" action="${href(ctx, '/dashboard/settings/instapay')}" class="panel stack-sm">
+      ${csrfField(ctx)}
+      <strong>${icon.instapay} ${ctx.t('payopt.settingTitle')} — ${ctx.t(doctor.instapay_address ? 'msgset.on' : 'msgset.off')}</strong>
+      <span class="muted small">${ctx.t('payopt.settingHint')}</span>
+      ${o.errors?.['instapay'] ? html`<p class="field-error" role="alert">${ctx.t(o.errors['instapay'])}</p>` : ''}
+      <div class="row-wrap"><label class="sr-only" for="instapay">${ctx.t('payopt.settingLabel')}</label>
+        <input id="instapay" name="instapay" dir="ltr" maxlength="100" value="${doctor.instapay_address ?? ''}" placeholder="name@instapay" autocomplete="off">
+        <button type="submit" class="btn btn-primary btn-sm">${ctx.t('common.save')}</button></div>
     </form>
     <form method="post" action="${href(ctx, '/dashboard/profile')}" class="panel stack">
       ${csrfField(ctx)}

@@ -141,7 +141,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
 const roleLabel = (ctx: Ctx, role: string) =>
   ctx.t(role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : role === 'facility' ? 'adm.roleFacility' : 'adm.rolePatient');
 
-export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; notice?: MessageKey; error?: MessageKey }): SafeHtml {
+export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; recent?: AccountRow[]; notice?: MessageKey; error?: MessageKey }): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const row = (a: AccountRow) => html`<li class="appt-row${a.status === 'suspended' ? ' muted-row' : ''}">
     <div class="stack-sm">
@@ -170,6 +170,15 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
           : html`<form method="post" action="${href(ctx, `/admin/accounts/${a.id}/reactivate`)}">${csrfField(ctx)}
               <input type="hidden" name="q" value="${o.q}">
               <button type="submit" class="btn btn-primary btn-sm">${ctx.t('adm.reactivate')}</button></form>`}
+      ${a.role === 'admin'
+        ? ''
+        : html`<details class="remove-account"><summary class="btn btn-ghost btn-sm danger">${ctx.t('adm.remove')}</summary>
+            <form method="post" action="${href(ctx, `/admin/accounts/${a.id}/remove`)}" class="stack-sm">${csrfField(ctx)}
+              <input type="hidden" name="q" value="${o.q}">
+              <p class="small">${ctx.t('adm.removeWarning')}</p>
+              <label class="small" for="confirm-${a.id}">${ctx.t('adm.removeType')}</label>
+              <input id="confirm-${a.id}" name="confirm" required autocomplete="off" dir="auto">
+              <button type="submit" class="btn btn-primary btn-sm danger-solid">${ctx.t('adm.removeConfirm')}</button></form></details>`}
     </div>
   </li>`;
   const content = html`
@@ -181,7 +190,10 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
       <input id="q" name="q" value="${o.q}" placeholder="${ctx.t('adm.searchPlaceholder')}" minlength="2" required>
       <button class="btn btn-primary" type="submit">${ctx.t('adm.search')}</button>
     </form>
-    ${o.results === null ? '' : o.results.length ? html`<ul class="appt-list">${o.results.map(row)}</ul>` : html`<p class="muted">${ctx.t('adm.noMatches')}</p>`}`;
+    ${o.results === null ? '' : o.results.length ? html`<ul class="appt-list">${o.results.map(row)}</ul>` : html`<p class="muted">${ctx.t('adm.noMatches')}</p>`}
+    ${o.results === null && o.recent
+      ? html`<h2 class="h3">${ctx.t('adm.recentAccounts')}</h2>${o.recent.length ? html`<ul class="appt-list">${o.recent.map(row)}</ul>` : html`<p class="muted">${ctx.t('adm.noMatches')}</p>`}`
+      : ''}`;
   return adminShell(ctx, 'accounts', ctx.t('adm.nav.accounts'), content);
 }
 

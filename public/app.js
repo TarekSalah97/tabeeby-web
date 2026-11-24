@@ -331,3 +331,52 @@
   if (!window.matchMedia || !window.matchMedia('(max-width: 900px)').matches) return;
   Array.prototype.forEach.call(document.querySelectorAll('details[data-close-on-phone]'), function (d) { d.open = false; });
 })();
+
+// Sign-up documents: show the chosen file's name, and show kind-specific documents (the radiation
+// licence) only when that kind is picked. Without JavaScript every box is shown.
+(function () {
+  Array.prototype.forEach.call(document.querySelectorAll('.doc-field input[type=file]'), function (input) {
+    input.addEventListener('change', function () {
+      var out = input.closest('.doc-field').querySelector('[data-file-name]');
+      if (out) out.textContent = input.files && input.files[0] ? '✓ ' + input.files[0].name : '';
+      input.closest('.doc-field').classList.toggle('has-file', !!(input.files && input.files[0]));
+    });
+  });
+  var only = document.querySelectorAll('[data-only-kind]');
+  if (!only.length) return;
+  function sync() {
+    var picked = document.querySelector('input[name=kind]:checked');
+    Array.prototype.forEach.call(only, function (box) {
+      var show = !!picked && picked.value === box.getAttribute('data-only-kind');
+      box.hidden = !show;
+      var input = box.querySelector('input[type=file]');
+      if (input) input.required = show;
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=kind]'), function (r) { r.addEventListener('change', sync); });
+  sync();
+})();
+
+// Buttons that ask before doing something (data-confirm="question").
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('[data-confirm]') : null;
+  if (b && !window.confirm(b.getAttribute('data-confirm'))) e.preventDefault();
+});
+
+// Visit photos: show how many are chosen; on a saved visit, upload straight after choosing.
+(function () {
+  Array.prototype.forEach.call(document.querySelectorAll('.photo-pickers'), function (box) {
+    var inputs = box.querySelectorAll('input[type=file]');
+    var count = box.querySelector('[data-photo-count]');
+    var form = box.closest('form');
+    var original = count ? count.textContent : '';
+    Array.prototype.forEach.call(inputs, function (input) {
+      input.addEventListener('change', function () {
+        var n = 0;
+        Array.prototype.forEach.call(inputs, function (i) { n += i.files ? i.files.length : 0; });
+        if (count) count.textContent = n ? '✓ ' + n + ' 📷' : original;
+        if (n && form && form.hasAttribute('data-photo-form')) form.submit();
+      });
+    });
+  });
+})();

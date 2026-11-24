@@ -23,13 +23,13 @@ import {
   patientsListPage, newRecordPage, editRecordPage, recordPage, recordValuesFrom, newVisitPage, visitPage,
   prescriptionPrintPage, labOrderPrintPage, type RxFormValues, type LabFormValues,
 } from '../views/pages/records.js';
-import { requireDoctor } from './dashboard.js';
+import { requireDoctor, type DoctorArea } from './dashboard.js';
 import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
 import { patientGatePage } from '../views/pages/auth.js';
 
 /** A signed-in doctor whose clinical records are switched on. Everyone else gets "not found". */
-async function recordsDoctor(ctx: Ctx): Promise<{ user: SessionUser; doctor: OwnDoctor } | null> {
-  const user = requireDoctor(ctx);
+async function recordsDoctor(ctx: Ctx, area: DoctorArea = 'doctor'): Promise<{ user: SessionUser; doctor: OwnDoctor } | null> {
+  const user = requireDoctor(ctx, area);
   if (!user) return null;
   const doctor = await getOwnDoctor(ctx.deps.db, user.id);
   if (!doctor.records_enabled) throw notFound();
@@ -131,7 +131,7 @@ export function recordsRoutes(r: Router): void {
 
   // ---- doctor: patient files
   r.get('/dashboard/patients', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const q = ctx.query.get('q') ?? '';
     const notice = noticeFrom(ctx);
@@ -139,13 +139,13 @@ export function recordsRoutes(r: Router): void {
   });
 
   r.get('/dashboard/patients/new', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     sendHtml(ctx, 200, newRecordPage(ctx, d.doctor, { values: {}, habits: [] }));
   });
 
   r.get('/dashboard/appointments/:id/file', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const f = await fileForAppointment(ctx.deps.db, d.user.id, uuidParam(ctx, 'id'));
     if (f.kind === 'existing') return redirect(ctx, href(ctx, `/dashboard/patients/${f.recordId}/visits/new`, { appointment: ctx.params['id'], ...(f.matched ? { ok: 'fileFoundByPhone' } : {}) }));
@@ -153,7 +153,7 @@ export function recordsRoutes(r: Router): void {
   });
 
   r.post('/dashboard/patients', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const { input, values, habits } = recordForm(ctx);
     const appointmentId = optionalUuid(formValue(ctx, 'appointment'));
@@ -177,48 +177,48 @@ export function recordsRoutes(r: Router): void {
   });
 
   r.get('/dashboard/patients/:id', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const id = uuidParam(ctx, 'id');
     const record = await getRecord(ctx.deps.db, d.user.id, id);
     await auditRecordView(ctx.deps.db, d.user.id, id, ctx.ip);
     const notice = noticeFrom(ctx);
-    sendHtml(ctx, 200, recordPage(ctx, d.doctor, record, await listVisits(ctx.deps.db, d.user.id, id), notice ? { kind: 'success', key: notice } : undefined));
+    sendHtml(ctx, 200, recordPage(ctx, d.doctor, record, d.user.actingAssistantId ? [] : await listVisits(ctx.deps.db, d.user.id, id), notice ? { kind: 'success', key: notice } : undefined));
   });
 
   // ---- link a walk-in file to the patient's Tabeeby account with the code they show
   r.post('/dashboard/patients/:id/link-code', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const id = uuidParam(ctx, 'id');
     const check = await checkLinkCode(ctx.deps, d.user.id, id, formValue(ctx, 'code'));
     const record = await getRecord(ctx.deps.db, d.user.id, id);
-    const visits = await listVisits(ctx.deps.db, d.user.id, id);
+    const visits = d.user.actingAssistantId ? [] : await listVisits(ctx.deps.db, d.user.id, id);
     if (!check.ok) return sendHtml(ctx, 422, recordPage(ctx, d.doctor, record, visits, { kind: 'error', key: check.error }));
     sendHtml(ctx, 200, recordPage(ctx, d.doctor, record, visits, undefined, { owner: check.owner, code: check.code }));
   });
 
   r.post('/dashboard/patients/:id/link-code/confirm', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const id = uuidParam(ctx, 'id');
     const problem = await confirmLinkCode(ctx.deps, d.user.id, id, formValue(ctx, 'code'), ctx.ip);
     if (problem) {
       const record = await getRecord(ctx.deps.db, d.user.id, id);
-      return sendHtml(ctx, 422, recordPage(ctx, d.doctor, record, await listVisits(ctx.deps.db, d.user.id, id), { kind: 'error', key: problem }));
+      return sendHtml(ctx, 422, recordPage(ctx, d.doctor, record, d.user.actingAssistantId ? [] : await listVisits(ctx.deps.db, d.user.id, id), { kind: 'error', key: problem }));
     }
     redirect(ctx, href(ctx, `/dashboard/patients/${id}`, { ok: 'fileLinkedByCode' }));
   });
 
   r.get('/dashboard/patients/:id/edit', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const record = await getRecord(ctx.deps.db, d.user.id, uuidParam(ctx, 'id'));
     sendHtml(ctx, 200, editRecordPage(ctx, d.doctor, record, { values: recordValuesFrom(record), habits: record.habits }));
   });
 
   r.post('/dashboard/patients/:id', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const id = uuidParam(ctx, 'id');
     const { input, values, habits } = recordForm(ctx);
@@ -231,7 +231,7 @@ export function recordsRoutes(r: Router): void {
   });
 
   r.post('/dashboard/patients/:id/link', async (ctx) => {
-    const d = await recordsDoctor(ctx);
+    const d = await recordsDoctor(ctx, 'files');
     if (!d) return;
     const id = uuidParam(ctx, 'id');
     const appointmentId = optionalUuid(formValue(ctx, 'appointment'));

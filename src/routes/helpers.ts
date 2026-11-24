@@ -31,6 +31,8 @@ const NOTICES: Record<string, MessageKey> = {
   paid: 'pay.paidDone',
   incomeOn: 'dash.incomeOnDone',
   payRef: 'payopt.refSaved',
+  teamUpdated: 'team.updated',
+  teamRemoved: 'team.removed',
   accountRemoved: 'adm.removed',
   rxSent: 'rxsend.done.sent',
   rxRequestCancelled: 'rxsend.done.cancelled',
@@ -91,7 +93,7 @@ export async function startSession(ctx: Ctx, userId: string, role: Role): Promis
 }
 
 export function homeFor(ctx: Ctx, role: Role): string {
-  return href(ctx, role === 'doctor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'facility' ? '/facility' : '/');
+  return href(ctx, role === 'doctor' || role === 'assistant' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'facility' ? '/facility' : '/');
 }
 
 /** Turn a stored locale-less path ("/dashboard") into the current-locale URL. */

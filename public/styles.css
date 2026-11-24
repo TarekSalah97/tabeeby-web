@@ -817,9 +817,9 @@ img.avatar.photo { object-fit: cover; display: block; background: var(--primary-
 .contact-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn-whatsapp { background: #1f9e55; border-color: #1f9e55; color: #fff; }
 .btn-whatsapp:hover { background: #178046; }
-.faq { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 10px 14px; }
-.faq summary { cursor: pointer; font-weight: 600; }
-.faq p { margin: 8px 0 0; }
+.faq { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.faq summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; min-height: 48px; padding: 10px 16px; }
+.faq p { margin: 0; padding: 0 16px 14px; }
 
 /* Linking a walk-in file to the patient's account with a code */
 .link-panel summary, .link-code-card summary { cursor: pointer; }
@@ -1055,3 +1055,11 @@ input.dictating, textarea.dictating { border-color: #c0392b; box-shadow: 0 0 0 3
 .doc-field input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .doc-field .dropzone { position: relative; cursor: pointer; }
 .doc-field input[type=file]:focus-visible + * , .doc-field .dropzone:focus-within { outline: 3px solid #2f7de1; outline-offset: 2px; }
+
+/* Phones: every text box, select and button at least 44px tall (WCAG 2.5.5 / Apple HIG) */
+@media (max-width: 900px) {
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select, textarea { min-height: 44px; font-size: 16px; }
+  .search-form .search-field input, .search-form .search-field select { min-height: 44px; }
+  .btn, button.btn, a.btn { min-height: 44px; }
+  .btn-sm { min-height: 40px; }
+}

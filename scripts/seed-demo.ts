@@ -222,6 +222,20 @@ const SCHEDULE_TO = '22:00';
  * (account patients and walk-ins, new visits and follow-ups). The other half stays free so the
  * doctor and patients can still book. Rebuilt on every start, so the days follow the real date.
  */
+/** A demo secretary for the first doctor (Dr. Ahmed Hassan), allowed schedule and patient files. */
+async function ensureDemoSecretary(tx: Queryable, doctorId: string, hash: string): Promise<void> {
+  const { rows } = await tx.query<{ id: string }>(
+    `insert into users (role, full_name, phone_e164, password_hash, phone_verified_at, preferred_locale)
+     values ('assistant', 'Mona Secretary', '+201000000501', $1, now(), 'ar')
+     on conflict (phone_e164) do update set password_hash = excluded.password_hash returning id`,
+    [hash],
+  );
+  await tx.query(
+    `insert into doctor_assistants (user_id, doctor_id, access) values ($1, $2, 'files') on conflict (user_id) do nothing`,
+    [rows[0]!.id, doctorId],
+  );
+}
+
 async function refreshComingDays(tx: Queryable, doctor: { userId: string; clinicId: string }, patientIds: string[]): Promise<number> {
   await tx.query('savepoint demo_days');
   try {
@@ -382,6 +396,7 @@ try {
     if (already.rows.length) {
       const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
       const days = await refreshComingDays(tx, doctors[0]!, patientIds);
+      await ensureDemoSecretary(tx, doctors[0]!.userId, await hashPassword(DEMO_PASSWORD));
       const res = await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
       return `Accounts refreshed; visit history already present; ${q} visits in today's demo queue; ${days} booked visits today to the day after tomorrow; ${res} new demo results.`;
     }
@@ -503,12 +518,13 @@ try {
     }
     const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
     const days = await refreshComingDays(tx, doctors[0]!, patientIds);
+    await ensureDemoSecretary(tx, doctors[0]!.userId, hash);
     await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
     return `Added ${visits} completed visits with notes across ${DOCTORS.length} doctors; ${q} visits in today's demo queue; ${days} booked visits today to the day after tomorrow.`;
   });
   clearReferenceCache();
   console.log(summary);
-  console.log(`Demo logins (password ${DEMO_PASSWORD}): patients 01000000201..224, doctors 01000000101..109, pharmacies/labs/scan centres 01000000301..323`);
+  console.log(`Demo logins (password ${DEMO_PASSWORD}): patients 01000000201..224, doctors 01000000101..109, pharmacies/labs/scan centres 01000000301..323, secretary 01000000501`);
 } finally {
   await db.end();
 }

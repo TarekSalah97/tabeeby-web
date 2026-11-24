@@ -7,14 +7,14 @@ import { emailEnabled } from '../../config.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import type { MessageKey } from '../../i18n/index.js';
 import { maskEgyptMobile } from '../../domain/phone.js';
-import { DEMO_PASSWORD, DEMO_PATIENT_RANGE, DEMO_DOCTOR_RANGE, DEMO_FACILITY_RANGE } from '../../demo.js';
+import { DEMO_PASSWORD, DEMO_PATIENT_RANGE, DEMO_DOCTOR_RANGE, DEMO_FACILITY_RANGE, DEMO_SECRETARY } from '../../demo.js';
 
 export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; next?: string | null }): SafeHtml {
   const body = html`<div class="container page auth-page">
     <div class="auth-card">
       <h1>${ctx.t('auth.signInTitle')}</h1>
       ${ctx.deps.cfg.DEMO_MODE
-        ? alert('info', html`${ctx.t('demo.patient')}: <span dir="ltr">${DEMO_PATIENT_RANGE}</span><br>${ctx.t('demo.doctor')}: <span dir="ltr">${DEMO_DOCTOR_RANGE}</span><br>${ctx.t('demo.facility')}: <span dir="ltr">${DEMO_FACILITY_RANGE}</span>`, ctx.t('demo.logins', { password: DEMO_PASSWORD }))
+        ? alert('info', html`${ctx.t('demo.patient')}: <span dir="ltr">${DEMO_PATIENT_RANGE}</span><br>${ctx.t('demo.doctor')}: <span dir="ltr">${DEMO_DOCTOR_RANGE}</span><br>${ctx.t('demo.facility')}: <span dir="ltr">${DEMO_FACILITY_RANGE}</span><br>${ctx.t('adm.roleAssistant')}: <span dir="ltr">${DEMO_SECRETARY}</span>`, ctx.t('demo.logins', { password: DEMO_PASSWORD }))
         : ''}
       ${o.error ? alert('error', ctx.t(o.error)) : ''}
       <form method="post" action="${href(ctx, '/login')}" class="stack" novalidate>
@@ -150,7 +150,7 @@ export function patientGatePage(ctx: Ctx, kind: 'appointments' | 'prescriptions'
       <h1>${ctx.t(title)}</h1>
       ${staff
         ? html`<p class="muted">${ctx.t('gate.staffLead')}</p>
-           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' ? '/dashboard' : ctx.user!.role === 'facility' ? '/facility' : '/admin')}">${ctx.t(ctx.user!.role === 'admin' ? 'nav.admin' : 'nav.dashboard')}</a>`
+           <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, ctx.user!.role === 'doctor' || ctx.user!.role === 'assistant' ? '/dashboard' : ctx.user!.role === 'facility' ? '/facility' : '/admin')}">${ctx.t(ctx.user!.role === 'admin' ? 'nav.admin' : 'nav.dashboard')}</a>`
         : html`<p class="muted">${ctx.t(`gate.${kind}Lead`)}</p>
            <a class="btn btn-primary btn-lg btn-block" href="${href(ctx, '/login', { next: returnTo })}">${ctx.t('gate.signIn')}</a>
            <a class="btn btn-outline btn-lg btn-block" href="${href(ctx, '/signup', { next: returnTo })}">${ctx.t('gate.signUp')}</a>

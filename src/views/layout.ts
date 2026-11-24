@@ -1,4 +1,4 @@
-import { html, type SafeHtml } from './html.js';
+import { html, trusted, type SafeHtml } from './html.js';
 import type { Ctx } from '../http/context.js';
 import { href, alternateHref } from '../http/context.js';
 import { csrfField, icon } from './components.js';
@@ -12,6 +12,10 @@ export interface PageOpts {
   /** 'site' = patient site, 'doctors' = dark doctor marketing header, 'app' = no marketing footer */
   variant?: 'site' | 'doctors' | 'app';
   noindex?: boolean;
+  /** Full URL of the picture shown when the page is shared (default: the Tabeeby share card). */
+  image?: string;
+  /** Structured data for search engines (schema.org), e.g. a doctor's profile. */
+  jsonLd?: Record<string, unknown>;
 }
 
 function userMenu(ctx: Ctx): SafeHtml {
@@ -21,7 +25,7 @@ function userMenu(ctx: Ctx): SafeHtml {
       <a class="btn btn-primary" href="${href(ctx, '/join')}">${ctx.t('nav.signUp')}</a>`;
   }
   const home =
-    u.role === 'doctor'
+    u.role === 'doctor' || u.role === 'assistant'
       ? html`<a class="btn btn-ghost" href="${href(ctx, '/dashboard')}">${ctx.t('nav.dashboard')}</a>`
       : u.role === 'admin'
         ? html`<a class="btn btn-ghost" href="${href(ctx, '/admin')}">${ctx.t('nav.admin')}</a>`
@@ -43,8 +47,8 @@ function mobileMenu(ctx: Ctx, variant: string): SafeHtml {
   const account = !u
     ? html`<a class="btn btn-outline btn-block" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>
         <a class="btn btn-primary btn-block" href="${href(ctx, '/join')}">${ctx.t('nav.signUp')}</a>`
-    : html`${u.role === 'doctor' || u.role === 'facility'
-          ? link(u.role === 'doctor' ? '/dashboard' : '/facility', ctx.t('nav.dashboard'))
+    : html`${u.role === 'doctor' || u.role === 'assistant' || u.role === 'facility'
+          ? link(u.role === 'doctor' || u.role === 'assistant' ? '/dashboard' : '/facility', ctx.t('nav.dashboard'))
           : u.role === 'admin' ? link('/admin', ctx.t('nav.admin')) : link('/appointments', ctx.t('nav.myAppointments'))}
         <form method="post" action="${href(ctx, '/logout')}">${csrfField(ctx)}
           <button type="submit" class="btn btn-outline btn-block">${ctx.t('nav.signOut')}</button></form>`;
@@ -88,6 +92,7 @@ export function layout(ctx: Ctx, o: PageOpts): SafeHtml {
   const dir = ctx.locale === 'ar' ? 'rtl' : 'ltr';
   const origin = ctx.deps.cfg.PUBLIC_ORIGIN;
   const p = ctx.path === '/' ? '' : ctx.path;
+  const canonical = ctx.locale === 'ar' ? `${origin}${p || '/'}` : `${origin}/en${p}`;
   return html`<html lang="${ctx.locale}" dir="${dir}">
 <head>
 <meta charset="utf-8">
@@ -95,6 +100,16 @@ export function layout(ctx: Ctx, o: PageOpts): SafeHtml {
 <title>${o.title}</title>
 ${o.description ? html`<meta name="description" content="${o.description}">` : ''}
 ${o.noindex || ctx.deps.cfg.DEMO_MODE ? html`<meta name="robots" content="noindex">` : ''}
+<link rel="canonical" href="${canonical}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${ctx.t('brand')}">
+<meta property="og:title" content="${o.title}">
+${o.description ? html`<meta property="og:description" content="${o.description}">` : ''}
+<meta property="og:url" content="${canonical}">
+<meta property="og:image" content="${o.image ?? `${origin}/static/og.jpg`}">
+<meta property="og:locale" content="${ctx.locale === 'ar' ? 'ar_EG' : 'en_US'}">
+<meta name="twitter:card" content="summary_large_image">
+${o.jsonLd ? trusted(`<script type="application/ld+json">${JSON.stringify(o.jsonLd).replace(/</g, '\\u003c')}</script>`) : ''}
 <link rel="alternate" hreflang="ar" href="${origin}${p || '/'}">
 <link rel="alternate" hreflang="en" href="${origin}/en${p}">
 <link rel="icon" href="/static/favicon.svg?v=${assetVersion(STATIC_ROOT, 'favicon.svg')}" type="image/svg+xml">

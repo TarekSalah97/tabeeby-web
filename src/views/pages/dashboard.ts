@@ -20,18 +20,27 @@ import type { PaymentMethod } from '../../services/payments.js';
 import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
 import type { Slot } from '../../domain/availability.js';
 
-export type Section = 'today' | 'messages' | 'income' | 'insights' | 'patients' | 'clinics' | 'hours' | 'profile';
+export type Section = 'today' | 'messages' | 'income' | 'insights' | 'patients' | 'clinics' | 'hours' | 'profile' | 'team' | 'book';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   // Menu: Schedule, Patients, Messages, Income (if the doctor uses it), Profile (which holds clinics and hours).
-  const items: { key: Section; path: string; label: MessageKey }[] = [
-    { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
-    ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
-    { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
-    ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
-    { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
-    { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
-  ];
+  const staff = ctx.user?.role === 'assistant' ? ctx.user.staff : undefined;
+  const items: { key: Section; path: string; label: MessageKey }[] = staff
+    ? [
+        // A secretary sees only what they may use.
+        { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
+        { key: 'book', path: '/dashboard/book', label: 'cbook.title' },
+        ...(doctor.records_enabled && staff.access === 'files' ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
+      ]
+    : [
+        { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
+        ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
+        { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
+        ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
+        { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
+        { key: 'team', path: '/dashboard/team', label: 'team.title' },
+        { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
+      ];
   const inProfile = section === 'profile' || section === 'clinics' || section === 'hours';
   const profileTabs: { key: Section; path: string; label: MessageKey }[] = [
     { key: 'profile', path: '/dashboard/profile', label: 'dash.tab.details' },
@@ -49,6 +58,7 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
           : html``;
   const body = html`<div class="dash">
     <nav class="dash-nav" aria-label="${ctx.t('dash.nav')}">
+      ${staff ? html`<p class="dash-nav-title">${ctx.t('team.workingFor', { doctor: staff.doctorName })}</p>` : ''}
       <ul>${items.map(
         (i) => html`<li><a href="${href(ctx, i.path)}"${attrIf(i.key === section || (i.key === 'profile' && inProfile), 'aria-current="page"')}>${ctx.t(i.label)}${
           i.key === 'messages' && ctx.unreadMessages ? html` <span class="count-badge inline" aria-label="${ctx.t('msg.unreadCount', { n: ctx.unreadMessages })}">${ctx.unreadMessages}</span>` : ''
@@ -91,6 +101,7 @@ export function todayPage(
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
+  const secretary = ctx.user?.role === 'assistant' ? ctx.user.staff : undefined;
   const tz = ctx.deps.cfg.TIME_ZONE;
   const live = o.appointments.filter((a) => a.status !== 'cancelled');
   const done = live.filter((a) => a.status === 'completed').length;
@@ -107,7 +118,7 @@ export function todayPage(
     !o.clinics.length || !o.rules.length
       ? html`<div class="panel stack-sm"><strong>${ctx.t('dash.setupTitle')}</strong><div class="row-wrap">
           ${!o.clinics.length ? html`<a class="btn btn-primary" href="${href(ctx, '/dashboard/clinics')}">${ctx.t('dash.setupClinic')}</a>` : ''}
-          ${o.clinics.length && !o.rules.length ? html`<a class="btn btn-primary" href="${href(ctx, '/dashboard/hours')}">${ctx.t('dash.setupHours')}</a>` : ''}
+          ${!secretary && o.clinics.length && !o.rules.length ? html`<a class="btn btn-primary" href="${href(ctx, '/dashboard/hours')}">${ctx.t('dash.setupHours')}</a>` : ''}
         </div></div>`
       : '';
 
@@ -134,7 +145,7 @@ export function todayPage(
       : alert('warning', ctx.t('strike.countBody', { n: strikes.active, limit: strikes.limit }))
     : '';
   const isPast = o.date < todayIn(tz, ctx.deps.now());
-  const dayOff = !isPast && canBook
+  const dayOff = !secretary && !isPast && canBook
     ? html`<details class="panel day-off"><summary class="h3">${ctx.t('dayoff.title')}</summary>
         <form method="post" action="${href(ctx, '/dashboard/day-off')}" class="stack-sm">${csrfField(ctx)}
           <input type="hidden" name="date" value="${o.date}">
@@ -147,7 +158,8 @@ export function todayPage(
   const content = html`
     ${strikeBanner}
     <div class="row-between">
-      <div><h1>${ctx.t('dash.greeting', { name: doctor.full_name })}</h1><p class="muted">${dayLabel}</p></div>
+      <div><h1>${ctx.t('dash.greeting', { name: secretary ? ctx.user!.fullName : doctor.full_name })}</h1>
+        <p class="muted">${secretary ? html`${ctx.t('team.workingFor', { doctor: doctor.full_name })} · ` : ''}${dayLabel}</p></div>
       ${canBook ? html`<a class="btn btn-primary btn-lg" href="${href(ctx, '/dashboard/book', { date: o.date })}">${icon.plus}${ctx.t('cbook.add')}</a>` : ''}
     </div>
     ${setup}
@@ -201,7 +213,7 @@ export function todayPage(
                       ? markPaidForm(ctx, a.id, a.fee_egp, { date: o.date }, { big: a.status === 'completed' })
                       : ''}
                   ${canBook && (a.status === 'completed' || a.status === 'in_consultation') ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard/book', { from: a.id, date: addDays(todayIn(tz, ctx.deps.now()), 7) })}">${ctx.t('cbook.bookFollowUp')}</a>` : ''}
-                  ${doctor.records_enabled && a.status !== 'cancelled' ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
+                  ${doctor.records_enabled && a.status !== 'cancelled' && (!secretary || secretary.access === 'files') ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
                 </div></td>
               </tr>`;
             })}</tbody></table></div>`

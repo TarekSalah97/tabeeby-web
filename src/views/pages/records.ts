@@ -258,7 +258,7 @@ export function recordPage(
         <p class="muted">${[patientFacts(ctx, r), phone ? formatEgyptMobile(phone) : ''].filter(Boolean).join(sep(ctx))}</p>
         <p class="hint">${ctx.t(r.patient_user_id ? 'records.linkedNote' : 'records.walkInNote')}</p></div>
       <div class="row-wrap">
-        <a class="btn btn-primary" href="${href(ctx, `/dashboard/patients/${r.id}/visits/new`)}">${ctx.t('visit.new')}</a>
+        ${isSecretary(ctx) ? '' : html`<a class="btn btn-primary" href="${href(ctx, `/dashboard/patients/${r.id}/visits/new`)}">${ctx.t('visit.new')}</a>`}
         <a class="btn btn-outline" href="${href(ctx, `/dashboard/patients/${r.id}/edit`)}">${ctx.t('records.edit')}</a>
       </div>
     </div>
@@ -285,7 +285,9 @@ export function recordPage(
         </dl>
       </section>
     </div>
-    <section class="panel stack">
+    ${isSecretary(ctx)
+      ? html`<p class="hint">${ctx.t('team.visitsDoctorOnly')}</p>`
+      : html`<section class="panel stack">
       <h2>${ctx.t('visit.history')}</h2>
       ${visits.length
         ? html`<ol class="visit-timeline">${visits.map(
@@ -300,7 +302,7 @@ export function recordPage(
               </span></a></li>`,
           )}</ol>`
         : html`<p class="muted">${ctx.t('records.noVisits')}</p>`}
-    </section>`;
+    </section>`}`;
   return shell(ctx, doctor, 'patients', content, notice);
 }
 
@@ -418,6 +420,9 @@ function photoPickers(ctx: Ctx, prefix: string): SafeHtml {
     <p class="hint" data-photo-count>${ctx.t('vphoto.hint', { n: PHOTOS_PER_UPLOAD })}</p>
   </div>`;
 }
+
+/** A secretary working in the doctor's dashboard (visit notes stay with the doctor). */
+export const isSecretary = (ctx: Ctx): boolean => ctx.user?.role === 'assistant';
 
 // ---------------------------------------------------------------- new visit
 

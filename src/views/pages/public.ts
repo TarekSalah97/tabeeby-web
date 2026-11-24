@@ -495,7 +495,26 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
     </aside>
   </div>
   ${stickyActions(ctx, d, booking.clinicId, ref)}`;
-  return layout(ctx, { title: `${d.fullName} — ${title} — ${ctx.t('brand')}`, description: `${d.fullName}: ${title}`, body });
+  const origin = ctx.deps.cfg.PUBLIC_ORIGIN;
+  const photo = d.photoVersion ? `${origin}/photos/doctors/${d.slug}?v=${d.photoVersion}` : undefined;
+  const district = clinic ? ref.districtById.get(clinic.districtId) : undefined;
+  // schema.org data so search engines can show the doctor's specialty, area, price and rating.
+  const jsonLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Physician',
+    name: d.fullName,
+    url: `${origin}${ctx.locale === 'en' ? '/en' : ''}/doctors/${d.slug}`,
+    ...(photo ? { image: photo } : {}),
+    ...(spec ? { medicalSpecialty: spec.name_en } : {}),
+    ...(clinic ? {
+      address: { '@type': 'PostalAddress', streetAddress: clinic.address, addressLocality: district ? pick(ctx.locale, district) : 'Alexandria', addressCountry: 'EG' },
+      ...(clinic.phone ? { telephone: clinic.phone } : {}),
+    } : {}),
+    ...(d.minFee !== null ? { priceRange: `EGP ${d.minFee}+` } : {}),
+    ...(d.rating && d.rating.count > 0 ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: d.rating.avg.toFixed(1), reviewCount: d.rating.count, bestRating: 5 } } : {}),
+  };
+  const desc = [title, clinic?.name, d.minFee !== null ? ctx.t('common.egp', { amount: String(d.minFee) }) : null].filter(Boolean).join(' · ');
+  return layout(ctx, { title: `${d.fullName} — ${title} — ${ctx.t('brand')}`, description: `${d.fullName}: ${desc}`, body, image: photo, jsonLd });
 }
 
 /** "Contact us / Get help": the support numbers (call or WhatsApp) and answers to common questions. */

@@ -1,3 +1,7 @@
+import { teamPage, teamJoinPage } from '../views/pages/team.js';
+import { listTeam, addTeamMember, setTeamAccess, reinviteTeamMember, removeTeamMember, findInvite, acceptInvite } from '../services/team.js';
+import { forbidden } from '../http/errors.js';
+import { markActingAssistant } from '../http/actor.js';
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { yearToMonth } from '../domain/experience.js';
@@ -5,7 +9,7 @@ import { href, requireUser } from '../http/context.js';
 import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { fieldAll } from '../http/body.js';
-import type { SessionUser } from '../auth/sessions.js';
+import { destroySession, type SessionUser } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
   getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
@@ -30,10 +34,30 @@ import { DomainError, notFound } from '../http/errors.js';
 import { isUuid } from '../http/router.js';
 import { isMessageKey, type MessageKey } from '../i18n/index.js';
 import type { AppointmentStatus } from '../domain/appointmentStatus.js';
-import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
+import { formValue, noticeFrom, errorFrom, uuidParam, startSession } from './helpers.js';
 
 /** Doctors must have verified their phone before using the dashboard. */
-export function requireDoctor(ctx: Ctx): SessionUser | null {
+/**
+ * Where in the doctor's dashboard a page sits:
+ *   'doctor'   — the doctor only (default: notes, prescriptions, income, settings, messages);
+ *   'schedule' — also the doctor's secretaries (the day, bookings, arrivals, payments);
+ *   'files'    — also secretaries the doctor allowed to manage patient files.
+ * A secretary gets back the doctor's identity (so every query stays scoped to that doctor);
+ * the audit log still records the secretary as the one who acted.
+ */
+export type DoctorArea = 'doctor' | 'schedule' | 'files';
+
+export function requireDoctor(ctx: Ctx, area: DoctorArea = 'doctor'): SessionUser | null {
+  const u = ctx.user;
+  if (u?.role === 'assistant') {
+    const staff = u.staff;
+    if (!staff || area === 'doctor' || (area === 'files' && staff.access !== 'files')) throw forbidden('secretary: not allowed here');
+    markActingAssistant(u.id, staff.doctorId);
+    return {
+      id: staff.doctorId, role: 'doctor', fullName: staff.doctorName, phone: staff.doctorPhone, phoneVerified: true,
+      locale: staff.doctorLocale, actingAssistantId: u.id,
+    };
+  }
   const user = requireUser(ctx, 'doctor');
   if (smsEnabled(ctx.deps.cfg) && !user.phoneVerified) {
     redirect(ctx, href(ctx, '/verify-phone', { next: '/dashboard' }));
@@ -97,7 +121,7 @@ async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Reco
 
 export function dashboardRoutes(r: Router): void {
   r.get('/dashboard', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const db = ctx.deps.db;
     const tz = ctx.deps.cfg.TIME_ZONE;
@@ -138,7 +162,7 @@ export function dashboardRoutes(r: Router): void {
 
   // --- Payments ------------------------------------------------------------
   r.post('/dashboard/appointments/:id/pay', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const id = uuidParam(ctx, 'id');
     const date = formValue(ctx, 'date');
@@ -196,6 +220,66 @@ export function dashboardRoutes(r: Router): void {
     redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'photoRemoved' }));
   });
 
+  // ---- Team: the doctor's secretaries
+  const renderTeam = async (ctx: Ctx, user: SessionUser, extra: Partial<Parameters<typeof teamPage>[3]> = {}, status = 200) =>
+    sendHtml(ctx, status, teamPage(ctx, await getOwnDoctor(ctx.deps.db, user.id), await listTeam(ctx.deps.db, user.id), { notice: ok(ctx), ...extra }));
+  const inviteLink = (ctx: Ctx, token: string) => `${ctx.deps.cfg.PUBLIC_ORIGIN}${href(ctx, `/team/join/${token}`)}`;
+
+  r.get('/dashboard/team', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (user) await renderTeam(ctx, user);
+  });
+
+  r.post('/dashboard/team', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const values = { fullName: formValue(ctx, 'fullName'), phone: formValue(ctx, 'phone'), access: formValue(ctx, 'access') };
+    const result = await addTeamMember(ctx.deps, user.id, values, ctx.ip);
+    if ('errors' in result) return renderTeam(ctx, user, { values, errors: result.errors }, 422);
+    // The link is shown once, on this page (never put in an address or stored readable).
+    await renderTeam(ctx, user, { invite: { link: inviteLink(ctx, result.token), name: result.name } });
+  });
+
+  r.post('/dashboard/team/:id/access', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const err = await setTeamAccess(ctx.deps, user.id, uuidParam(ctx, 'id'), formValue(ctx, 'access'), ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/team', err ? { error: err } : { ok: 'teamUpdated' }));
+  });
+
+  r.post('/dashboard/team/:id/reinvite', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    const result = await reinviteTeamMember(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    await renderTeam(ctx, user, { invite: { link: inviteLink(ctx, result.token), name: result.name } });
+  });
+
+  r.post('/dashboard/team/:id/remove', async (ctx) => {
+    const user = requireDoctor(ctx);
+    if (!user) return;
+    await removeTeamMember(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/team', { ok: 'teamRemoved' }));
+  });
+
+  // The secretary opens the doctor's invite link and chooses a password.
+  r.get('/team/join/:token', async (ctx) => {
+    const token = ctx.params['token'] ?? '';
+    const invite = await findInvite(ctx.deps.db, token);
+    sendHtml(ctx, invite ? 200 : 410, teamJoinPage(ctx, invite ? { token, name: invite.full_name, doctor: invite.doctor_name, phone: invite.phone_e164 } : null));
+  });
+
+  r.post('/team/join/:token', async (ctx) => {
+    const token = ctx.params['token'] ?? '';
+    const result = await acceptInvite(ctx.deps, token, formValue(ctx, 'password'), ctx.ip);
+    if ('error' in result) {
+      const invite = await findInvite(ctx.deps.db, token);
+      return sendHtml(ctx, 422, teamJoinPage(ctx, invite ? { token, name: invite.full_name, doctor: invite.doctor_name, phone: invite.phone_e164, error: result.error } : null));
+    }
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, result.userId, 'assistant');
+    redirect(ctx, href(ctx, '/dashboard'));
+  });
+
   r.post('/dashboard/settings/instapay', async (ctx) => {
     const user = requireDoctor(ctx);
     if (!user) return;
@@ -242,7 +326,7 @@ export function dashboardRoutes(r: Router): void {
   });
 
   r.get('/dashboard/appointments/:id/receipt', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const receipt = await getReceipt(ctx.deps.db, user, uuidParam(ctx, 'id'));
     sendHtml(ctx, 200, receiptPage(ctx, receipt, href(ctx, '/dashboard/income')));
@@ -280,7 +364,7 @@ export function dashboardRoutes(r: Router): void {
   };
 
   r.get('/dashboard/book', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const clinic = ctx.query.get('clinic');
     const from = ctx.query.get('from');
@@ -288,7 +372,7 @@ export function dashboardRoutes(r: Router): void {
   });
 
   r.post('/dashboard/book', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const clinicId = formValue(ctx, 'clinic');
     const from = formValue(ctx, 'from');
@@ -324,7 +408,7 @@ export function dashboardRoutes(r: Router): void {
   });
 
   r.post('/dashboard/appointments/:id/status', async (ctx) => {
-    const user = requireDoctor(ctx);
+    const user = requireDoctor(ctx, 'schedule');
     if (!user) return;
     const id = uuidParam(ctx, 'id');
     const to = formValue(ctx, 'to') as AppointmentStatus;

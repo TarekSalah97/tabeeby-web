@@ -1,3 +1,4 @@
+import { runWithActorStore } from './http/actor.js';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,7 +86,7 @@ export function createApp(deps: Deps, staticDir = STATIC_DIR): http.Server {
     const path = (req.url ?? '').split('?')[0] ?? '';
     applySecurityHeaders(res, https, path.startsWith('/dashboard') || path.startsWith('/en/dashboard'));
     if (deps.cfg.DEMO_MODE) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-    void handle(req, res).finally(() => {
+    void runWithActorStore(() => handle(req, res)).finally(() => {
       log.info('request', { id: requestId, method: req.method, route: (res as { route?: string }).route ?? (req.url?.startsWith('/static/') ? 'static' : 'unmatched'), status: res.statusCode, ms: Date.now() - started });
     });
   });

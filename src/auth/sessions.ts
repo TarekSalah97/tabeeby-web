@@ -1,7 +1,8 @@
 import type { Queryable } from '../db/db.js';
 import { randomToken, sha256 } from './tokens.js';
 
-export type Role = 'patient' | 'doctor' | 'admin' | 'facility';
+export type Role = 'patient' | 'doctor' | 'admin' | 'facility' | 'assistant';
+export type StaffAccess = 'schedule' | 'files';
 
 export interface SessionUser {
   id: string;
@@ -10,6 +11,10 @@ export interface SessionUser {
   phone: string;
   phoneVerified: boolean;
   locale: 'ar' | 'en';
+  /** For a secretary: the doctor they work for and what they may do. */
+  staff?: { doctorId: string; doctorName: string; doctorPhone: string; doctorLocale: 'ar' | 'en'; access: StaffAccess };
+  /** Set when a secretary is working in the doctor's dashboard: the secretary's own account id. */
+  actingAssistantId?: string;
 }
 
 export interface Session {
@@ -22,6 +27,7 @@ const POLICY: Record<Role, { absoluteHours: number; idleHours: number }> = {
   patient: { absoluteHours: 24 * 30, idleHours: 24 * 14 },
   doctor: { absoluteHours: 24 * 7, idleHours: 12 },
   facility: { absoluteHours: 24 * 7, idleHours: 12 },
+  assistant: { absoluteHours: 24 * 7, idleHours: 12 },
   admin: { absoluteHours: 12, idleHours: 1 },
 };
 
@@ -51,10 +57,20 @@ export async function loadSession(db: Queryable, token: string): Promise<Session
     phone_e164: string;
     phone_verified_at: Date | null;
     preferred_locale: 'ar' | 'en';
+    staff_doctor_id: string | null;
+    staff_access: StaffAccess | null;
+    doctor_name: string | null;
+    doctor_phone: string | null;
+    doctor_locale: 'ar' | 'en' | null;
   }>(
-    `select s.id as session_id, s.last_seen_at, u.id, u.role, u.full_name, u.phone_e164, u.phone_verified_at, u.preferred_locale
+    `select s.id as session_id, s.last_seen_at, u.id, u.role, u.full_name, u.phone_e164, u.phone_verified_at, u.preferred_locale,
+            da.doctor_id as staff_doctor_id, da.access as staff_access, du.full_name as doctor_name, du.phone_e164 as doctor_phone,
+            du.preferred_locale as doctor_locale
        from sessions s join users u on u.id = s.user_id
-      where s.token_hash = $1 and s.expires_at > now() and u.status = 'active'`,
+       left join doctor_assistants da on da.user_id = u.id
+       left join users du on du.id = da.doctor_id and du.status = 'active'
+      where s.token_hash = $1 and s.expires_at > now() and u.status = 'active'
+        and (u.role <> 'assistant' or du.id is not null)`,
     [sha256(token)],
   );
   const r = rows[0];
@@ -77,6 +93,9 @@ export async function loadSession(db: Queryable, token: string): Promise<Session
       phone: r.phone_e164,
       phoneVerified: r.phone_verified_at !== null,
       locale: r.preferred_locale,
+      ...(r.role === 'assistant' && r.staff_doctor_id
+        ? { staff: { doctorId: r.staff_doctor_id, doctorName: r.doctor_name!, doctorPhone: r.doctor_phone!, doctorLocale: r.doctor_locale!, access: r.staff_access! } }
+        : {}),
     },
   };
 }

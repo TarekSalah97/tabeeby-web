@@ -139,7 +139,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
 }
 
 const roleLabel = (ctx: Ctx, role: string) =>
-  ctx.t(role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : role === 'facility' ? 'adm.roleFacility' : 'adm.rolePatient');
+  ctx.t(role === 'assistant' ? 'adm.roleAssistant' : role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : role === 'facility' ? 'adm.roleFacility' : 'adm.rolePatient');
 
 export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; recent?: AccountRow[]; notice?: MessageKey; error?: MessageKey }): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;

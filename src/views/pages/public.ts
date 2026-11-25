@@ -5,7 +5,7 @@ import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
 import { DESCRIPTION_MIN, DESCRIPTION_MAX } from '../../services/symptomChecker.js';
-import { alert, csrfField, directionsHref, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap, searchTabs } from '../components.js';
+import { alert, csrfField, directionsHref, districtOptionGroups, cityOptions, placeName, placeForMaps, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap, searchTabs } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -23,13 +23,22 @@ function searchForm(ctx: Ctx, ref: ReferenceData, f: Partial<SearchFilters>, com
       <span class="search-label">${ctx.t('search.whatLabel')}</span>
       <input type="search" name="q" value="${f.q ?? ''}" placeholder="${ctx.t('search.whatPlaceholder')}" maxlength="80">
     </label>
-    <label class="search-field">
-      <span class="search-label">${ctx.t('search.district')}</span>
-      <select name="district">
-        <option value="">${ctx.t('search.anyDistrict')}</option>
-        ${ref.districts.map((d) => html`<option value="${d.slug}"${f.districtId === d.id ? html` selected` : ''}>${pick(ctx.locale, d)}</option>`)}
-      </select>
-    </label>
+    <span class="search-pair" data-city-pair>
+      <label class="search-field">
+        <span class="search-label">${ctx.t('search.city')}</span>
+        <select name="city">
+          <option value="">${ctx.t('search.anyCity')}</option>
+          ${cityOptions(ctx, ref).map((o) => html`<option value="${o.value}"${attrIf(f.governorateId === ref.governorates.find((g) => g.slug === o.value)?.id, 'selected')}>${o.label}</option>`)}
+        </select>
+      </label>
+      <label class="search-field">
+        <span class="search-label">${ctx.t('search.district')}</span>
+        <select name="district">
+          <option value="">${ctx.t('search.anyDistrict')}</option>
+          ${districtOptionGroups(ctx, ref, 'slug').map((g) => html`<optgroup label="${g.group}">${g.options.map((o) => html`<option value="${o.value}"${attrIf(f.districtId === ref.districts.find((d) => d.slug === o.value)?.id, 'selected')}>${o.label}</option>`)}</optgroup>`)}
+        </select>
+      </label>
+    </span>
     ${ref.insurers.length
       ? html`<label class="search-field">
           <span class="search-label">${ctx.t('search.insurance')}</span>
@@ -173,7 +182,7 @@ export function homePage(ctx: Ctx, ref: ReferenceData, patient?: PatientHome): S
   <section class="container section">
     <div class="section-head"><h2>${ctx.t('home.districtsTitle')}</h2><span class="muted">${ctx.t('home.comingNext')}</span></div>
     <div class="chips-row">
-      ${ref.districts.map((d) => html`<a class="chip-link lg" href="${href(ctx, '/search', { district: d.slug })}">${icon.pin}${pick(ctx.locale, d)}</a>`)}
+      ${ref.governorates.map((g) => html`<a class="chip-link lg" href="${href(ctx, '/search', { city: g.slug })}">${icon.pin}${pick(ctx.locale, g)}</a>`)}
     </div>
   </section>
 
@@ -234,7 +243,8 @@ function doctorCard(ctx: Ctx, ref: ReferenceData, d: DoctorCard): SafeHtml {
 export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, result: { cards: DoctorCard[]; total: number; pages: number }): SafeHtml {
   const spec = f.specialtyId ? ref.specialtyById.get(f.specialtyId) : undefined;
   const district = f.districtId ? ref.districtById.get(f.districtId) : undefined;
-  const heading = [spec ? pick(ctx.locale, spec) : f.q || ctx.t('search.title'), district ? pick(ctx.locale, district) : ''].filter(Boolean).join(' · ');
+  const city = f.governorateId ? ref.governorateById.get(f.governorateId) : undefined;
+  const heading = [spec ? pick(ctx.locale, spec) : f.q || ctx.t('search.title'), district ? placeName(ctx, district) : city ? pick(ctx.locale, city) : ''].filter(Boolean).join(' · ');
   const slugOf = (id: number | null, list: { id: number; slug: string }[]) => list.find((x) => x.id === id)?.slug;
   const subs = spec?.subspecialties ?? [];
   const pageLink = (p: number) =>
@@ -243,11 +253,12 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
       specialty: slugOf(f.specialtyId, ref.specialties),
       sub: slugOf(f.subspecialtyId, subs),
       district: slugOf(f.districtId, ref.districts),
+      city: f.districtId ? undefined : city?.slug,
       insurer: slugOf(f.insurerId, ref.insurers),
       page: p,
     });
 
-  const active = [spec, f.subspecialtyId, district, f.insurerId].filter(Boolean).length;
+  const active = [spec, f.subspecialtyId, district ?? city, f.insurerId].filter(Boolean).length;
   const body = html`
   <div class="subheader"><div class="container search-block">${searchTabs(ctx, 'doctors')}${searchForm(ctx, ref, f, true)}</div></div>
   <div class="container page">
@@ -275,12 +286,21 @@ export function searchPage(ctx: Ctx, ref: ReferenceData, f: SearchFilters, resul
             options: [{ value: '', label: ctx.t('search.anySubspecialty') }, ...subs.map((s) => ({ value: s.slug, label: pick(ctx.locale, s) }))],
           })}
           </div>
+          <div class="stack" data-city-pair>
+          ${select(ctx, {
+            name: 'city',
+            idPrefix: 'f-',
+            label: ctx.t('search.city'),
+            value: city?.slug ?? '',
+            options: [{ value: '', label: ctx.t('search.anyCity') }, ...cityOptions(ctx, ref)],
+          })}
           ${select(ctx, {
             name: 'district',
             label: ctx.t('search.district'),
             value: district?.slug ?? '',
-            options: [{ value: '', label: ctx.t('search.anyDistrict') }, ...ref.districts.map((d) => ({ value: d.slug, label: pick(ctx.locale, d) }))],
+            options: [{ value: '', label: ctx.t('search.anyDistrict') }, ...districtOptionGroups(ctx, ref, 'slug')],
           })}
+          </div>
           ${ref.insurers.length
             ? select(ctx, {
                 name: 'insurer',
@@ -374,7 +394,7 @@ function stickyActions(ctx: Ctx, d: PublicProfile, clinicId: string, ref: Refere
   return html`<nav class="sticky-actions" aria-label="${ctx.t('doctor.quickActions')}">
     <a class="btn btn-primary btn-lg" href="#book-title">${icon.calendar}${ctx.t('doctor.bookShort')}</a>
     ${clinic.phone ? html`<a class="btn btn-outline btn-lg" href="tel:${clinic.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
-    <a class="btn btn-outline btn-lg" href="${directionsHref(clinic.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
+    <a class="btn btn-outline btn-lg" href="${directionsHref(clinic.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
   </nav>`;
 }
 
@@ -432,12 +452,12 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
             const rules = d.rules.filter((r) => r.clinicId === c.id);
             return html`<div class="clinic-card">
               <strong dir="auto">${c.name}</strong>
-              <span class="muted" dir="auto">${c.address}${dist ? html` · ${pick(ctx.locale, dist)}` : ''}</span>
+              <span class="muted" dir="auto">${c.address}${dist ? html` · ${placeName(ctx, dist)}` : ''}</span>
               <span class="fee">${money(ctx, c.fee)}</span>
               <ul class="hours">${rules.map((r) => html`<li><span>${ctx.t.dynamic(`weekday.${r.weekday}`)}</span><span dir="ltr">${r.start}–${r.end}</span></li>`)}</ul>
               <div class="row-wrap">
                 ${c.phone ? html`<a class="btn btn-outline btn-sm" href="tel:${c.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
-                <a class="btn btn-outline btn-sm" href="${directionsHref(c.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
+                <a class="btn btn-outline btn-sm" href="${directionsHref(c.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
               </div>
             </div>`;
           })}
@@ -507,7 +527,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
     ...(photo ? { image: photo } : {}),
     ...(spec ? { medicalSpecialty: spec.name_en } : {}),
     ...(clinic ? {
-      address: { '@type': 'PostalAddress', streetAddress: clinic.address, addressLocality: district ? pick(ctx.locale, district) : 'Alexandria', addressCountry: 'EG' },
+      address: { '@type': 'PostalAddress', streetAddress: clinic.address, addressLocality: district ? pick(ctx.locale, district) : undefined, addressRegion: district ? (ctx.locale === 'ar' ? district.governorate_ar : district.governorate_en) : undefined, addressCountry: 'EG' },
       ...(clinic.phone ? { telephone: clinic.phone } : {}),
     } : {}),
     ...(d.minFee !== null ? { priceRange: `EGP ${d.minFee}+` } : {}),

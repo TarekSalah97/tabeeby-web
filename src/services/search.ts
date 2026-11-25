@@ -13,6 +13,8 @@ export interface SearchFilters {
   specialtyId: number | null;
   subspecialtyId: number | null;
   districtId: number | null;
+  /** A whole governorate (city); ignored when a district is chosen. */
+  governorateId: number | null;
   insurerId: number | null;
   page: number;
 }
@@ -63,7 +65,8 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
        from doctors d join users u on u.id = d.user_id
       where d.verification_status = 'approved' and u.status = 'active'
         and exists (select 1 from clinics c where c.doctor_id = d.user_id and c.is_active
-                      and ($3::int is null or c.district_id = $3))
+                      and ($3::int is null or c.district_id = $3)
+                      and ($8::int is null or c.district_id in (select id from districts where governorate_id = $8)))
         and ($1::smallint is null or d.specialty_id = $1)
         and ($2::int is null or exists (select 1 from doctor_subspecialties ds where ds.doctor_id = d.user_id and ds.subspecialty_id = $2))
         and ($4::smallint is null or exists (select 1 from doctor_insurers di where di.doctor_id = d.user_id and di.insurer_id = $4))
@@ -83,6 +86,7 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
       like,
       conditionHits.filter((c) => c.subspecialty_id === null).map((c) => c.specialty_id),
       conditionHits.filter((c) => c.subspecialty_id !== null).map((c) => c.subspecialty_id),
+      f.districtId ? null : f.governorateId,
     ],
   );
   const ids = rows.map((r) => r.user_id);
@@ -103,7 +107,10 @@ export async function searchDoctors(deps: Deps, f: SearchFilters): Promise<{ car
   const cards = await loadCards(db, pageIds, now);
   for (const c of cards) {
     const own = slots.get(c.id) ?? [];
-    c.nextSlots = (f.districtId ? own.filter((s) => c.clinics.find((cl) => cl.id === s.clinicId)?.districtId === f.districtId) : own).slice(0, 3);
+    // Only times at clinics in the chosen place.
+    const inPlace = (districtId: number | undefined) =>
+      f.districtId ? districtId === f.districtId : f.governorateId ? !!districtId && ref.districtById.get(districtId)?.governorate_id === f.governorateId : true;
+    c.nextSlots = own.filter((s) => inPlace(c.clinics.find((cl) => cl.id === s.clinicId)?.districtId)).slice(0, 3);
   }
   return { cards, total: order.length, pages };
 }

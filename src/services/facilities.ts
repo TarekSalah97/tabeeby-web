@@ -405,6 +405,8 @@ export interface PublicFacility {
 export interface FacilitySearch {
   kind: FacilityKind;
   districtId: number | null;
+  /** A whole governorate (city); ignored when a district is chosen. */
+  governorateId: number | null;
   openNow: boolean;
   homeService: boolean;
   /** Only places that do every one of these tests. */
@@ -422,9 +424,11 @@ export async function searchFacilities(deps: Deps, s: FacilitySearch): Promise<P
         and (not $3 or f.home_service)
         and (cardinality($4::text[]) = 0 or (select count(*) from facility_tests t where t.facility_id = f.user_id and t.test_code = any($4::text[])) = cardinality($4::text[]))
         and ($5::text is null or f.name ilike $5)
+        and ($6::int is null or exists (select 1 from facility_branches b join districts dd on dd.id = b.district_id
+                                         where b.facility_id = f.user_id and b.is_active and dd.governorate_id = $6))
         and exists (select 1 from facility_branches b where b.facility_id = f.user_id and b.is_active)
       order by f.verified_at desc nulls last limit 100`,
-    [s.kind, s.districtId, s.homeService, s.tests, like],
+    [s.kind, s.districtId, s.homeService, s.tests, like, s.districtId ? null : s.governorateId],
   );
   let list = await loadPublic(deps, rows.map((r) => r.user_id), s.tests);
   if (s.openNow) list = list.filter((f) => f.openNow);

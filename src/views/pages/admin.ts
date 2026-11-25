@@ -2,7 +2,7 @@ import { html, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { adminShell } from './adminConsole.js';
-import { alert, csrfField, starRow, yearsLabel } from '../components.js';
+import { alert, csrfField, starRow, yearsLabel, placeName } from '../components.js';
 import type { AdminReview } from '../../services/reviews.js';
 import { pick, formatDateTime, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
@@ -154,7 +154,7 @@ export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityRevie
         <div><dt>${ctx.t('join.email')}</dt><dd>${f.email ?? '—'}</dd></div>
         <div><dt>${ctx.t('admin.submitted')}</dt><dd>${formatDateTime(f.created_at, ctx.locale, tz)}</dd></div>
         <div><dt>${ctx.t('fac.branches')}</dt><dd>${f.branches.length
-          ? f.branches.map((b) => { const d = ref.districtById.get(b.district_id); return html`<span class="block">${b.name} — ${d ? pick(ctx.locale, d) : ''}, ${b.address}</span>`; })
+          ? f.branches.map((b) => { const d = ref.districtById.get(b.district_id); return html`<span class="block">${b.name} — ${d ? placeName(ctx, d) : ''}, ${b.address}</span>`; })
           : '—'}</dd></div>
       </dl>
     </section>

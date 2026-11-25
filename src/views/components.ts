@@ -4,6 +4,7 @@ import { href } from '../http/context.js';
 import type { MessageKey } from '../i18n/index.js';
 import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
+import type { District, ReferenceData } from '../services/reference.js';
 import { displayYears } from '../domain/experience.js';
 import { docField, type DocKind } from '../domain/documents.js';
 
@@ -297,6 +298,30 @@ export function starRow(ctx: Ctx, rating: number): SafeHtml {
 }
 
 /** Opens the clinic in Google Maps (the patient's own app on phones). No data is sent from our side. */
+/** "Smouha, Alexandria" / "سموحة، الإسكندرية" — district names repeat across Egypt, so the city goes with them. */
+export function placeName(ctx: Ctx, d: District): string {
+  return ctx.locale === 'ar' ? `${d.name_ar}، ${d.governorate_ar}` : `${d.name_en}, ${d.governorate_en}`;
+}
+
+/** For map links: always in English, with the city. */
+export const placeForMaps = (d: District | undefined): string => (d ? `${d.name_en}, ${d.governorate_en}` : '');
+
+/** Every district, grouped under its governorate (launch city first), sorted in the reader's language. */
+export function districtOptionGroups(ctx: Ctx, ref: ReferenceData, by: 'id' | 'slug'): { group: string; options: Option[] }[] {
+  const ar = ctx.locale === 'ar';
+  return ref.governorates.map((g) => ({
+    group: ar ? g.name_ar : g.name_en,
+    options: g.districts
+      .map((d) => ({ value: by === 'id' ? String(d.id) : d.slug, label: ar ? d.name_ar : d.name_en }))
+      .sort((a, b) => a.label.localeCompare(b.label, ar ? 'ar' : 'en')),
+  }));
+}
+
+/** The governorates as options (value = slug). */
+export function cityOptions(ctx: Ctx, ref: ReferenceData): Option[] {
+  return ref.governorates.map((g) => ({ value: g.slug, label: ctx.locale === 'ar' ? g.name_ar : g.name_en }));
+}
+
 export function directionsHref(address: string, district: string): string {
   const q = [address, district, 'Egypt'].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;

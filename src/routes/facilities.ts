@@ -195,10 +195,12 @@ export function facilityRoutes(r: Router): void {
     const base = KIND_PATH[kind];
     r.get(base, async (ctx) => {
       const ref = await getReference(ctx.deps.db);
-      const district = Number(ctx.query.get('district'));
+      const district = ref.districtById.get(Number(ctx.query.get('district')));
+      const city = district ? ref.governorateById.get(district.governorate_id) : ref.governorates.find((g) => g.slug === ctx.query.get('city'));
       const search = {
         kind: kind as FacilityKind,
-        districtId: ref.districtById.has(district) ? district : null,
+        districtId: district?.id ?? null,
+        governorateId: city?.id ?? null,
         openNow: ctx.query.get('open') === '1',
         homeService: ctx.query.get('home') === '1',
         tests: kind === 'pharmacy' ? [] : testsParam(ctx),

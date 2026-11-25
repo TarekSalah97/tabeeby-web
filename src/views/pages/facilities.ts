@@ -2,7 +2,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs, documentFields } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, districtOptionGroups, cityOptions, placeName, placeForMaps, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs, documentFields } from '../components.js';
 import { pick, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
@@ -163,7 +163,7 @@ export function facilityBranchesPage(
   branches: BranchRow[],
   o: { values?: Record<string, string | string[]>; errors?: FieldErrors; editing?: string | null; notice?: { kind: 'success' | 'error'; key: MessageKey } },
 ): SafeHtml {
-  const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
+  const districtOptions = districtOptionGroups(ctx, ref, 'id');
   const form = (b: BranchRow | null) => {
     const isTarget = (o.editing ?? null) === (b?.id ?? null);
     const v: Record<string, string | string[]> =
@@ -181,7 +181,10 @@ export function facilityBranchesPage(
       ${csrfField(ctx)}
       <div class="form-grid">
         ${input(ctx, { idPrefix, name: 'name', label: ctx.t('facdash.branchName'), value: str('name'), hint: ctx.t('facdash.branchNameHint'), maxlength: 120, errors, required: true })}
-        ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: str('district'), options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
+        <div class="stack-sm" data-city-pair>
+          ${select(ctx, { idPrefix, name: 'city', label: ctx.t('search.city'), value: (() => { const d = ref.districtById.get(Number(str('district'))); return d ? (ref.governorateById.get(d.governorate_id)?.slug ?? '') : ''; })(), options: [{ value: '', label: '—' }, ...cityOptions(ctx, ref)] })}
+          ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: str('district'), options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
+        </div>
         ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: str('address'), maxlength: 300, errors, required: true })}
         ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('facdash.branchPhone'), type: 'tel', value: str('phone'), inputmode: 'tel', errors })}
       </div>
@@ -285,13 +288,13 @@ function contactButtons(ctx: Ctx, p: PublicFacility, branch: PublicBranch | unde
   return html`<div class="row-wrap">
     ${phone ? html`<a class="btn btn-primary" href="tel:${phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
     ${p.whatsapp ? html`<a class="btn btn-outline" href="https://wa.me/${p.whatsapp.replace('+', '')}" target="_blank" rel="noopener noreferrer">${icon.chat}${ctx.t('fac.whatsapp')}</a>` : ''}
-    ${branch ? html`<a class="btn btn-outline" href="${directionsHref(branch.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>` : ''}
+    ${branch ? html`<a class="btn btn-outline" href="${directionsHref(branch.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>` : ''}
   </div>`;
 }
 
 export function facilityListPage(ctx: Ctx, ref: ReferenceData, s: FacilitySearch, results: PublicFacility[]): SafeHtml {
   const base = KIND_PATH[s.kind];
-  const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
+  const districtOptions = districtOptionGroups(ctx, ref, 'id');
   const testsAsked = s.tests.filter((c) => LAB_TESTS.some((t) => t.code === c));
   const body = html`<div class="container page stack-lg">
     <div class="stack-sm">
@@ -305,7 +308,10 @@ export function facilityListPage(ctx: Ctx, ref: ReferenceData, s: FacilitySearch
     <form method="get" action="${href(ctx, base)}" class="panel filters-row" role="search">
       ${testsAsked.length ? html`<input type="hidden" name="tests" value="${testsAsked.join(',')}">` : ''}
       <div class="field"><label for="q">${ctx.t('fac.searchName')}</label><input id="q" type="search" name="q" value="${s.q}" maxlength="80"></div>
-      ${select(ctx, { name: 'district', label: ctx.t('clinics.district'), value: s.districtId ? String(s.districtId) : '', options: [{ value: '', label: ctx.t('search.anyDistrict') }, ...districtOptions] })}
+      <div data-city-pair>
+        ${select(ctx, { name: 'city', label: ctx.t('search.city'), value: s.governorateId ? (ref.governorateById.get(s.governorateId)?.slug ?? '') : '', options: [{ value: '', label: ctx.t('search.anyCity') }, ...cityOptions(ctx, ref)] })}
+        ${select(ctx, { name: 'district', label: ctx.t('clinics.district'), value: s.districtId ? String(s.districtId) : '', options: [{ value: '', label: ctx.t('search.anyDistrict') }, ...districtOptions] })}
+      </div>
       <label class="check"><input type="checkbox" name="open" value="1"${attrIf(s.openNow, 'checked')}><span>${ctx.t('fac.openNow')}</span></label>
       <label class="check"><input type="checkbox" name="home" value="1"${attrIf(s.homeService, 'checked')}><span>${ctx.t(`fac.homeService.${s.kind}` as MessageKey)}</span></label>
       <button class="btn btn-primary" type="submit">${ctx.t('search.apply')}</button>
@@ -321,7 +327,7 @@ export function facilityListPage(ctx: Ctx, ref: ReferenceData, s: FacilitySearch
                 <h2 class="h3"><a href="${href(ctx, `${base}/${p.slug}`, testsAsked.length ? { tests: testsAsked.join(',') } : undefined)}">${p.name}</a></h2>
                 <span class="row-wrap tight">${openChip(ctx, p.openNow)}${p.homeService ? html`<span class="chip">${ctx.t(`fac.homeService.${p.kind}` as MessageKey)}</span>` : ''}
                   ${p.branches.length > 1 ? html`<span class="muted small">${ctx.t('fac.branchesCount', { n: formatNumber(p.branches.length, ctx.locale) })}</span>` : ''}</span>
-                ${branch ? html`<span class="muted small" dir="auto">${dist ? pick(ctx.locale, dist) : ''} · ${branch.address}</span><span class="muted small">${hoursText(ctx, branch)}</span>` : ''}
+                ${branch ? html`<span class="muted small" dir="auto">${dist ? placeName(ctx, dist) : ''} · ${branch.address}</span><span class="muted small">${hoursText(ctx, branch)}</span>` : ''}
               </div>
               ${p.total !== null ? html`<div class="facility-total"><span class="muted small">${ctx.t('fac.total')}</span><strong>${money(ctx, p.total)}</strong></div>` : ''}
             </div>
@@ -364,11 +370,11 @@ export function facilityPublicPage(ctx: Ctx, ref: ReferenceData, p: PublicFacili
         const dist = ref.districtById.get(b.district_id);
         return html`<li class="stack-sm">
           <div class="row-between"><strong dir="auto">${b.name}</strong>${openChip(ctx, b.openNow)}</div>
-          <span class="muted" dir="auto">${dist ? pick(ctx.locale, dist) : ''} · ${b.address}</span>
+          <span class="muted" dir="auto">${dist ? placeName(ctx, dist) : ''} · ${b.address}</span>
           <span class="small">${hoursText(ctx, b)}</span>
           <div class="row-wrap">
             ${b.phone_e164 ? html`<a class="btn btn-outline btn-sm" href="tel:${b.phone_e164}" dir="ltr">${formatEgyptMobile(b.phone_e164)}</a>` : ''}
-            <a class="btn btn-outline btn-sm" href="${directionsHref(b.address, dist ? dist.name_en : '')}" target="_blank" rel="noopener noreferrer">${ctx.t('doctor.directions')}</a>
+            <a class="btn btn-outline btn-sm" href="${directionsHref(b.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${ctx.t('doctor.directions')}</a>
           </div>
         </li>`;
       })}</ul>

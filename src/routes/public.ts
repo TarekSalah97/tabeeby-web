@@ -33,6 +33,7 @@ export function publicRoutes(r: Router): void {
     const specialty = ref.specialties.find((s) => s.slug === q.get('specialty'));
     const sub = specialty?.subspecialties.find((s) => s.slug === q.get('sub'));
     const district = ref.districts.find((d) => d.slug === q.get('district'));
+    const city = district ? ref.governorateById.get(district.governorate_id) : ref.governorates.find((g) => g.slug === q.get('city'));
     const insurer = ref.insurers.find((i) => i.slug === q.get('insurer'));
     const page = Number.parseInt(q.get('page') ?? '1', 10);
     const filters: SearchFilters = {
@@ -40,6 +41,7 @@ export function publicRoutes(r: Router): void {
       specialtyId: specialty?.id ?? null,
       subspecialtyId: sub?.id ?? null,
       districtId: district?.id ?? null,
+      governorateId: city?.id ?? null,
       insurerId: insurer?.id ?? null,
       page: Number.isFinite(page) && page > 0 && page < 1000 ? page : 1,
     };

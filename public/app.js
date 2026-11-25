@@ -422,3 +422,38 @@ document.addEventListener('click', function (e) {
     });
   });
 })();
+
+// City + district pickers: choosing a city narrows the district list to that city; choosing a
+// district sets its city. Without this script both lists still work (districts are grouped by city).
+(function () {
+  Array.prototype.forEach.call(document.querySelectorAll('[data-city-pair]'), function (pair) {
+    var city = pair.querySelector('select[name=city]');
+    var district = pair.querySelector('select[name=district]');
+    if (!city || !district) return;
+    var first = district.firstElementChild && district.firstElementChild.tagName === 'OPTION' ? district.firstElementChild : null;
+    var groups = Array.prototype.map.call(district.querySelectorAll('optgroup'), function (g) { return g.cloneNode(true); });
+    function cityLabel() {
+      var o = city.options[city.selectedIndex];
+      return o && o.value ? o.textContent.trim() : '';
+    }
+    function rebuild() {
+      var keep = district.value;
+      var label = cityLabel();
+      district.innerHTML = '';
+      if (first) district.appendChild(first.cloneNode(true));
+      groups.forEach(function (g) {
+        if (!label || g.label === label) district.appendChild(g.cloneNode(true));
+      });
+      district.value = keep;
+      if (district.value !== keep) district.value = '';
+    }
+    city.addEventListener('change', rebuild);
+    district.addEventListener('change', function () {
+      var opt = district.options[district.selectedIndex];
+      var g = opt && opt.parentNode && opt.parentNode.tagName === 'OPTGROUP' ? opt.parentNode.label : '';
+      if (!g) return;
+      Array.prototype.forEach.call(city.options, function (o) { if (o.textContent.trim() === g) city.value = o.value; });
+    });
+    if (cityLabel()) rebuild();
+  });
+})();

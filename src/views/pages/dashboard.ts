@@ -4,7 +4,7 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel, monthCalendar, dictateAttrs } from '../components.js';
+import { alert, csrfField, icon, input, ratingBadge, select, statusChip, errorSummary, yearsLabel, doctorAvatar, visitLabel, monthCalendar, dictateAttrs, districtOptionGroups, cityOptions } from '../components.js';
 import { pick, formatDate, formatTime, formatShortDate, formatNumber, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
@@ -300,7 +300,11 @@ export function clinicsPage(
 ): SafeHtml {
   const specialtySlug = ref.specialties.find((s) => s.id === doctor.specialty_id)?.slug ?? null;
   const suggestions = { en: suggestionsFor(specialtySlug, 'en'), ar: suggestionsFor(specialtySlug, 'ar') };
-  const districtOptions = ref.districts.map((d) => ({ value: String(d.id), label: pick(ctx.locale, d) }));
+  const districtOptions = districtOptionGroups(ctx, ref, 'id');
+  const cityOfDistrict = (id: string | undefined) => {
+    const d = id ? ref.districtById.get(Number(id)) : undefined;
+    return d ? (ref.governorateById.get(d.governorate_id)?.slug ?? '') : '';
+  };
   const form = (c: ClinicRow | null) => {
     const isTarget = (o.editing ?? null) === (c?.id ?? null);
     const v = isTarget && o.values ? o.values : c ? { name: c.name, district: String(c.district_id), address: c.address, phone: c.phone_e164 ? c.phone_e164.replace(/^\+20/, '0') : '', fee: String(c.fee_egp), followUpFee: c.follow_up_fee_egp === null ? '' : String(c.follow_up_fee_egp), followUpDays: String(c.follow_up_days), active: c.is_active ? 'yes' : '' } : { active: 'yes', followUpDays: '14' };
@@ -310,7 +314,10 @@ export function clinicsPage(
       ${csrfField(ctx)}
       <div class="form-grid">
         ${input(ctx, { idPrefix, name: 'name', label: ctx.t('clinics.name'), value: v['name'], errors, maxlength: 120, required: true })}
-        ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: v['district'] ?? '', options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
+        <div class="stack-sm" data-city-pair>
+          ${select(ctx, { idPrefix, name: 'city', label: ctx.t('search.city'), value: cityOfDistrict(v['district']), options: [{ value: '', label: '—' }, ...cityOptions(ctx, ref)] })}
+          ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: v['district'] ?? '', options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
+        </div>
         ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: v['address'], errors, maxlength: 300, required: true })}
         ${input(ctx, { idPrefix, name: 'fee', label: ctx.t('clinics.fee'), value: v['fee'], inputmode: 'numeric', errors, required: true })}
         ${input(ctx, { idPrefix, name: 'followUpFee', label: ctx.t('clinics.followUpFee'), value: v['followUpFee'], inputmode: 'numeric', hint: ctx.t('clinics.followUpFeeHint'), errors })}

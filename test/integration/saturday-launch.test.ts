@@ -271,3 +271,67 @@ test('two people can be signed in to the same account at once (e.g. doctor and a
   assert.equal((await one.get('/en/dashboard')).status, 200);
   assert.equal((await two.get('/en/dashboard')).status, 200);
 });
+
+test('labs add their own tests with prices; they show on the public price list; others cannot touch them', async () => {
+  const lab = await facility('lab', 'Extra Lab Test');
+  const slug = (await h.db.query<{ slug: string }>('select slug from facilities where user_id = $1', [lab.id])).rows[0]!.slug;
+  await lab.c.get('/en/facility/prices');
+  assert.match((await lab.c.post('/en/facility/extra-tests', { extraName: 'Anti-Müllerian hormone (AMH)', extraPrice: '٨٥٠', extraNote: 'Results in 3 days' })).location!, /ok=extraAdded/);
+  const dup = await lab.c.post('/en/facility/extra-tests', { extraName: 'anti-müllerian hormone (amh)', extraPrice: '900', extraNote: '' });
+  assert.equal(dup.status, 422);
+  assert.match(dup.body, /already on your list/);
+  assert.equal((await lab.c.post('/en/facility/extra-tests', { extraName: 'X', extraPrice: 'abc', extraNote: '' })).status, 422);
+  const id = (await h.db.query<{ id: string }>('select id from facility_extra_tests where facility_id = $1', [lab.id])).rows[0]!.id;
+  assert.match((await lab.c.post(`/en/facility/extra-tests/${id}`, { price: '800', note: 'Results in 2 days' })).location!, /ok=extraUpdated/);
+  const pub = await new Client(h.baseUrl).get(`/en/labs/${slug}`);
+  assert.match(pub.body, /Anti-Müllerian hormone \(AMH\)/);
+  assert.match(pub.body, /EGP 800/);
+  assert.match(pub.body, /Results in 2 days/);
+  const other = await facility('lab', 'Other Extra Lab');
+  assert.equal((await other.c.post(`/en/facility/extra-tests/${id}/delete`, {})).status, 404);
+  assert.match((await lab.c.post(`/en/facility/extra-tests/${id}/delete`, {})).location!, /ok=extraDeleted/);
+  assert.doesNotMatch((await new Client(h.baseUrl).get(`/en/labs/${slug}`)).body, /AMH/);
+});
+
+test('lab insights: requests, top referring doctors and top tests; a pharmacy sees its own', async () => {
+  const lab = await facility('lab', 'Insight Lab Test', { homeService: true });
+  const p1 = await createPatient(h.db);
+  const p2 = await createPatient(h.db);
+  const a = await visitWithOrders(p1.id);
+  const b = await visitWithOrders(p2.id);
+  await h.db.query(`update users set full_name = 'Dr. Top Referrer' where id = $1`, [a.d.id]);
+  // Doctor A's patient sends one request; doctor A writes a second order for patient 1 too.
+  const pc1 = await signedIn(p1.phone, p1.password);
+  await pc1.post(`/en/health-record/orders/${a.labOrderId}/lab/send`, { facility: lab.id, note: '' });
+  const pc2 = await signedIn(p2.phone, p2.password);
+  await pc2.post(`/en/health-record/orders/${b.labOrderId}/lab/send`, { facility: lab.id, homeVisit: 'yes', note: '' });
+  await a.dc.get(`/en/dashboard/patients/${a.recordId}/visits/new`);
+  const v2 = await a.dc.post(`/en/dashboard/patients/${a.recordId}/visits`, { complaint: 'Recheck', lab_code: ['cbc'] });
+  const visit2 = /visits\/([0-9a-f-]{36})/.exec(v2.location!)![1]!;
+  const order2 = (await h.db.query<{ id: string }>('select id from lab_orders where encounter_id = $1', [visit2])).rows[0]!.id;
+  await pc1.post(`/en/health-record/orders/${order2}/lab/send`, { facility: lab.id, note: '' });
+  await h.db.query(`insert into facility_tests (facility_id, test_code, price_egp) values ($1, 'cbc', 120)`, [lab.id]);
+  const req = (await h.db.query<{ id: string }>('select id from order_requests where lab_order_id = $1', [a.labOrderId])).rows[0]!.id;
+  await h.db.query(`update order_requests set status = 'ready', received_at = created_at, ready_at = created_at + interval '5 hours' where id = $1`, [req]);
+
+  const page = await lab.c.get('/en/facility/insights?period=30d');
+  assert.equal(page.status, 200);
+  assert.match(page.body, /Your top referrer: Dr\. Top Referrer/);
+  assert.match(page.body, /2 requests · 1 patients/);
+  assert.match(page.body, /Complete blood count \(CBC\)/);
+  assert.match(page.body, /5 h/);
+  assert.match(page.body, /EGP 120/);
+  assert.match(page.body, /href="\/en\/facility\/insights"/);
+  // Another lab sees none of it.
+  const other = await facility('lab', 'Quiet Lab');
+  assert.match((await other.c.get('/en/facility/insights')).body, /No referrals in this period yet/);
+  // Patients and doctors cannot open it.
+  assert.equal((await pc1.get('/en/facility/insights')).status, 403);
+
+  // Pharmacy version counts prescriptions sent to it.
+  const ph = await facility('pharmacy', 'Insight Pharmacy');
+  await pc1.post(`/en/health-record/prescriptions/${a.rxId}/send`, { facility: ph.id, delivery: 'no', note: '' });
+  const pp = await ph.c.get('/en/facility/insights');
+  assert.match(pp.body, /Your top referrer: Dr\. Top Referrer/);
+  assert.match(pp.body, /Augmentin 1g/);
+});

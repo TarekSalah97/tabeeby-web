@@ -12,7 +12,7 @@ export type Period = '30d' | '90d' | '12m' | 'all';
 export const PERIODS: readonly Period[] = ['30d', '90d', '12m', 'all'];
 export const isPeriod = (s: string): s is Period => (PERIODS as readonly string[]).includes(s);
 
-const PERIOD_DAYS: Record<Period, number | null> = { '30d': 30, '90d': 90, '12m': 365, all: null };
+export const PERIOD_DAYS: Record<Period, number | null> = { '30d': 30, '90d': 90, '12m': 365, all: null };
 
 export type AgeBand = '0-12' | '13-17' | '18-29' | '30-44' | '45-64' | '65+' | 'unknown';
 export const AGE_BANDS: readonly AgeBand[] = ['0-12', '13-17', '18-29', '30-44', '45-64', '65+', 'unknown'];

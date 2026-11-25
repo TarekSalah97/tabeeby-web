@@ -300,6 +300,75 @@ export async function saveTestPrices(deps: Deps, facility: Pick<OwnFacility, 'us
   return {};
 }
 
+/** Tests a lab or scan centre adds itself, beyond the built-in list. */
+export interface ExtraTest {
+  id: string;
+  name: string;
+  price_egp: number;
+  note: string | null;
+}
+export const MAX_EXTRA_TESTS = 200;
+
+export async function listExtraTests(db: Queryable, facilityId: string): Promise<ExtraTest[]> {
+  return (
+    await db.query<ExtraTest>('select id, name, price_egp, note from facility_extra_tests where facility_id = $1 order by lower(name)', [facilityId])
+  ).rows;
+}
+
+/** Adds one test (name + price, optional note such as "results in 3 days"). Returns field errors. */
+export async function addExtraTest(
+  deps: Deps,
+  facility: Pick<OwnFacility, 'user_id' | 'kind'>,
+  input: { name: string; price: string; note: string },
+  ip: string,
+): Promise<FieldErrors> {
+  if (!offersTests(facility.kind)) throw notFound();
+  const errors: FieldErrors = {};
+  const name = input.name.trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 120) errors['extraName'] = 'extra.nameInvalid';
+  const digits = normalizeDigits(input.price).replace(/[,\s]/g, '');
+  const price = /^\d{1,6}$/.test(digits) ? Number(digits) : NaN;
+  if (!Number.isInteger(price) || price > 100000) errors['extraPrice'] = 'clinics.feeInvalid';
+  const note = input.note.trim().replace(/\s+/g, ' ').slice(0, 200);
+  if (Object.keys(errors).length) return errors;
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.query('select 1 from facilities where user_id = $1 for update', [facility.user_id]);
+      const n = await tx.query<{ n: number }>('select count(*)::int as n from facility_extra_tests where facility_id = $1', [facility.user_id]);
+      if ((n.rows[0]?.n ?? 0) >= MAX_EXTRA_TESTS) throw new DomainError('extra.tooMany');
+      await tx.query('insert into facility_extra_tests (facility_id, name, price_egp, note) values ($1, $2, $3, $4)', [facility.user_id, name, price, note || null]);
+      await audit(tx, { actorId: facility.user_id, action: 'facility.extra_test_add', entityType: 'facility', entityId: facility.user_id, ip });
+    });
+  } catch (e) {
+    if (isUniqueViolation(e, 'facility_extra_tests_name_idx')) return { extraName: 'extra.duplicate' };
+    if (e instanceof DomainError) return { extraName: e.messageKey as FieldErrors[string] };
+    throw e;
+  }
+  return {};
+}
+
+/** Changes the price (and note) of one of the place's own added tests. */
+export async function updateExtraTest(deps: Deps, facilityId: string, id: string, input: { price: string; note: string }, ip: string): Promise<boolean> {
+  const digits = normalizeDigits(input.price).replace(/[,\s]/g, '');
+  if (!/^\d{1,6}$/.test(digits) || Number(digits) > 100000) return false;
+  await deps.db.transaction(async (tx) => {
+    const r = await tx.query('update facility_extra_tests set price_egp = $3, note = $4 where id = $1 and facility_id = $2', [
+      id, facilityId, Number(digits), input.note.trim().replace(/\s+/g, ' ').slice(0, 200) || null,
+    ]);
+    if (!r.rowCount) throw notFound();
+    await audit(tx, { actorId: facilityId, action: 'facility.extra_test_update', entityType: 'facility', entityId: facilityId, ip });
+  });
+  return true;
+}
+
+export async function deleteExtraTest(deps: Deps, facilityId: string, id: string, ip: string): Promise<void> {
+  await deps.db.transaction(async (tx) => {
+    const r = await tx.query('delete from facility_extra_tests where id = $1 and facility_id = $2', [id, facilityId]);
+    if (!r.rowCount) throw notFound();
+    await audit(tx, { actorId: facilityId, action: 'facility.extra_test_delete', entityType: 'facility', entityId: facilityId, ip });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Public listing and profile
 // ---------------------------------------------------------------------------
@@ -329,6 +398,8 @@ export interface PublicFacility {
   /** For a test search: the total price of the asked tests at this place. */
   total: number | null;
   tests: { code: string; price: number }[];
+  /** Tests the place added itself (name, price, note). */
+  extraTests: ExtraTest[];
 }
 
 export interface FacilitySearch {
@@ -365,7 +436,7 @@ export async function searchFacilities(deps: Deps, s: FacilitySearch): Promise<P
 async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []): Promise<PublicFacility[]> {
   if (!ids.length) return [];
   const db = deps.db;
-  const [facilities, branches, tests] = await Promise.all([
+  const [facilities, branches, tests, extras] = await Promise.all([
     db.query<{ user_id: string; kind: FacilityKind; slug: string; name: string; description: string; phone_e164: string | null; whatsapp_e164: string | null; home_service: boolean }>(
       `select user_id, kind, slug, name, description, phone_e164, whatsapp_e164, home_service from facilities where user_id = any($1::uuid[])`,
       [ids],
@@ -376,6 +447,10 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
     ),
     db.query<{ facility_id: string; test_code: string; price_egp: number }>(
       'select facility_id, test_code, price_egp from facility_tests where facility_id = any($1::uuid[])',
+      [ids],
+    ),
+    db.query<ExtraTest & { facility_id: string }>(
+      'select facility_id, id, name, price_egp, note from facility_extra_tests where facility_id = any($1::uuid[]) order by lower(name)',
       [ids],
     ),
   ]);
@@ -402,6 +477,7 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
         openNow: own.some((b) => b.openNow),
         total: askedTests.length ? asked.reduce((sum, t) => sum + t.price, 0) : null,
         tests: ownTests,
+        extraTests: extras.rows.filter((x) => x.facility_id === f.user_id).map(({ facility_id: _f, ...x }) => x),
       };
     });
 }

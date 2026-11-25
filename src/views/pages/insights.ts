@@ -7,10 +7,10 @@ import { shell } from './dashboard.js';
 import { WEEKDAY_SHORT } from '../components.js';
 import { AGE_BANDS, PERIODS, pct, type Insights, type Period } from '../../services/insights.js';
 
-const PERIOD_LABEL: Record<Period, MessageKey> = { '30d': 'ins.p30', '90d': 'ins.p90', '12m': 'ins.p12m', all: 'ins.pAll' };
+export const PERIOD_LABEL: Record<Period, MessageKey> = { '30d': 'ins.p30', '90d': 'ins.p90', '12m': 'ins.p12m', all: 'ins.pAll' };
 
 /** One labelled bar: count and percentage (text, so it reads without colour). */
-function bar(ctx: Ctx, label: string, n: number, whole: number, tone = ''): SafeHtml {
+export function bar(ctx: Ctx, label: string, n: number, whole: number, tone = ''): SafeHtml {
   const p = pct(n, whole);
   return html`<div class="ins-bar">
     <div class="ins-bar-label"><span>${label}</span><span class="muted">${formatNumber(n, ctx.locale)} · ${formatNumber(p, ctx.locale)}%</span></div>
@@ -18,7 +18,7 @@ function bar(ctx: Ctx, label: string, n: number, whole: number, tone = ''): Safe
   </div>`;
 }
 
-function stat(ctx: Ctx, n: number | string, label: MessageKey): SafeHtml {
+export function stat(ctx: Ctx, n: number | string, label: MessageKey): SafeHtml {
   return html`<div class="ins-stat"><strong>${typeof n === 'number' ? formatNumber(n, ctx.locale) : n}</strong><span class="muted small">${ctx.t(label)}</span></div>`;
 }
 

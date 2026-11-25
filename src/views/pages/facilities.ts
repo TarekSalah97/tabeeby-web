@@ -11,6 +11,7 @@ import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import {
   FACILITY_KINDS, offersTests, testGroupsFor, type BranchRow, type FacilityKind, type FacilitySearch, type OwnFacility, type PublicBranch, type PublicFacility,
+  type ExtraTest,
 } from '../../services/facilities.js';
 import { money } from './public.js';
 
@@ -75,7 +76,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions';
+export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights';
 
 export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
@@ -87,6 +88,7 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
           { key: 'prices' as const, path: '/facility/prices', label: 'facdash.nav.prices' as const },
         ]
       : [{ key: 'prescriptions' as const, path: '/facility/prescriptions', label: 'rxsend.inbox' as const }]),
+    { key: 'insights' as const, path: '/facility/insights', label: 'fins.title' as const },
   ];
   const status = f.verification_status;
   const banner =
@@ -213,9 +215,11 @@ export function facilityPricesPage(
   ctx: Ctx,
   f: OwnFacility,
   prices: Map<string, number>,
-  o: { values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey }; extras?: ExtraTest[] },
 ): SafeHtml {
   const groups = testGroupsFor(f.kind);
+  const extras = o.extras ?? [];
+  const v = o.values ?? {};
   const content = html`
     <div><h1>${ctx.t('facdash.nav.prices')}</h1><p class="muted">${ctx.t('facdash.pricesLead')}</p></div>
     ${errorSummary(ctx, o.errors)}
@@ -235,7 +239,39 @@ export function facilityPricesPage(
       )}
       <p class="hint">${ctx.t('facdash.pricesHint')}</p>
       <div><button class="btn btn-primary btn-lg" type="submit">${ctx.t('common.save')}</button></div>
-    </form>`;
+    </form>
+    <section class="panel stack" id="extra">
+      <div class="stack-sm"><h2 class="h3">${ctx.t('extra.title')}</h2><p class="muted">${ctx.t('extra.lead')}</p></div>
+      ${extras.length
+        ? html`<ul class="extra-list">${extras.map(
+            (x) => html`<li class="extra-row">
+              <form method="post" action="${href(ctx, `/facility/extra-tests/${x.id}`)}" class="extra-edit">${csrfField(ctx)}
+                <strong dir="auto" class="extra-name">${x.name}</strong>
+                <span class="input-group small"><label class="sr-only" for="xp-${x.id}">${ctx.t('extra.price')}</label>
+                  <input type="text" id="xp-${x.id}" name="price" inputmode="numeric" value="${x.price_egp}" required><span class="input-suffix">${ctx.t('fac.egp')}</span></span>
+                <label class="sr-only" for="xn-${x.id}">${ctx.t('extra.note')}</label>
+                <input type="text" id="xn-${x.id}" name="note" maxlength="200" value="${x.note ?? ''}" placeholder="${ctx.t('extra.note')}" dir="auto">
+                <button class="btn btn-outline btn-sm" type="submit">${ctx.t('extra.save')}</button>
+              </form>
+              <form method="post" action="${href(ctx, `/facility/extra-tests/${x.id}/delete`)}">${csrfField(ctx)}
+                <button class="btn btn-ghost btn-sm danger" type="submit" data-confirm="${ctx.t('extra.deleteConfirm')}">${ctx.t('extra.delete')}</button></form>
+            </li>`,
+          )}</ul>`
+        : html`<p class="muted small">${ctx.t('extra.none')}</p>`}
+      <form method="post" action="${href(ctx, '/facility/extra-tests')}" class="stack-sm extra-add" novalidate>${csrfField(ctx)}
+        <div class="form-grid">
+          <div class="field${o.errors?.['extraName'] ? ' has-error' : ''}"><label for="extraName">${ctx.t('extra.name')}</label>
+            <input type="text" id="extraName" name="extraName" maxlength="120" value="${v['extraName'] ?? ''}" placeholder="${ctx.t('extra.namePlaceholder')}" dir="auto" required>
+            ${fieldError(ctx, o.errors, 'extraName')}</div>
+          <div class="field${o.errors?.['extraPrice'] ? ' has-error' : ''}"><label for="extraPrice">${ctx.t('extra.price')}</label>
+            <span class="input-group"><input type="text" id="extraPrice" name="extraPrice" inputmode="numeric" value="${v['extraPrice'] ?? ''}" required><span class="input-suffix">${ctx.t('fac.egp')}</span></span>
+            ${fieldError(ctx, o.errors, 'extraPrice')}</div>
+          <div class="field span-all"><label for="extraNote">${ctx.t('extra.note')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+            <input type="text" id="extraNote" name="extraNote" maxlength="200" value="${v['extraNote'] ?? ''}" placeholder="${ctx.t('extra.notePlaceholder')}" dir="auto"></div>
+        </div>
+        <div><button class="btn btn-primary" type="submit">${icon.plus}${ctx.t('extra.add')}</button></div>
+      </form>
+    </section>`;
   return facilityShell(ctx, f, 'prices', content, o.notice);
 }
 
@@ -342,6 +378,12 @@ export function facilityPublicPage(ctx: Ctx, ref: ReferenceData, p: PublicFacili
           <ul class="price-summary">${LAB_TESTS.filter((t) => p.tests.some((x) => x.code === t.code)).map(
             (t) => html`<li><span>${ctx.locale === 'ar' ? t.ar : t.en}</span><strong>${money(ctx, p.tests.find((x) => x.code === t.code)!.price)}</strong></li>`,
           )}</ul><p class="hint">${ctx.t('fac.pricesNote')}</p></section>`
+      : ''}
+    ${p.extraTests.length
+      ? html`<section class="panel stack-sm"><h2 class="h3">${p.tests.length ? ctx.t('extra.publicTitle') : ctx.t('fac.priceList')}</h2>
+          <ul class="price-summary">${p.extraTests.map(
+            (x) => html`<li><span><bdi>${x.name}</bdi>${x.note ? html`<br><span class="muted small" dir="auto">${x.note}</span>` : ''}</span><strong>${money(ctx, x.price_egp)}</strong></li>`,
+          )}</ul></section>`
       : ''}
     <p class="hint">${ctx.t('fac.disclaimer')}</p>
   </div>`;

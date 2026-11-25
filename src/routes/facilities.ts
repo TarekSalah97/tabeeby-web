@@ -1,3 +1,6 @@
+import { labInsights, pharmacyInsights } from '../services/facilityInsights.js';
+import { isPeriod } from '../services/insights.js';
+import { facilityInsightsPage } from '../views/pages/facilityInsights.js';
 import type { Router } from '../http/router.js';
 import type { Ctx } from '../http/context.js';
 import { href, requireUser } from '../http/context.js';
@@ -8,7 +11,7 @@ import type { SessionUser } from '../auth/sessions.js';
 import { destroySession } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
-  registerFacility, getOwnFacility, updateFacilityProfile, listOwnBranches, saveBranch, deleteBranch, listOwnTests, saveTestPrices,
+  registerFacility, getOwnFacility, updateFacilityProfile, listOwnBranches, saveBranch, deleteBranch, listOwnTests, saveTestPrices, listExtraTests, addExtraTest, updateExtraTest, deleteExtraTest,
   searchFacilities, getPublicFacility, listFacilitiesForReview, getFacilityForReview, decideFacility, isFacilityDecision, readFacilityDocument,
   FACILITY_KINDS, type BranchInput, type FacilityKind,
 } from '../services/facilities.js';
@@ -135,9 +138,9 @@ export function facilityRoutes(r: Router): void {
 
   r.get('/facility/prices', async (ctx) => {
     const user = requireFacility(ctx);
-    const [f, prices] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listOwnTests(ctx.deps.db, user.id)]);
+    const [f, prices, extras] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listOwnTests(ctx.deps.db, user.id), listExtraTests(ctx.deps.db, user.id)]);
     if (f.kind === 'pharmacy') throw notFound();
-    sendHtml(ctx, 200, facilityPricesPage(ctx, f, prices, { notice: notice(ctx) }));
+    sendHtml(ctx, 200, facilityPricesPage(ctx, f, prices, { notice: notice(ctx), extras }));
   });
 
   r.post('/facility/prices', async (ctx) => {
@@ -147,9 +150,43 @@ export function facilityRoutes(r: Router): void {
     const prices = Object.fromEntries(Object.entries(values).map(([k, v]) => [k.slice('price_'.length), v]));
     const errors = await saveTestPrices(ctx.deps, f, prices, ctx.ip);
     if (Object.keys(errors).length) {
-      return sendHtml(ctx, 422, facilityPricesPage(ctx, f, await listOwnTests(ctx.deps.db, user.id), { values, errors }));
+      return sendHtml(ctx, 422, facilityPricesPage(ctx, f, await listOwnTests(ctx.deps.db, user.id), { values, errors, extras: await listExtraTests(ctx.deps.db, user.id) }));
     }
     redirect(ctx, href(ctx, '/facility/prices', { ok: 'saved' }));
+  });
+
+  r.get('/facility/insights', async (ctx) => {
+    const user = requireFacility(ctx);
+    const f = await getOwnFacility(ctx.deps.db, user.id);
+    const raw = ctx.query.get('period') ?? '90d';
+    const period = isPeriod(raw) ? raw : '90d';
+    const load = f.kind === 'pharmacy' ? pharmacyInsights : labInsights;
+    sendHtml(ctx, 200, facilityInsightsPage(ctx, f, await load(ctx.deps.db, user.id, period, ctx.deps.now(), ctx.deps.cfg.TIME_ZONE)));
+  });
+
+  // Tests the lab or scan centre adds itself, beyond the built-in list.
+  r.post('/facility/extra-tests', async (ctx) => {
+    const user = requireFacility(ctx);
+    const f = await getOwnFacility(ctx.deps.db, user.id);
+    const values = { extraName: formValue(ctx, 'extraName'), extraPrice: formValue(ctx, 'extraPrice'), extraNote: formValue(ctx, 'extraNote') };
+    const errors = await addExtraTest(ctx.deps, f, { name: values.extraName, price: values.extraPrice, note: values.extraNote }, ctx.ip);
+    if (Object.keys(errors).length) {
+      const [prices, extras] = await Promise.all([listOwnTests(ctx.deps.db, user.id), listExtraTests(ctx.deps.db, user.id)]);
+      return sendHtml(ctx, 422, facilityPricesPage(ctx, f, prices, { values, errors, extras }));
+    }
+    redirect(ctx, href(ctx, '/facility/prices', { ok: 'extraAdded' }) + '#extra');
+  });
+
+  r.post('/facility/extra-tests/:id', async (ctx) => {
+    const user = requireFacility(ctx);
+    const ok = await updateExtraTest(ctx.deps, user.id, uuidParam(ctx, 'id'), { price: formValue(ctx, 'price'), note: formValue(ctx, 'note') }, ctx.ip);
+    redirect(ctx, href(ctx, '/facility/prices', ok ? { ok: 'extraUpdated' } : { error: 'clinics.feeInvalid' }) + '#extra');
+  });
+
+  r.post('/facility/extra-tests/:id/delete', async (ctx) => {
+    const user = requireFacility(ctx);
+    await deleteExtraTest(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/facility/prices', { ok: 'extraDeleted' }) + '#extra');
   });
 
   // --- Public pages ---------------------------------------------------------

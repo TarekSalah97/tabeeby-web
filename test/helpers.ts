@@ -3,6 +3,7 @@
  * scratch), the real HTTP app on a random port, and a cookie-aware client.
  * Requires TEST_DATABASE_URL pointing at a server where the user may CREATE DATABASE.
  */
+import type { PushOutcome, PushSender, PushSubscriptionKeys } from '../src/services/webPush.js';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
@@ -24,8 +25,20 @@ import { setLogLevel } from '../src/log.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
+/** Records Web Push messages instead of sending them; `next` sets the outcome of the following sends. */
+export class FakePush implements PushSender {
+  sent: { endpoint: string; payload: { title: string; body: string; url: string; tag: string } }[] = [];
+  next: PushOutcome = 'ok';
+  async send(sub: PushSubscriptionKeys, payload: string): Promise<PushOutcome> {
+    if (this.next !== 'ok') return this.next;
+    this.sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) });
+    return 'ok';
+  }
+}
+
 export interface Harness {
   deps: Deps;
+  push: FakePush;
   db: Db;
   sms: ConsoleSmsProvider;
   email: ConsoleEmailProvider;
@@ -56,7 +69,8 @@ export async function startHarness(overrides: Partial<Record<keyof Config, strin
   (email as unknown as { send: ConsoleEmailProvider['send'] }).send = async (to, subject, text) => {
     email.sent.push({ to, subject, text });
   };
-  const deps: Deps = { cfg, db, sms, email, storage: new LocalFileStorage(uploadDir), now: () => new Date() };
+  const push = new FakePush();
+  const deps: Deps = { cfg, db, sms, email, push, storage: new LocalFileStorage(uploadDir), now: () => new Date() };
   const server: Server = createApp(deps, path.join(root, 'public'));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   const port = (server.address() as AddressInfo).port;
@@ -65,6 +79,7 @@ export async function startHarness(overrides: Partial<Record<keyof Config, strin
 
   return {
     deps,
+    push,
     db,
     sms,
     email,

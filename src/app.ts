@@ -29,6 +29,7 @@ import { symptomCheckerRoutes } from './routes/symptomChecker.js';
 import { healthRecordRoutes } from './routes/healthRecord.js';
 import { messagingRoutes } from './routes/messaging.js';
 import { facilityRoutes } from './routes/facilities.js';
+import { medicineRoutes } from './routes/medicines.js';
 import { log, errorFields } from './log.js';
 import { staticRoot } from './http/staticRoot.js';
 import { RequestShield, isProbe } from './http/shield.js';
@@ -47,6 +48,7 @@ export function buildRouter(): Router {
   facilityRoutes(r);
   symptomCheckerRoutes(r);
   healthRecordRoutes(r);
+  medicineRoutes(r);
   recordsRoutes(r);
   dashboardRoutes(r);
   adminRoutes(r);

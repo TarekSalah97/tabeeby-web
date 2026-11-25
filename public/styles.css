@@ -1114,3 +1114,22 @@ input.dictating, textarea.dictating { border-color: #c0392b; box-shadow: 0 0 0 3
 .choice-price { font-weight: 700; color: var(--primary-dark); }
 .lab-sets { border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 10px 14px; }
 .search-pair { display: contents; }
+
+/* ---- Medicine reminders ---- */
+.dose-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dose-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.dose-row.taken { background: var(--primary-tint); border-color: var(--primary-line); }
+.dose-row.taken .dose-what strong { text-decoration: line-through; text-decoration-color: var(--muted); }
+.dose-row.late { border-color: #e0a100; background: #fff8e6; }
+.dose-time { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.dose-what { min-width: 0; }
+.time-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.time-row input[type=time] { width: auto; min-width: 8.5em; min-height: 44px; }
+.days-field input { max-width: 8em; }
+@media (max-width: 480px) {
+  .dose-row { grid-template-columns: auto 1fr; }
+  .dose-row form, .dose-row > .small { grid-column: 1 / -1; justify-self: start; }
+}
+a.med-link { text-decoration: none; color: inherit; }
+/* The hidden attribute always wins over component display rules (e.g. .btn). */
+[hidden] { display: none !important; }

@@ -49,7 +49,7 @@ function mobileMenu(ctx: Ctx, variant: string): SafeHtml {
         <a class="btn btn-primary btn-block" href="${href(ctx, '/join')}">${ctx.t('nav.signUp')}</a>`
     : html`${u.role === 'doctor' || u.role === 'assistant' || u.role === 'facility'
           ? link(u.role === 'doctor' || u.role === 'assistant' ? '/dashboard' : '/facility', ctx.t('nav.dashboard'))
-          : u.role === 'admin' ? link('/admin', ctx.t('nav.admin')) : link('/appointments', ctx.t('nav.myAppointments'))}
+          : u.role === 'admin' ? link('/admin', ctx.t('nav.admin')) : html`${link('/appointments', ctx.t('nav.myAppointments'))}${link('/medicines', ctx.t('med.title'))}`}
         <form method="post" action="${href(ctx, '/logout')}">${csrfField(ctx)}
           <button type="submit" class="btn btn-outline btn-block">${ctx.t('nav.signOut')}</button></form>`;
   return html`${!u ? html`<a class="btn btn-primary btn-sm mnav-signin" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>` : ''}

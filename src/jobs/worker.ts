@@ -3,6 +3,7 @@ import { deliverPending } from '../services/outbox.js';
 import { translator, formatTime, type Locale } from '../i18n/index.js';
 import { log, errorFields } from '../log.js';
 import { expireOldEntries } from '../services/waitlist.js';
+import { sendDueReminders } from '../services/medReminders.js';
 
 /**
  * Queues reminders exactly once: the UPDATE … RETURNING claims each
@@ -48,6 +49,8 @@ export async function cleanup(deps: Deps): Promise<void> {
   await expireOldEntries(deps.db, deps.cfg.TIME_ZONE, deps.now());
   // Codes (and the booking details waiting on them) are not needed once used or expired.
   await deps.db.query("delete from email_codes where created_at < now() - interval '2 days'");
+  // Dose history is only needed for a while (ticks shown for recent days).
+  await deps.db.query("delete from medicine_doses where due_at < now() - interval '90 days'");
 }
 
 export function startWorker(deps: Deps): () => void {
@@ -59,6 +62,7 @@ export function startWorker(deps: Deps): () => void {
     running = true;
     try {
       if (ticks % 12 === 0) await queueReminders(deps); // every minute
+      if (ticks % 12 === 6) await sendDueReminders(deps); // medicine reminders, every minute
       await deliverPending(deps.db, deps.sms, 20, deps.email);
       if (ticks % 720 === 0) await cleanup(deps); // hourly
     } catch (err) {

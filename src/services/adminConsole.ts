@@ -182,6 +182,8 @@ export async function removeAccount(deps: Deps, admin: SessionUser, userId: stri
     if (u.role === 'facility') await tx.query(`update facilities set verification_status = 'suspended', updated_at = now() where user_id = $1`, [userId]);
     // Doctors' own files about this person stay with the doctors, unlinked from the closed account.
     await tx.query('update patient_records set patient_user_id = null where patient_user_id = $1', [userId]);
+    await tx.query('delete from push_subscriptions where user_id = $1', [userId]);
+    await tx.query('update medicine_reminders set is_active = false where patient_id = $1', [userId]);
     await tx.query(
       `update users set status = 'removed', full_name = 'Removed account', phone_e164 = 'removed:' || id::text, email = null,
               email_verified_at = null, phone_verified_at = null, password_hash = 'removed', updated_at = now()

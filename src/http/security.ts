@@ -17,7 +17,7 @@ const CSP = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "frame-src 'none'",
-  "worker-src 'none'",
+  "worker-src 'self'",
   "manifest-src 'self'",
 ].join('; ');
 

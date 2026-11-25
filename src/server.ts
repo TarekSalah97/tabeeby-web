@@ -3,6 +3,7 @@ import { createDb } from './db/db.js';
 import { createApp } from './app.js';
 import { createSmsProvider } from './services/sms.js';
 import { createEmailProvider } from './services/email.js';
+import { WebPushSender } from './services/webPush.js';
 import { createAdvisor } from './services/symptomChecker.js';
 import { LocalFileStorage, DbFileStorage } from './storage/files.js';
 import { startWorker } from './jobs/worker.js';
@@ -18,6 +19,7 @@ const deps: Deps = {
   db,
   sms: createSmsProvider(cfg),
   email: createEmailProvider(cfg),
+  push: new WebPushSender(db, cfg.PUBLIC_ORIGIN.startsWith('https://') ? cfg.PUBLIC_ORIGIN : 'mailto:support@example.com'),
   storage: cfg.STORAGE_DRIVER === 'db' ? new DbFileStorage(db) : new LocalFileStorage(cfg.UPLOAD_DIR),
   now: () => new Date(),
   ai: createAdvisor(cfg),

@@ -457,3 +457,74 @@ document.addEventListener('click', function (e) {
     if (cityLabel()) rebuild();
   });
 })();
+
+// Medicine reminders: turn phone / browser notifications on or off for this device.
+(function () {
+  var box = document.querySelector('[data-push]');
+  if (!box) return;
+  var on = box.querySelector('[data-push-on]');
+  var off = box.querySelector('[data-push-off]');
+  var status = box.querySelector('[data-push-status]');
+  var unsupported = box.querySelector('[data-push-unsupported]');
+  var csrfInput = document.querySelector('input[name="_csrf"]');
+  var csrf = csrfInput ? csrfInput.value : '';
+  var t = {
+    on: document.documentElement.lang === 'ar' ? 'الإشعارات شغالة على الجهاز ده.' : 'Notifications are on for this device.',
+    off: document.documentElement.lang === 'ar' ? 'الإشعارات مقفولة على الجهاز ده.' : 'Notifications are off for this device.',
+    denied: document.documentElement.lang === 'ar'
+      ? 'الإشعارات ممنوعة للموقع ده من إعدادات المتصفح. افتح إعدادات الموقع واسمح بالإشعارات، وبعدين جرّب تاني.'
+      : 'Notifications are blocked for this site in your browser settings. Allow them in the site settings, then try again.',
+    failed: document.documentElement.lang === 'ar' ? 'ماقدرناش نشغّل الإشعارات. جرّب تاني.' : "Couldn't turn notifications on. Please try again."
+  };
+  function show(el, yes) { if (el) el.hidden = !yes; }
+  function say(text) { if (status) { status.textContent = text; status.hidden = false; } }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    show(unsupported, true);
+    return;
+  }
+  function keyBytes(b64) {
+    var s = (b64 + '===='.slice((b64.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = atob(s); var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function b64u(buf) {
+    var bytes = new Uint8Array(buf); var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function post(url, fields) {
+    var body = new URLSearchParams(); body.set('_csrf', csrf);
+    Object.keys(fields).forEach(function (k) { body.set(k, fields[k]); });
+    return fetch(url, { method: 'POST', body: body, credentials: 'same-origin' });
+  }
+  function refresh(reg) {
+    return reg.pushManager.getSubscription().then(function (sub) {
+      show(on, !sub); show(off, !!sub);
+      say(Notification.permission === 'denied' ? t.denied : sub ? t.on : t.off);
+      return sub;
+    });
+  }
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function (reg) {
+    refresh(reg);
+    on.addEventListener('click', function () {
+      on.disabled = true;
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') { say(t.denied); on.disabled = false; return; }
+        return navigator.serviceWorker.ready.then(function (ready) {
+          return ready.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(box.getAttribute('data-key')) });
+        }).then(function (sub) {
+          return post(box.getAttribute('data-subscribe'), { endpoint: sub.endpoint, p256dh: b64u(sub.getKey('p256dh')), auth: b64u(sub.getKey('auth')) })
+            .then(function (res) { if (!res.ok) throw new Error('save failed'); window.location.reload(); });
+        });
+      }).catch(function () { say(t.failed); on.disabled = false; });
+    });
+    off.addEventListener('click', function () {
+      off.disabled = true;
+      reg.pushManager.getSubscription().then(function (sub) {
+        if (!sub) return;
+        return post(box.getAttribute('data-unsubscribe'), { endpoint: sub.endpoint }).then(function () { return sub.unsubscribe(); });
+      }).then(function () { window.location.reload(); }).catch(function () { off.disabled = false; });
+    });
+  }).catch(function () { show(unsupported, true); });
+})();

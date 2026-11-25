@@ -286,12 +286,14 @@ export function healthRecordPage(
   )}</nav>`;
 
   const prescriptions = rec.prescriptions.length
-    ? html`<ul class="appt-list">${rec.prescriptions.map(
+    ? html`<a class="alert alert-info row-between med-link" href="${href(ctx, '/medicines')}"><span>${icon.bell}${ctx.t('med.banner')}</span><span aria-hidden="true">›</span></a>
+      <ul class="appt-list">${rec.prescriptions.map(
         (p) => html`<li class="hr-card">
           <div class="row-between"><strong>${formatFullDate(p.issued_at, ctx.locale, tz)}</strong>
             <a class="btn btn-outline btn-sm" href="${href(ctx, `/prescriptions/${p.id}`)}">${ctx.t('mydocs.open')}</a></div>
           <span class="muted small">${ctx.t('hr.prescribedBy')} <a href="${href(ctx, `/doctors/${p.doctor_slug}`)}"><bdi>${p.doctor_name}</bdi></a></span>
           <ul class="hr-tests">${p.medicines.map((m) => html`<li dir="auto">${m}</li>`)}</ul>
+          <div><a class="btn btn-outline btn-sm" href="${href(ctx, `/medicines/setup/${p.id}`)}" data-testid="set-reminders">${icon.bell}${ctx.t('med.setReminders')}</a></div>
           ${pharmacyBlock(ctx, p)}
         </li>`,
       )}</ul>`

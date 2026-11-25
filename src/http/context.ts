@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { PushSender } from '../services/webPush.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/db.js';
 import type { Session, SessionUser, Role } from '../auth/sessions.js';
@@ -20,6 +21,8 @@ export interface Deps {
   now: () => Date;
   /** Symptom checker AI; null/undefined when no API key is configured. */
   ai?: SpecialtyAdvisor | null;
+  /** Phone / browser notifications (medicine reminders); absent = off. */
+  push?: PushSender;
 }
 
 export interface Ctx {

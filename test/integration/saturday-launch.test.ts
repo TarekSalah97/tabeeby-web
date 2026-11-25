@@ -321,6 +321,11 @@ test('lab insights: requests, top referring doctors and top tests; a pharmacy se
   assert.match(page.body, /Complete blood count \(CBC\)/);
   assert.match(page.body, /5 h/);
   assert.match(page.body, /EGP 120/);
+  // Lab-specific: tests asked for that are not on the price list, busiest hours, specialties.
+  assert.match(page.body, /Asked for, but not on your price list/);
+  assert.match(page.body, /Busiest hours/);
+  assert.match(page.body, /Cardiology/);
+  assert.match(page.body, /Returning patients/);
   assert.match(page.body, /href="\/en\/facility\/insights"/);
   // Another lab sees none of it.
   const other = await facility('lab', 'Quiet Lab');
@@ -334,4 +339,24 @@ test('lab insights: requests, top referring doctors and top tests; a pharmacy se
   const pp = await ph.c.get('/en/facility/insights');
   assert.match(pp.body, /Your top referrer: Dr\. Top Referrer/);
   assert.match(pp.body, /Augmentin 1g/);
+  // Pharmacy-specific: what it did not have, and how often it could fill the prescription.
+  const prq = (await h.db.query<{ id: string }>('select id from pharmacy_requests where facility_id = $1', [ph.id])).rows[0]!.id;
+  await ph.c.post(`/en/facility/prescriptions/${prq}/reply`, { status: 'unavailable', total: '', note: '' });
+  const pp2 = await ph.c.get('/en/facility/insights');
+  assert.match(pp2.body, /Medicines you did not have/);
+  assert.match(pp2.body, /Augmentin 1g<\/bdi><\/span><strong>1×/);
+  assert.match(pp2.body, /You had everything in 0% of prescriptions/);
+  assert.doesNotMatch(pp2.body, /not on your price list/);
+
+  // Scan centre: by type of scan.
+  const scan = await facility('lab', 'Scan Insight Centre');
+  await h.db.query(`update facilities set kind = 'radiology' where user_id = $1`, [scan.id]);
+  await a.dc.get(`/en/dashboard/patients/${a.recordId}/visits/new`);
+  const v3 = await a.dc.post(`/en/dashboard/patients/${a.recordId}/visits`, { complaint: 'Abdominal pain', lab_code: ['us_abdomen'] });
+  const order3 = (await h.db.query<{ id: string }>('select id from lab_orders where encounter_id = $1', [/visits\/([0-9a-f-]{36})/.exec(v3.location!)![1]!])).rows[0]!.id;
+  assert.equal((await pc1.post(`/en/health-record/orders/${order3}/imaging/send`, { facility: scan.id, note: '' })).status, 303);
+  const sp = await scan.c.get('/en/facility/insights');
+  assert.match(sp.body, /By type of scan/);
+  assert.match(sp.body, /Ultrasound/);
+  assert.match(sp.body, /Most requested scans/);
 });

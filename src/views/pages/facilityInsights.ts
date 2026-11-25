@@ -1,7 +1,7 @@
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
-import { formatNumber, type MessageKey } from '../../i18n/index.js';
+import { formatNumber, formatTime, type MessageKey } from '../../i18n/index.js';
 import { money } from './public.js';
 import { PERIODS, pct } from '../../services/insights.js';
 import type { FacilityInsights } from '../../services/facilityInsights.js';
@@ -29,7 +29,12 @@ export function facilityInsightsPage(ctx: Ctx, f: OwnFacility, d: FacilityInsigh
       ${stat(ctx, d.patients, 'fins.patients')}
       ${stat(ctx, d.completed, pharmacy ? 'fins.completedPharmacy' : 'fins.completed')}
       ${stat(ctx, d.avgHours === null ? '—' : ctx.t('fins.hours', { n: formatNumber(d.avgHours, ctx.locale) }), pharmacy ? 'fins.avgHoursPharmacy' : 'fins.avgHours')}
+      ${stat(ctx, d.repeatPatients, 'fins.repeat')}
+      ${pharmacy
+        ? stat(ctx, d.avgOrder == null ? '—' : money(ctx, d.avgOrder), 'fins.avgOrder')
+        : stat(ctx, d.overdue ?? 0, 'fins.overdue')}
     </div>
+    ${kindSpecific(ctx, f, d)}
 
     <section class="panel stack">
       <div class="stack-sm"><h2>${ctx.t('fins.topDoctors')}</h2><p class="muted small">${ctx.t('fins.topDoctorsLead')}</p></div>
@@ -65,9 +70,88 @@ export function facilityInsightsPage(ctx: Ctx, f: OwnFacility, d: FacilityInsigh
         <p class="small"><strong>${ctx.t('fins.revenue')}:</strong> ${money(ctx, d.revenue)}</p>
       </section>
       <section class="panel stack">
+        <h2>${ctx.t('fins.specialties')}</h2><p class="muted small">${ctx.t('fins.specialtiesLead')}</p>
+        ${d.specialties.length
+          ? d.specialties.map((x) => bar(ctx, name(x.label_en, x.label_ar), x.count, d.specialties.reduce((a, y) => a + y.count, 0)))
+          : html`<p class="muted">${ctx.t('fins.noDoctors')}</p>`}
+      </section>
+      <section class="panel stack">
+        <h2>${ctx.t('fins.hoursTitle')}</h2><p class="muted small">${ctx.t('fins.hoursLead')}</p>
+        ${hoursChart(ctx, d.hours)}
+      </section>
+      <section class="panel stack">
         <h2>${ctx.t('fins.weekdays')}</h2>
         ${order.map((wd) => bar(ctx, ctx.t(`weekday.${wd}` as MessageKey), d.weekdays[wd] ?? 0, d.weekdays.reduce((a, b) => a + b, 0) || maxWd))}
       </section>
     </div>`;
   return facilityShell(ctx, f, 'insights', content);
+}
+
+const clock = (h: number, ctx: Ctx) => formatTime(new Date(Date.UTC(2026, 0, 1, h)), ctx.locale, 'UTC');
+
+/** Requests per hour as a small column chart, with the busiest two-hour window spelled out. */
+function hoursChart(ctx: Ctx, hours: number[]): SafeHtml {
+  const total = hours.reduce((a, b) => a + b, 0);
+  if (!total) return html`<p class="muted">${ctx.t('fins.noItems')}</p>`;
+  let best = 0;
+  for (let h = 0; h < 24; h++) if ((hours[h]! + (hours[(h + 1) % 24] ?? 0)) > (hours[best]! + (hours[(best + 1) % 24] ?? 0))) best = h;
+  const max = Math.max(...hours);
+  // Show the working part of the day (first to last hour with requests).
+  const first = hours.findIndex((n) => n > 0);
+  const last = 23 - [...hours].reverse().findIndex((n) => n > 0);
+  const range = Array.from({ length: last - first + 1 }, (_, i) => first + i);
+  return html`<p class="ins-headline">${ctx.t('fins.peak', { from: clock(best, ctx), to: clock((best + 2) % 24, ctx) })}</p>
+    <div class="hour-chart" role="img" aria-label="${ctx.t('fins.hoursTitle')}">${range.map(
+      (h) => html`<div class="hour-col" title="${clock(h, ctx)}: ${formatNumber(hours[h]!, ctx.locale)}"><span class="hour-bar h-${pct(hours[h]!, max)}"></span><span class="hour-label">${formatNumber(h % 12 || 12, ctx.locale)}</span></div>`,
+    )}</div>`;
+}
+
+/** The part of the page that differs for labs, scan centres and pharmacies. */
+function kindSpecific(ctx: Ctx, f: OwnFacility, d: FacilityInsights): SafeHtml {
+  const name = (en: string, ar: string) => (ctx.locale === 'ar' ? ar || en : en || ar);
+  if (f.kind === 'pharmacy') {
+    const a = d.answers ?? { ready: 0, partly: 0, unavailable: 0 };
+    const answered = a.ready + a.partly + a.unavailable;
+    return html`<div class="card-grid two">
+      <section class="panel stack">
+        <h2>${ctx.t('fins.stockGaps')}</h2><p class="muted small">${ctx.t('fins.stockGapsLead')}</p>
+        ${d.stockGaps?.length
+          ? html`<ul class="price-summary">${d.stockGaps.map((x) => html`<li><span><bdi>${x.label_en}</bdi></span><strong>${formatNumber(x.count, ctx.locale)}×</strong></li>`)}</ul>`
+          : html`<p class="muted">${ctx.t('fins.stockGapsNone')}</p>`}
+      </section>
+      <section class="panel stack">
+        <h2>${ctx.t('fins.answers')}</h2>
+        ${answered ? html`<p class="ins-headline">${ctx.t('fins.fillRate', { p: formatNumber(pct(a.ready, answered), ctx.locale) })}</p>` : ''}
+        ${bar(ctx, ctx.t('fins.answerAll'), a.ready, answered)}
+        ${bar(ctx, ctx.t('fins.answerPartly'), a.partly, answered)}
+        ${bar(ctx, ctx.t('fins.answerNone'), a.unavailable, answered)}
+      </section>
+    </div>`;
+  }
+  const missing = d.notOffered ?? [];
+  return html`<div class="card-grid two">
+    ${f.kind === 'radiology'
+      ? html`<section class="panel stack">
+          <h2>${ctx.t('fins.modalities')}</h2><p class="muted small">${ctx.t('fins.modalitiesLead')}</p>
+          ${d.modalities?.length
+            ? d.modalities.map((m) => html`${bar(ctx, ctx.t(`fins.modality.${m.key}` as MessageKey), m.count, d.requests)}
+                ${m.avgHours !== null ? html`<p class="small muted ins-sub">${ctx.t('fins.reportTime', { n: formatNumber(m.avgHours, ctx.locale) })}</p>` : ''}`)
+            : html`<p class="muted">${ctx.t('fins.noItems')}</p>`}
+        </section>`
+      : ''}
+    <section class="panel stack">
+      <h2>${ctx.t('fins.notOffered')}</h2><p class="muted small">${ctx.t('fins.notOfferedLead')}</p>
+      ${missing.length
+        ? html`<ul class="price-summary">${missing.map((x) => html`<li><span>${name(x.label_en, x.label_ar)}</span><strong>${formatNumber(x.count, ctx.locale)}×</strong></li>`)}</ul>
+          <div><a class="btn btn-outline btn-sm" href="${href(ctx, '/facility/prices')}">${ctx.t('fins.addPrices')}</a></div>`
+        : html`<p class="muted">${ctx.t('fins.notOfferedNone')}</p>`}
+    </section>
+    <section class="panel stack">
+      <h2>${ctx.t('fins.overdue')}</h2>
+      ${d.overdue
+        ? html`<p class="ins-headline warn-text">${formatNumber(d.overdue, ctx.locale)}</p>
+            <div><a class="btn btn-primary btn-sm" href="${href(ctx, '/facility/requests')}">${ctx.t('fins.openRequests')}</a></div>`
+        : html`<p class="muted">${ctx.t('fins.overdueOk')}</p>`}
+    </section>
+  </div>`;
 }

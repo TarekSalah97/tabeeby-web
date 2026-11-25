@@ -160,8 +160,9 @@ export function facilityRoutes(r: Router): void {
     const f = await getOwnFacility(ctx.deps.db, user.id);
     const raw = ctx.query.get('period') ?? '90d';
     const period = isPeriod(raw) ? raw : '90d';
-    const load = f.kind === 'pharmacy' ? pharmacyInsights : labInsights;
-    sendHtml(ctx, 200, facilityInsightsPage(ctx, f, await load(ctx.deps.db, user.id, period, ctx.deps.now(), ctx.deps.cfg.TIME_ZONE)));
+    const args = [ctx.deps.db, user.id, period, ctx.deps.now(), ctx.deps.cfg.TIME_ZONE] as const;
+    const data = f.kind === 'pharmacy' ? await pharmacyInsights(...args) : await labInsights(...args, f.kind === 'radiology');
+    sendHtml(ctx, 200, facilityInsightsPage(ctx, f, data));
   });
 
   // Tests the lab or scan centre adds itself, beyond the built-in list.

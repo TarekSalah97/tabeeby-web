@@ -15,8 +15,9 @@ import {
 import type { PrescriptionSummary } from '../../services/orderResults.js';
 import {
   MAX_FACILITY_NOTE,
-  type CentreChoice, type CentreRequest, type HealthRecord, type OrderPart, type RequestStatus, type ResultFile, type Section,
+  type CentreChoice, type CentreRequest, type HealthRecord, type KidneyResult, type OrderPart, type RequestStatus, type ResultFile, type Section,
 } from '../../services/orderResults.js';
+import { prepFor, mayNeedContrast } from '../../domain/labPrep.js';
 
 export type HealthTab = 'prescriptions' | 'lab' | 'imaging';
 export const HEALTH_TABS: readonly HealthTab[] = ['prescriptions', 'lab', 'imaging'];
@@ -173,6 +174,36 @@ export function contactButtons(ctx: Ctx, phone: string | null, whatsapp: string 
   </div>`;
 }
 
+/** How to prepare for the ordered tests (general advice; the doctor's or centre's instructions come first). */
+export function prepBlock(ctx: Ctx, items: readonly { test_code: string | null }[], open = true): SafeHtml {
+  const keys = prepFor(items);
+  if (!keys.length) return html``;
+  return html`<details class="prep"${attrIf(open, 'open')} data-testid="prep">
+    <summary><strong>${ctx.t('prep.title')}</strong></summary>
+    <ul>${keys.map((k) => html`<li>${ctx.t(k)}</li>`)}</ul>
+    <p class="small muted">${ctx.t('prep.caveat')}</p>
+  </details>`;
+}
+
+/** Requested → received → sample taken / scan done → results ready → reviewed by the doctor. */
+function tracker(ctx: Ctx, section: Section, r: NonNullable<OrderPart['request']>): SafeHtml {
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const steps: { label: MessageKey; at: Date | null }[] = [
+    { label: 'track.sent', at: r.createdAt },
+    { label: 'track.received', at: r.receivedAt },
+    { label: section === 'imaging' ? 'track.scanned' : 'track.sampled', at: r.sampleTakenAt ?? r.readyAt },
+    { label: 'track.ready', at: r.readyAt },
+    { label: 'track.reviewed', at: r.reviewedAt },
+  ];
+  const current = steps.findIndex((st) => !st.at);
+  return html`<ol class="tracker" aria-label="${ctx.t('track.title')}" data-testid="tracker">${steps.map(
+    (st, i) => html`<li class="${st.at ? 'done' : i === current ? 'current' : ''}"${attrIf(i === current, 'aria-current="step"')}>
+      <span class="tracker-dot" aria-hidden="true"></span>
+      <span class="tracker-label">${ctx.t(st.label)}${st.at ? html`<span class="sr-only">: </span><span class="tracker-time">${formatFullDateTime(st.at, ctx.locale, tz)}</span>` : ''}</span>
+    </li>`,
+  )}</ol>`;
+}
+
 function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const r = p.request;
@@ -187,6 +218,17 @@ function partCard(ctx: Ctx, p: OrderPart): SafeHtml {
     </div>
     <ul class="hr-tests">${p.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
     ${p.notes ? html`<p class="small muted" dir="auto">${ctx.t('hr.doctorNotes')}: ${p.notes}</p>` : ''}
+    ${r ? tracker(ctx, p.section, r) : ''}
+    ${r?.reviewedAt
+      ? html`<div class="doctor-review stack-sm" data-testid="doctor-review">
+          <strong>${ctx.t('res.patientReviewed', { doctor: p.doctorName })}</strong>
+          ${r.doctorComment ? html`<p class="hr-note" dir="auto">${r.doctorComment}</p>` : ''}
+          ${r.followUp
+            ? html`<p>${ctx.t('res.patientFollowUp')}</p><div><a class="btn btn-primary btn-sm" href="${href(ctx, `/doctors/${p.doctorSlug}`)}">${ctx.t('res.bookFollowUp')}</a></div>`
+            : ''}
+        </div>`
+      : ''}
+    ${r?.status === 'ready' ? '' : prepBlock(ctx, p.items, !r || r.status === 'sent')}
     ${r
       ? html`<div class="hr-request stack-sm">
           <span>${ctx.t(r.status === 'ready' ? 'hr.resultsFrom' : 'hr.sentToLabel')} <a href="${href(ctx, `${r.facilityKind === 'radiology' ? '/scan-centres' : '/labs'}/${r.facilitySlug}`)}"><bdi>${r.facilityName}</bdi></a>${
@@ -271,13 +313,17 @@ export function healthRecordPage(
   return layout(ctx, { title: `${ctx.t('hr.title')} — ${ctx.t('brand')}`, body, noindex: true });
 }
 
-export function sendOrderPage(ctx: Ctx, part: OrderPart, choices: CentreChoice[], error?: MessageKey): SafeHtml {
-  const total = part.items.filter((i) => i.test_code).length;
+export function sendOrderPage(ctx: Ctx, part: OrderPart, choices: CentreChoice[], kidney: KidneyResult[], error?: MessageKey): SafeHtml {
+  const total = part.items.length;
+  const tz = ctx.deps.cfg.TIME_ZONE;
+  const comma = ctx.locale === 'ar' ? '، ' : ', ';
+  const contrast = part.section === 'imaging' && mayNeedContrast(part.items);
   const centreWord: MessageKey = part.section === 'imaging' ? 'hr.scanCentre' : 'hr.lab';
   const body = html`<div class="container page narrow stack-lg">
     <a href="${href(ctx, '/health-record', { tab: part.section })}">← ${ctx.t('hr.title')}</a>
     <div><h1>${ctx.t('hr.sendTo', { centre: ctx.t(centreWord) })}</h1><p class="muted">${ctx.t('hr.sendLead')}</p></div>
     <ul class="hr-tests">${part.items.map((it) => html`<li dir="auto">${labItemName(ctx, it)}</li>`)}</ul>
+    ${prepBlock(ctx, part.items)}
     ${error ? alert('error', ctx.t(error)) : ''}
     ${choices.length
       ? html`<form method="post" action="${href(ctx, `/health-record/orders/${part.labOrderId}/${part.section}/send`)}" class="stack">
@@ -285,15 +331,29 @@ export function sendOrderPage(ctx: Ctx, part: OrderPart, choices: CentreChoice[]
           <fieldset class="stack-sm"><legend class="label">${ctx.t('hr.chooseCentre', { centre: ctx.t(centreWord) })}</legend>
             ${choices.map(
               (c, i) => html`<label class="hr-choice"><input type="radio" name="facility" value="${c.user_id}"${attrIf(i === 0, 'checked')} required>
-                <span class="stack-sm"><strong><bdi>${c.name}</bdi></strong>
+                <span class="stack-sm"><span class="row-wrap"><strong><bdi>${c.name}</bdi></strong>
+                    ${c.offered === total ? html`<span class="chip hr-status hr-ready">${ctx.t('hr.hasAll')}</span>` : ''}
+                    ${c.total_egp !== null ? html`<span class="choice-price">${ctx.t(c.offered === total ? 'hr.totalAll' : 'hr.totalSome', { price: formatNumber(c.total_egp, ctx.locale) })}</span>` : ''}</span>
                   <span class="small muted">${[
                     ctx.locale === 'ar' ? c.district_ar : c.district_en,
-                    total ? ctx.t('hr.offers', { n: formatNumber(c.offered, ctx.locale), total: formatNumber(total, ctx.locale) }) : null,
-                    c.total_egp !== null ? ctx.t('hr.priceFrom', { price: formatNumber(c.total_egp, ctx.locale) }) : null,
+                    c.offered < total ? ctx.t('hr.offers', { n: formatNumber(c.offered, ctx.locale), total: formatNumber(total, ctx.locale) }) : null,
                     c.home_service ? ctx.t('hr.homeService') : null,
-                  ].filter(Boolean).join(sep(ctx))}</span></span></label>`,
+                  ].filter(Boolean).join(sep(ctx))}</span>
+                  ${c.offered > 0 && c.missing.length
+                    ? html`<span class="small" dir="auto">${ctx.t('hr.notListed')}: ${c.missing.map((i) => labItemName(ctx, part.items[i]!)).join(comma)}</span>`
+                    : ''}</span></label>`,
             )}
           </fieldset>
+          ${contrast
+            ? html`<fieldset class="panel stack-sm" data-testid="kidney-share"><legend class="label">${ctx.t('kidney.title')}</legend>
+                <p class="small">${ctx.t('kidney.lead')}</p>
+                ${kidney.length
+                  ? html`<label class="check"><input type="radio" name="shareKidney" value="" checked> <span>${ctx.t('kidney.dontShare')}</span></label>
+                      ${kidney.map((k) => html`<label class="check"><input type="radio" name="shareKidney" value="${k.requestId}"> <span>${ctx.t('kidney.share', { date: formatFullDate(k.readyAt, ctx.locale, tz), centre: k.facilityName })}</span></label>`)}
+                      <p class="hint">${ctx.t('kidney.hint')}</p>`
+                  : html`<p class="small muted">${ctx.t('kidney.none')}</p>`}
+              </fieldset>`
+            : ''}
           ${choices.some((c) => c.home_service)
             ? html`<label class="check"><input type="checkbox" name="homeVisit" value="yes"> <span>${ctx.t('hr.homeVisit')}</span></label>`
             : ''}
@@ -347,7 +407,20 @@ export function centreRequestPage(ctx: Ctx, f: OwnFacility, r: CentreRequest, no
       ${r.home_visit ? html`<p><span class="pill small">${ctx.t('hr.wantsHomeVisit')}</span></p>` : ''}
       ${r.patient_note ? html`<p class="hr-note" dir="auto"><strong>${ctx.t('hr.patientNote')}:</strong> ${r.patient_note}</p>` : ''}
       ${r.facility_instructions ? html`<p class="small" dir="auto"><strong>${ctx.t('hr.centre.instructions')}:</strong> ${r.facility_instructions}</p>` : ''}
+      ${prepBlock(ctx, r.items, false)}
+      ${r.shared_kidney
+        ? html`<div class="hr-note stack-sm" data-testid="shared-kidney"><strong>${ctx.t('kidney.centreTitle')}</strong>
+            <span class="small">${ctx.t('kidney.centreFrom', { centre: r.shared_kidney.facility_name, date: formatFullDate(r.shared_kidney.ready_at, ctx.locale, tz) })}</span>
+            ${resultLinks(ctx, r.shared_kidney.results)}</div>`
+        : ''}
     </section>
+    ${r.status === 'received' && !r.sample_taken_at
+      ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/sample`)}" class="panel row-between">${csrfField(ctx)}
+          <span class="small">${ctx.t(r.section === 'imaging' ? 'track.markScannedHint' : 'track.markSampledHint')}</span>
+          <button class="btn btn-outline" type="submit">${ctx.t(r.section === 'imaging' ? 'track.markScanned' : 'track.markSampled')}</button></form>`
+      : r.sample_taken_at && r.status === 'received'
+        ? html`<p class="small muted">${ctx.t(r.section === 'imaging' ? 'track.scanned' : 'track.sampled')} · ${formatFullDateTime(r.sample_taken_at, ctx.locale, tz)}</p>`
+        : ''}
     ${r.status === 'sent'
       ? html`<form method="post" action="${href(ctx, `/facility/requests/${r.id}/received`)}" class="panel stack">${csrfField(ctx)}
           <div class="field"><label for="instructions">${ctx.t('hr.centre.instructions')}</label>

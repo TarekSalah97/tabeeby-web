@@ -380,3 +380,45 @@ document.addEventListener('click', function (e) {
     });
   });
 })();
+
+// Quick lab sets: ticking a set ticks its tests (and adds its typed tests) so the doctor sees and can
+// adjust exactly what will be ordered. With this script running, the set boxes are display-only:
+// the server then uses only the ticked tests. Without it, the server expands the ticked sets itself.
+(function () {
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-lab-set]'), function (box) {
+    var form = box.closest('form');
+    if (!form) return;
+    box.removeAttribute('name');
+    box.addEventListener('change', function () {
+      var codes = (box.getAttribute('data-lab-set') || '').split(',').filter(Boolean);
+      var names = (box.getAttribute('data-lab-names') || '').split('|').filter(Boolean);
+      var others = form.querySelectorAll('input[data-lab-set]');
+      function inOtherTickedSet(code) {
+        return Array.prototype.some.call(others, function (o) {
+          return o !== box && o.checked && (o.getAttribute('data-lab-set') || '').split(',').indexOf(code) >= 0;
+        });
+      }
+      codes.forEach(function (code) {
+        var t = form.querySelector('input[name=lab_code][value="' + code + '"]');
+        if (!t) return;
+        if (box.checked) {
+          t.checked = true;
+          var group = t.closest('details');
+          if (group) group.open = true;
+        } else if (!inOtherTickedSet(code)) {
+          t.checked = false;
+        }
+      });
+      var other = form.querySelector('textarea[name=lab_other]');
+      if (other && names.length) {
+        var lines = other.value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+        names.forEach(function (n) {
+          var i = lines.map(function (l) { return l.toLowerCase(); }).indexOf(n.toLowerCase());
+          if (box.checked && i < 0) lines.push(n);
+          if (!box.checked && i >= 0) lines.splice(i, 1);
+        });
+        other.value = lines.join('\n');
+      }
+    });
+  });
+})();

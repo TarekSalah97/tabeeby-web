@@ -6,7 +6,10 @@ import { href, requireUser } from '../http/context.js';
 import { sendHtml, sendJson, redirect } from '../http/respond.js';
 import { hitRateLimit } from '../auth/rateLimit.js';
 import { assist } from '../services/demoAssistant.js';
-import { doctorOrderResults } from '../services/orderResults.js';
+import { doctorOrderResults, doctorResults, countResultsToReview, reviewResults } from '../services/orderResults.js';
+import { deleteLabSet } from '../services/labSets.js';
+import { resultsPage, labSetsPage } from '../views/pages/results.js';
+import { expandLabSets, listLabSets, saveLabSet } from '../services/labSets.js';
 import { checkLinkCode, confirmLinkCode } from '../services/accountLink.js';
 import { fieldAll } from '../http/body.js';
 import { notFound, tooManyRequests } from '../http/errors.js';
@@ -26,6 +29,7 @@ import {
 import { requireDoctor, type DoctorArea } from './dashboard.js';
 import { formValue, noticeFrom, errorFrom, uuidParam } from './helpers.js';
 import { patientGatePage } from '../views/pages/auth.js';
+import type { MessageKey } from '../i18n/index.js';
 
 /** A signed-in doctor whose clinical records are switched on. Everyone else gets "not found". */
 async function recordsDoctor(ctx: Ctx, area: DoctorArea = 'doctor'): Promise<{ user: SessionUser; doctor: OwnDoctor } | null> {
@@ -63,8 +67,26 @@ function rxForm(ctx: Ctx): RxInput & RxFormValues {
   return { lines, notes: formValue(ctx, 'rx_notes') };
 }
 
-function labForm(ctx: Ctx): LabInput & LabFormValues {
-  return { codes: fieldAll(ctx.form, 'lab_code'), other: formValue(ctx, 'lab_other'), notes: formValue(ctx, 'lab_notes') };
+/** The lab part of a form: ticked tests, typed tests, plus any ticked quick sets (expanded here). */
+async function labForm(ctx: Ctx, doctorId: string): Promise<LabInput & LabFormValues> {
+  const sets = await expandLabSets(ctx.deps.db, doctorId, fieldAll(ctx.form, 'lab_set'));
+  const typed = formValue(ctx, 'lab_other');
+  const known = new Set(typed.split(/\r?\n/).map((l) => l.trim().toLowerCase()).filter(Boolean));
+  const extra = sets.names.filter((n) => !known.has(n.toLowerCase()));
+  return {
+    codes: [...new Set([...fieldAll(ctx.form, 'lab_code'), ...sets.codes])],
+    other: [typed.trim(), ...extra].filter(Boolean).join('\n'),
+    notes: formValue(ctx, 'lab_notes'),
+    saveAs: formValue(ctx, 'lab_save_as'),
+  };
+}
+
+/** After an order was issued: keep its tests as a quick set if the doctor gave it a name. */
+async function saveSetIfAsked(ctx: Ctx, doctorId: string, lab: LabInput & LabFormValues): Promise<MessageKey | null> {
+  const name = (lab.saveAs ?? '').trim();
+  if (!name) return null;
+  const problem = await saveLabSet(ctx.deps, doctorId, { name, codes: lab.codes, otherNames: lab.other.split(/\r?\n/) }, ctx.ip);
+  return problem ? 'labset.err.afterOrder' : null;
 }
 
 function notesForm(ctx: Ctx): VisitNotesInput {
@@ -80,14 +102,15 @@ function optionalUuid(v: string | null | undefined): string | null {
 async function renderVisit(ctx: Ctx, d: { user: SessionUser; doctor: OwnDoctor }, encounterId: string, extra: Partial<Parameters<typeof visitPage>[4]> = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const visit = await getVisit(db, d.user.id, encounterId);
-  const [record, medicines, orderResults, photos] = await Promise.all([
+  const [record, medicines, orderResults, photos, labSets] = await Promise.all([
     getRecord(db, d.user.id, visit.record_id),
     listDoctorMedicines(db, d.user.id),
     doctorOrderResults(db, d.user.id, visit.labOrders.map((l) => l.id)),
     listVisitPhotos(db, d.user.id, encounterId),
+    listLabSets(db, d.user.id),
   ]);
   const notice = noticeFrom(ctx);
-  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, orderResults, photos, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
+  sendHtml(ctx, status, visitPage(ctx, d.doctor, record, visit, { medicines, orderResults, photos, labSets, notice: notice ? { kind: 'success', key: notice } : undefined, error: errorFrom(ctx), ...extra }));
 }
 
 /** Whole years between a YYYY-MM-DD birth date and now. */
@@ -247,7 +270,8 @@ export function recordsRoutes(r: Router): void {
     if (!d) return;
     const record = await getRecord(ctx.deps.db, d.user.id, uuidParam(ctx, 'id'));
     const appointmentId = optionalUuid(ctx.query.get('appointment'));
-    sendHtml(ctx, 200, newVisitPage(ctx, d.doctor, record, { appointmentId, medicines: await listDoctorMedicines(ctx.deps.db, d.user.id), notice: noticeFrom(ctx) }));
+    const [medicines, labSets] = await Promise.all([listDoctorMedicines(ctx.deps.db, d.user.id), listLabSets(ctx.deps.db, d.user.id)]);
+    sendHtml(ctx, 200, newVisitPage(ctx, d.doctor, record, { appointmentId, medicines, labSets, notice: noticeFrom(ctx) }));
   });
 
   r.post('/dashboard/patients/:id/visits', async (ctx) => {
@@ -257,17 +281,19 @@ export function recordsRoutes(r: Router): void {
     const appointmentId = optionalUuid(formValue(ctx, 'appointment'));
     const notes = notesForm(ctx);
     const rx = rxForm(ctx);
-    const lab = labForm(ctx);
+    const lab = await labForm(ctx, d.user.id);
     const result = await createVisit(ctx.deps, d.user.id, id, { notes, appointmentId, rx, lab }, ctx.ip);
     if ('errors' in result) {
-      const [record, medicines] = await Promise.all([getRecord(ctx.deps.db, d.user.id, id), listDoctorMedicines(ctx.deps.db, d.user.id)]);
-      return sendHtml(ctx, 422, newVisitPage(ctx, d.doctor, record, { appointmentId, notes, rx, lab, errors: result.errors, medicines }));
+      const [record, medicines, labSets] = await Promise.all([getRecord(ctx.deps.db, d.user.id, id), listDoctorMedicines(ctx.deps.db, d.user.id), listLabSets(ctx.deps.db, d.user.id)]);
+      return sendHtml(ctx, 422, newVisitPage(ctx, d.doctor, record, { appointmentId, notes, rx, lab, errors: result.errors, medicines, labSets }));
     }
     // Photos chosen on the new-visit form are added once the visit exists.
     const photoError = ctx.files.some((f) => f.field === 'photos' && f.data.length > 0)
       ? await addVisitPhotos(ctx.deps, d.user.id, result.id, ctx.files, ctx.ip)
       : null;
-    redirect(ctx, href(ctx, `/dashboard/visits/${result.id}`, photoError ? { error: photoError } : { ok: 'visitSaved' }));
+    const setError = await saveSetIfAsked(ctx, d.user.id, lab);
+    const problem = photoError ?? setError;
+    redirect(ctx, href(ctx, `/dashboard/visits/${result.id}`, problem ? { error: problem } : { ok: lab.saveAs?.trim() ? 'visitSavedSet' : 'visitSaved' }));
   });
 
   r.post('/dashboard/visits/:id/photos', async (ctx) => {
@@ -325,10 +351,53 @@ export function recordsRoutes(r: Router): void {
     const d = await recordsDoctor(ctx);
     if (!d) return;
     const id = uuidParam(ctx, 'id');
-    const lab = labForm(ctx);
+    const lab = await labForm(ctx, d.user.id);
     const problem = await addLabOrder(ctx.deps, d.user.id, id, lab, ctx.ip);
     if (problem) return renderVisit(ctx, d, id, { lab, labError: problem }, 422);
-    redirect(ctx, href(ctx, `/dashboard/visits/${id}`, { ok: 'labIssued' }));
+    const setError = await saveSetIfAsked(ctx, d.user.id, lab);
+    redirect(ctx, href(ctx, `/dashboard/visits/${id}`, setError ? { error: setError } : { ok: lab.saveAs?.trim() ? 'labIssuedSet' : 'labIssued' }));
+  });
+
+  // ---- doctor: results of their orders, to review
+  r.get('/dashboard/results', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const which = ctx.query.get('tab') === 'reviewed' ? 'reviewed' : 'pending';
+    const [list, pending] = await Promise.all([doctorResults(ctx.deps.db, d.user.id, which), countResultsToReview(ctx.deps.db, d.user.id)]);
+    const n = noticeFrom(ctx);
+    const e = errorFrom(ctx);
+    sendHtml(ctx, 200, resultsPage(ctx, d.doctor, which, list, pending, n ? { kind: 'success', key: n } : e ? { kind: 'error', key: e } : undefined));
+  });
+
+  r.post('/dashboard/results/:id/review', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const problem = await reviewResults(ctx.deps, d.user.id, uuidParam(ctx, 'id'), { comment: formValue(ctx, 'comment'), followUp: formValue(ctx, 'followUp') === 'yes' }, ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/results', problem ? { error: problem } : { ok: 'resReviewed' }));
+  });
+
+  // ---- doctor: quick lab sets
+  r.get('/dashboard/lab-sets', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const n = noticeFrom(ctx);
+    sendHtml(ctx, 200, labSetsPage(ctx, d.doctor, await listLabSets(ctx.deps.db, d.user.id), { notice: n ? { kind: 'success', key: n } : undefined }));
+  });
+
+  r.post('/dashboard/lab-sets', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    const values = { name: formValue(ctx, 'name'), codes: fieldAll(ctx.form, 'lab_code'), other: formValue(ctx, 'lab_other') };
+    const problem = await saveLabSet(ctx.deps, d.user.id, { name: values.name, codes: values.codes, otherNames: values.other.split(/\r?\n/) }, ctx.ip);
+    if (problem) return sendHtml(ctx, 422, labSetsPage(ctx, d.doctor, await listLabSets(ctx.deps.db, d.user.id), { error: problem, values }));
+    redirect(ctx, href(ctx, '/dashboard/lab-sets', { ok: 'labSetSaved' }));
+  });
+
+  r.post('/dashboard/lab-sets/:id/delete', async (ctx) => {
+    const d = await recordsDoctor(ctx);
+    if (!d) return;
+    await deleteLabSet(ctx.deps, d.user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/dashboard/lab-sets', { ok: 'labSetDeleted' }));
   });
 
   for (const [path, kind] of [['prescriptions', 'prescription'], ['lab-orders', 'lab_order']] as const) {

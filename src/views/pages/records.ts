@@ -1,4 +1,6 @@
 import type { OrderPart } from '../../services/orderResults.js';
+import type { DoctorLabSet } from '../../services/labSets.js';
+import { BUILT_IN_LAB_SETS } from '../../domain/labPrep.js';
 import { PHOTOS_PER_UPLOAD, type VisitPhoto } from '../../services/visitPhotos.js';
 import { html, attrIf, type SafeHtml, type HtmlValue } from '../html.js';
 import type { Ctx } from '../../http/context.js';
@@ -316,6 +318,7 @@ export interface LabFormValues {
   codes: string[];
   other: string;
   notes: string;
+  saveAs?: string;
 }
 
 const emptyLine = () => ({ medicine: '', form: '', dose: '', frequency: '', timing: '', duration: '', instructions: '' });
@@ -350,11 +353,10 @@ function medicineList(medicines: { name: string; form: string }[]): SafeHtml {
   return html`<datalist id="medicine-list">${medicines.map((m) => html`<option value="${m.name}" data-form="${m.form}"></option>`)}</datalist>`;
 }
 
-function labFields(ctx: Ctx, v: LabFormValues | undefined, problem: OrderProblem | undefined): SafeHtml {
-  const chosen = new Set(v?.codes ?? []);
-  return html`<div class="stack">
-    ${orderProblem(ctx, problem)}
-    ${LAB_GROUPS.map((g) => {
+/** The test checkboxes by group, plus "other tests" (one per line). */
+export function labTestPicker(ctx: Ctx, chosenCodes: readonly string[], other: string | undefined, idPrefix: string): SafeHtml {
+  const chosen = new Set(chosenCodes);
+  return html`${LAB_GROUPS.map((g) => {
       const tests = LAB_TESTS.filter((t) => t.group === g);
       const picked = tests.filter((t) => chosen.has(t.code)).length;
       return html`<details class="lab-group"${attrIf(picked > 0, 'open')}><summary>${ctx.t.dynamic(`lab.group.${g}`)} <span class="muted">(${formatNumber(tests.length, ctx.locale)})</span></summary>
@@ -362,8 +364,31 @@ function labFields(ctx: Ctx, v: LabFormValues | undefined, problem: OrderProblem
           (t) => html`<label class="check"><input type="checkbox" name="lab_code" value="${t.code}"${attrIf(chosen.has(t.code), 'checked')}><span>${pick(ctx.locale, { name_en: t.en, name_ar: t.ar })}</span></label>`,
         )}</div></details>`;
     })}
-    ${textArea(ctx, { name: 'lab_other', label: ctx.t('lab.other'), value: v?.other, rows: 2, maxlength: 2000, hint: ctx.t('lab.otherHint'), idPrefix: 'lab-' })}
+    ${textArea(ctx, { name: 'lab_other', label: ctx.t('lab.other'), value: other, rows: 2, maxlength: 2000, hint: ctx.t('lab.otherHint'), idPrefix })}`;
+}
+
+function labSetPicker(ctx: Ctx, sets: readonly DoctorLabSet[]): SafeHtml {
+  const comma = ctx.locale === 'ar' ? '، ' : ', ';
+  const name = (codes: readonly string[]) => codes.map((c) => { const t = labTest(c); return t ? pick(ctx.locale, { name_en: t.en, name_ar: t.ar }) : c; }).join(comma);
+  return html`<fieldset class="lab-sets stack-sm"><legend class="label">${ctx.t('labset.title')}</legend>
+    <p class="hint">${ctx.t('labset.hint')}</p>
+    <div class="check-grid">
+      ${BUILT_IN_LAB_SETS.map((b) => html`<label class="check" title="${name(b.codes)}"><input type="checkbox" name="lab_set" value="builtin:${b.id}" data-lab-set="${b.codes.join(',')}"><span>${ctx.t(b.label)}</span></label>`)}
+      ${sets.map((o) => html`<label class="check" title="${[name(o.codes), ...o.other_names].filter(Boolean).join(comma)}"><input type="checkbox" name="lab_set" value="${o.id}" data-lab-set="${o.codes.join(',')}" data-lab-names="${o.other_names.join('|')}"><span><bdi>${o.name}</bdi></span></label>`)}
+    </div>
+    <a class="small" href="${href(ctx, '/dashboard/lab-sets')}">${ctx.t('labset.manage')}</a>
+  </fieldset>`;
+}
+
+function labFields(ctx: Ctx, v: LabFormValues | undefined, problem: OrderProblem | undefined, sets: readonly DoctorLabSet[] = []): SafeHtml {
+  return html`<div class="stack">
+    ${orderProblem(ctx, problem)}
+    ${labSetPicker(ctx, sets)}
+    ${labTestPicker(ctx, v?.codes ?? [], v?.other, 'lab-')}
     ${textArea(ctx, { name: 'lab_notes', label: ctx.t('lab.notes'), value: v?.notes, rows: 2, maxlength: 500, hint: ctx.t('lab.notesHint'), idPrefix: 'lab-' })}
+    <div class="field"><label for="lab-save-as">${ctx.t('labset.saveAs')} <span class="muted">(${ctx.t('common.optional')})</span></label>
+      <input id="lab-save-as" name="lab_save_as" maxlength="60" value="${v?.saveAs ?? ''}" aria-describedby="lab-save-as-hint">
+      <p class="hint" id="lab-save-as-hint">${ctx.t('labset.saveAsHint')}</p></div>
   </div>`;
 }
 
@@ -430,7 +455,7 @@ export function newVisitPage(
   ctx: Ctx,
   doctor: OwnDoctor,
   r: PatientRecord,
-  o: { appointmentId: string | null; notes?: Partial<NotesValues>; rx?: RxFormValues; lab?: LabFormValues; errors?: VisitErrors; medicines: { name: string; form: string }[]; notice?: MessageKey },
+  o: { appointmentId: string | null; notes?: Partial<NotesValues>; rx?: RxFormValues; lab?: LabFormValues; errors?: VisitErrors; medicines: { name: string; form: string }[]; notice?: MessageKey; labSets?: DoctorLabSet[] },
 ): SafeHtml {
   const content = html`
     <a href="${href(ctx, `/dashboard/patients/${r.id}`)}">← ${r.full_name}</a>
@@ -445,7 +470,7 @@ export function newVisitPage(
       <section class="panel stack"><h2>${ctx.t('visit.notes')}</h2>${notesFields(ctx, o.notes ?? {}, o.errors?.fields, '', r.id)}
         ${photoPickers(ctx, 'new')}</section>
       <section class="panel stack"><h2>${ctx.t('rx.title')}</h2><p class="hint">${ctx.t('rx.lead')}</p>${rxFields(ctx, o.rx, o.errors?.rx)}</section>
-      <section class="panel stack"><h2>${ctx.t('lab.title')}</h2><p class="hint">${ctx.t('lab.lead')}</p>${labFields(ctx, o.lab, o.errors?.lab)}</section>
+      <section class="panel stack"><h2>${ctx.t('lab.title')}</h2><p class="hint">${ctx.t('lab.lead')}</p>${labFields(ctx, o.lab, o.errors?.lab, o.labSets)}</section>
       <div class="row-wrap"><button class="btn btn-primary btn-lg" type="submit">${ctx.t('visit.save')}</button>
         <a class="btn btn-ghost" href="${href(ctx, `/dashboard/patients/${r.id}`)}">${ctx.t('common.cancel')}</a></div>
       ${medicineList(o.medicines)}
@@ -492,6 +517,7 @@ export function visitPage(
     rxError?: OrderProblem;
     lab?: LabFormValues;
     labError?: OrderProblem;
+    labSets?: DoctorLabSet[];
     notice?: Notice;
     error?: MessageKey;
     photos?: VisitPhoto[];
@@ -571,7 +597,12 @@ export function visitPage(
             const q = o.orderResults?.get(`${l.id}:${section}`);
             if (!q) return '';
             return html`<div class="hr-request stack-sm" data-testid="doctor-results">
-              <span class="small">${ctx.t('hr.doctor.sentTo', { centre: q.facilityName })}${sep(ctx)}<strong>${ctx.t(q.status === 'ready' ? 'hr.status.ready' : q.status === 'received' ? 'hr.status.received' : 'hr.status.sent')}</strong></span>
+              <span class="small">${ctx.t('hr.doctor.sentTo', { centre: q.facilityName })}${sep(ctx)}<strong>${ctx.t(q.status === 'ready' ? 'hr.status.ready' : q.sampleTakenAt ? 'track.sampled' : q.status === 'received' ? 'hr.status.received' : 'hr.status.sent')}</strong></span>
+              ${q.status === 'ready'
+                ? q.reviewedAt
+                  ? html`<span class="small"><span class="chip hr-status hr-ready">${ctx.t('res.reviewed')}</span>${q.doctorComment ? html` <span dir="auto">${q.doctorComment}</span>` : ''}</span>`
+                  : html`<a class="btn btn-primary btn-sm" href="${href(ctx, '/dashboard/results')}#res-${q.id}">${ctx.t('res.reviewNow')}</a>`
+                : ''}
               ${q.status === 'ready' ? html`${q.facilityNote ? html`<p class="hr-note" dir="auto">${q.facilityNote}</p>` : ''}
                 <ul class="result-files">${q.results.map((f, n) => html`<li><a href="${href(ctx, `/results/${f.id}`)}" target="_blank" rel="noopener">${icon.upload}${ctx.t('hr.resultFile', { n: formatNumber(n + 1, ctx.locale) })} (${f.mime === 'application/pdf' ? 'PDF' : ctx.t('hr.image')})</a></li>`)}</ul>` : ''}
             </div>`;
@@ -579,7 +610,7 @@ export function visitPage(
         </article>`) : html`<p class="muted">${ctx.t('lab.none')}</p>`}
       <details${attrIf(!!o.labError, 'open')}><summary class="btn btn-primary btn-sm">${ctx.t('lab.add')}</summary>
         <form method="post" action="${href(ctx, `/dashboard/visits/${v.id}/lab-orders`)}" class="stack" novalidate>${csrfField(ctx)}
-          ${labFields(ctx, o.lab, o.labError)}
+          ${labFields(ctx, o.lab, o.labError, o.labSets)}
           <div><button class="btn btn-primary" type="submit">${ctx.t('lab.issue')}</button></div></form>
       </details>
     </section>

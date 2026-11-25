@@ -83,7 +83,8 @@ test('full round trip: patient sends to a lab, the lab uploads results, patient 
   const choose = await pc.get(`/en/health-record/orders/${labOrderId}/lab/send`);
   assert.equal(choose.status, 200);
   assert.ok(choose.body.indexOf('Alpha Labs Test') < choose.body.indexOf('Other Lab'));
-  assert.match(choose.body, /about 120 EGP/);
+  assert.match(choose.body, /120 EGP in total/);
+  assert.match(choose.body, /Has all tests/);
   assert.doesNotMatch(choose.body, /Delta Scan Test/);
   // A scan centre cannot be picked for the lab part.
   assert.equal((await pc.post(`/en/health-record/orders/${labOrderId}/lab/send`, { facility: scan.id })).status, 422);

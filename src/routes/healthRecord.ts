@@ -10,7 +10,7 @@ import { patientGatePage } from '../views/pages/auth.js';
 import { getOwnFacility, offersTests } from '../services/facilities.js';
 import {
   patientHealthRecord, patientOrderPart, centreChoices, sendOrderPart, cancelOrderPart, isSection,
-  listCentreRequests, getCentreRequest, markReceived, addResultFile, removeResultFile, markReady, readResultFile, type ResultViewer,
+  listCentreRequests, getCentreRequest, markReceived, markSampleTaken, patientKidneyResults, addResultFile, removeResultFile, markReady, readResultFile, type ResultViewer,
 } from '../services/orderResults.js';
 import { createLinkCode } from '../services/accountLink.js';
 import { healthRecordPage, sendOrderPage, centreRequestsPage, centreRequestPage, isHealthTab, sendToPharmacyPage, pharmacyInboxPage, pharmacyRequestPage } from '../views/pages/healthRecord.js';
@@ -122,7 +122,8 @@ export function healthRecordRoutes(r: Router): void {
     const user = requireUser(ctx, 'patient');
     const part = await patientOrderPart(ctx.deps.db, user.id, uuidParam(ctx, 'id'), sectionParam(ctx));
     if (part.request) return redirect(ctx, href(ctx, '/health-record', { tab: part.section }));
-    sendHtml(ctx, 200, sendOrderPage(ctx, part, await centreChoices(ctx.deps.db, part)));
+    const [choices, kidney] = await Promise.all([centreChoices(ctx.deps.db, part), patientKidneyResults(ctx.deps.db, user.id)]);
+    sendHtml(ctx, 200, sendOrderPage(ctx, part, choices, kidney));
   });
 
   r.post('/health-record/orders/:id/:section/send', async (ctx) => {
@@ -131,11 +132,16 @@ export function healthRecordRoutes(r: Router): void {
     const section = sectionParam(ctx);
     const facility = formValue(ctx, 'facility');
     const problem = isUuid(facility)
-      ? await sendOrderPart(ctx.deps, user.id, id, section, facility, ctx.ip, { note: formValue(ctx, 'note'), homeVisit: formValue(ctx, 'homeVisit') === 'yes' })
+      ? await sendOrderPart(ctx.deps, user.id, id, section, facility, ctx.ip, {
+          note: formValue(ctx, 'note'),
+          homeVisit: formValue(ctx, 'homeVisit') === 'yes',
+          shareKidney: isUuid(formValue(ctx, 'shareKidney')) ? formValue(ctx, 'shareKidney') : undefined,
+        })
       : 'hr.err.chooseCentre';
     if (problem) {
       const part = await patientOrderPart(ctx.deps.db, user.id, id, section);
-      return sendHtml(ctx, 422, sendOrderPage(ctx, part, await centreChoices(ctx.deps.db, part), problem));
+      const [choices, kidney] = await Promise.all([centreChoices(ctx.deps.db, part), patientKidneyResults(ctx.deps.db, user.id)]);
+      return sendHtml(ctx, 422, sendOrderPage(ctx, part, choices, kidney, problem));
     }
     redirect(ctx, href(ctx, '/health-record', { tab: section, ok: 'orderSent' }));
   });
@@ -180,6 +186,13 @@ export function healthRecordRoutes(r: Router): void {
     const id = uuidParam(ctx, 'id');
     await markReceived(ctx.deps, f.user_id, id, ctx.ip, formValue(ctx, 'instructions'));
     redirect(ctx, href(ctx, `/facility/requests/${id}`, { ok: 'orderReceived' }));
+  });
+
+  r.post('/facility/requests/:id/sample', async (ctx) => {
+    const f = await requireCentre(ctx);
+    const id = uuidParam(ctx, 'id');
+    const problem = await markSampleTaken(ctx.deps, f.user_id, id, ctx.ip);
+    redirect(ctx, href(ctx, `/facility/requests/${id}`, problem ? { error: problem } : { ok: 'sampleTaken' }));
   });
 
   r.post('/facility/requests/:id/results', async (ctx) => {

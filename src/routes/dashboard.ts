@@ -31,6 +31,7 @@ import { formatDateTime } from '../i18n/index.js';
 import { experienceYears } from '../domain/experience.js';
 import { addDays, isValidDate, todayIn } from '../domain/time.js';
 import { DomainError, notFound } from '../http/errors.js';
+import { countResultsToReview } from '../services/orderResults.js';
 import { isUuid } from '../http/router.js';
 import { isMessageKey, type MessageKey } from '../i18n/index.js';
 import type { AppointmentStatus } from '../domain/appointmentStatus.js';
@@ -134,16 +135,17 @@ export function dashboardRoutes(r: Router): void {
       listOwnClinics(db, user.id),
       listOwnRules(db, user.id),
     ]);
-    const [ratings, noShows, payments, strikeCounts, confirmedToday] = await Promise.all([
+    const [ratings, noShows, payments, strikeCounts, confirmedToday, resultsToReview] = await Promise.all([
       ratingsFor(db, [user.id]),
       noShowCounts(db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS, user.id, appointments.map((a) => ({ patientId: a.patient_id, phone: a.patient_phone }))),
       paymentsFor(db, appointments.map((a) => a.id)),
       activeStrikes(db, ctx.deps.cfg, [user.id]),
       bookingsOnDay(db, user.id, date, tz),
+      user.actingAssistantId || !doctor.records_enabled ? Promise.resolve(0) : countResultsToReview(db, user.id),
     ]);
     const strikes = { active: strikeCounts.get(user.id) ?? 0, limit: ctx.deps.cfg.STRIKE_LIMIT };
     const rating = ratings.get(user.id) ?? null;
-    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, payments, strikes, confirmedToday, notice: ok(ctx) }));
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, payments, strikes, confirmedToday, resultsToReview, notice: ok(ctx) }));
   });
 
   r.post('/dashboard/day-off', async (ctx) => {

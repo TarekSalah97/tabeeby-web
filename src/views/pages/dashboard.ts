@@ -20,7 +20,7 @@ import type { PaymentMethod } from '../../services/payments.js';
 import type { ClinicForBooking, FollowUpSource } from '../../services/clinicBooking.js';
 import type { Slot } from '../../domain/availability.js';
 
-export type Section = 'today' | 'messages' | 'income' | 'insights' | 'patients' | 'clinics' | 'hours' | 'profile' | 'team' | 'book';
+export type Section = 'today' | 'results' | 'messages' | 'income' | 'insights' | 'patients' | 'clinics' | 'hours' | 'profile' | 'team' | 'book';
 
 export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   // Menu: Schedule, Patients, Messages, Income (if the doctor uses it), Profile (which holds clinics and hours).
@@ -35,6 +35,7 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
     : [
         { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
         ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
+        ...(doctor.records_enabled ? [{ key: 'results' as const, path: '/dashboard/results', label: 'res.title' as const }] : []),
         { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
         ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
         { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
@@ -98,6 +99,8 @@ export function todayPage(
     strikes?: { active: number; limit: number };
     /** Confirmed bookings on this day (for "Can't work this day?"). */
     confirmedToday?: number;
+    /** Released lab / scan results of this doctor's orders not yet reviewed (doctor only). */
+    resultsToReview?: number;
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
@@ -163,6 +166,10 @@ export function todayPage(
       ${canBook ? html`<a class="btn btn-primary btn-lg" href="${href(ctx, '/dashboard/book', { date: o.date })}">${icon.plus}${ctx.t('cbook.add')}</a>` : ''}
     </div>
     ${setup}
+    ${!secretary && o.resultsToReview
+      ? html`<div class="alert alert-info row-between" role="status" data-testid="results-banner"><span>${ctx.t('res.banner', { n: n(o.resultsToReview) })}</span>
+          <a class="btn btn-primary btn-sm" href="${href(ctx, '/dashboard/results')}">${ctx.t('res.reviewNow')}</a></div>`
+      : ''}
     <div class="kpis">
       <div class="kpi"><span>${ctx.t('dash.kpiToday')}</span><strong>${n(live.length)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiCompleted')}</span><strong>${n(done)}</strong></div>

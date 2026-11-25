@@ -6,6 +6,7 @@ import type { UploadedFile } from '../http/body.js';
 import type { MessageKey } from '../i18n/index.js';
 import { translator, type Locale } from '../i18n/index.js';
 import { labTest } from '../domain/clinical.js';
+import { isKidneyTest, mayNeedContrast } from '../domain/labPrep.js';
 import { sniffDocumentType } from '../storage/files.js';
 import { stripImageMetadata } from '../storage/imageClean.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -67,7 +68,12 @@ export interface OrderPart {
     facilityPhone: string | null;
     facilityWhatsapp: string | null;
     createdAt: Date;
+    receivedAt: Date | null;
+    sampleTakenAt: Date | null;
     readyAt: Date | null;
+    reviewedAt: Date | null;
+    doctorComment: string | null;
+    followUp: boolean;
     results: ResultFile[];
   } | null;
 }
@@ -103,7 +109,12 @@ interface RequestRow {
   facility_phone: string | null;
   facility_whatsapp: string | null;
   created_at: Date;
+  received_at: Date | null;
+  sample_taken_at: Date | null;
   ready_at: Date | null;
+  reviewed_at: Date | null;
+  doctor_comment: string | null;
+  follow_up: boolean;
 }
 
 async function openRequestsFor(db: Queryable, labOrderIds: string[]): Promise<Map<string, OrderPart['request']>> {
@@ -112,7 +123,8 @@ async function openRequestsFor(db: Queryable, labOrderIds: string[]): Promise<Ma
   const ph = labOrderIds.map((_, i) => `$${i + 1}`).join(', ');
   const { rows } = await db.query<RequestRow>(
     `select q.id, q.lab_order_id, q.section, q.status, f.name as facility_name, f.slug as facility_slug, f.kind as facility_kind,
-            q.facility_note, q.facility_instructions, f.phone_e164 as facility_phone, f.whatsapp_e164 as facility_whatsapp, q.created_at, q.ready_at
+            q.facility_note, q.facility_instructions, f.phone_e164 as facility_phone, f.whatsapp_e164 as facility_whatsapp, q.created_at,
+            q.received_at, q.sample_taken_at, q.ready_at, q.reviewed_at, q.doctor_comment, q.follow_up
        from order_requests q join facilities f on f.user_id = q.facility_id
       where q.lab_order_id in (${ph}) and q.status <> 'cancelled'`,
     labOrderIds,
@@ -130,7 +142,12 @@ async function openRequestsFor(db: Queryable, labOrderIds: string[]): Promise<Ma
       facilityPhone: r.facility_phone,
       facilityWhatsapp: r.facility_whatsapp,
       createdAt: r.created_at,
+      receivedAt: r.received_at,
+      sampleTakenAt: r.sample_taken_at,
       readyAt: r.ready_at,
+      reviewedAt: r.reviewed_at,
+      doctorComment: r.reviewed_at ? r.doctor_comment : null,
+      followUp: !!r.reviewed_at && r.follow_up,
       // The patient and doctor only see files once the centre says the results are ready.
       results: r.status === 'ready' ? (results.get(r.id) ?? []) : [],
     });
@@ -249,31 +266,70 @@ export interface CentreChoice {
   home_service: boolean;
   district_en: string | null;
   district_ar: string | null;
+  /** How many of the ordered tests the centre lists (built-in tests by code, typed tests by name). */
   offered: number;
+  /** Price of the tests it lists, or null when it lists none of them. */
   total_egp: number | null;
+  /** Positions (in part.items) of the ordered tests the centre does not list. */
+  missing: number[];
 }
 
-/** Approved centres of the right kind, those offering most of the ordered tests (then cheapest) first. */
+const nameKey = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** Approved centres of the right kind: those listing most of the ordered tests first, then the cheapest. */
 export async function centreChoices(db: Queryable, part: OrderPart): Promise<CentreChoice[]> {
-  const codes = part.items.map((i) => i.test_code).filter((c): c is string => !!c);
-  const ph = codes.map((_, i) => `$${i + 2}`).join(', ');
-  const offered = codes.length
-    ? `(select count(*)::int from facility_tests t where t.facility_id = f.user_id and t.test_code in (${ph}))`
-    : '0';
-  const total = codes.length
-    ? `(select sum(t.price_egp)::int from facility_tests t where t.facility_id = f.user_id and t.test_code in (${ph}))`
-    : 'null::int';
-  const { rows } = await db.query<CentreChoice>(
+  const codes = [...new Set(part.items.map((i) => i.test_code).filter((c): c is string => !!c))];
+  const names = [...new Set(part.items.map((i) => (i.test_name ? nameKey(i.test_name) : '')).filter(Boolean))];
+  const { rows } = await db.query<Omit<CentreChoice, 'offered' | 'total_egp' | 'missing'> & { codes: string[]; code_prices: number[]; names: string[]; name_prices: number[] }>(
     `select f.user_id, f.name, f.slug, f.home_service, dist.name_en as district_en, dist.name_ar as district_ar,
-            ${offered} as offered, ${total} as total_egp
+            coalesce(t.codes, '{}') as codes, coalesce(t.prices, '{}') as code_prices,
+            coalesce(x.names, '{}') as names, coalesce(x.prices, '{}') as name_prices
        from facilities f join users u on u.id = f.user_id
        left join lateral (select b.district_id from facility_branches b where b.facility_id = f.user_id and b.is_active order by b.created_at limit 1) b on true
        left join districts dist on dist.id = b.district_id
+       left join lateral (select array_agg(ft.test_code) as codes, array_agg(ft.price_egp) as prices
+                            from facility_tests ft where ft.facility_id = f.user_id and ft.test_code = any($2::text[])) t on true
+       left join lateral (select array_agg(lower(e.name)) as names, array_agg(e.price_egp) as prices
+                            from facility_extra_tests e where e.facility_id = f.user_id and lower(e.name) = any($3::text[])) x on true
       where f.kind = $1 and f.verification_status = 'approved' and u.status = 'active'
-      order by offered desc, total_egp asc nulls last, f.name limit 40`,
-    [facilityKindFor(part.section), ...codes],
+      order by f.name limit 300`,
+    [facilityKindFor(part.section), codes, names],
   );
-  return rows;
+  const choices = rows.map(({ codes: have, code_prices, names: haveNames, name_prices, ...c }) => {
+    const missing = part.items.flatMap((it, i) =>
+      (it.test_code ? have.includes(it.test_code) : !!it.test_name && haveNames.includes(nameKey(it.test_name))) ? [] : [i],
+    );
+    const offered = have.length + haveNames.length;
+    const total = [...code_prices, ...name_prices].reduce((a, b) => a + Number(b), 0);
+    return { ...c, offered, total_egp: offered ? total : null, missing };
+  });
+  choices.sort((a, b) => b.offered - a.offered || (a.total_egp ?? Infinity) - (b.total_egp ?? Infinity) || a.name.localeCompare(b.name));
+  return choices.slice(0, 40);
+}
+
+export interface KidneyResult {
+  requestId: string;
+  readyAt: Date;
+  facilityName: string;
+}
+
+/**
+ * The patient's own released kidney tests (newest first) that they may choose to share with a
+ * scan centre for a contrast CT/MRI.
+ */
+export async function patientKidneyResults(db: Queryable, patientId: string): Promise<KidneyResult[]> {
+  const { rows } = await db.query<{ id: string; lab_order_id: string; ready_at: Date; facility_name: string }>(
+    `select q.id, q.lab_order_id, q.ready_at, f.name as facility_name
+       from order_requests q join facilities f on f.user_id = q.facility_id
+      where q.patient_id = $1 and q.section = 'lab' and q.status = 'ready'
+      order by q.ready_at desc limit 50`,
+    [patientId],
+  );
+  const items = await itemsFor(db, rows.map((r) => r.lab_order_id));
+  return rows
+    .filter((r) => (items.get(r.lab_order_id) ?? []).some(isKidneyTest))
+    .slice(0, 5)
+    .map((r) => ({ requestId: r.id, readyAt: r.ready_at, facilityName: r.facility_name }));
 }
 
 export async function sendOrderPart(
@@ -283,10 +339,17 @@ export async function sendOrderPart(
   section: Section,
   facilityId: string,
   ip: string,
-  extra: { note?: string; homeVisit?: boolean } = {},
+  extra: { note?: string; homeVisit?: boolean; shareKidney?: string } = {},
 ): Promise<MessageKey | null> {
   const part = await patientOrderPart(deps.db, patientId, labOrderId, section);
   if (part.request) return 'hr.err.alreadySent';
+  // Only one of the patient's own released kidney tests, and only for a scan that may use contrast.
+  let shareKidney: string | null = null;
+  if (extra.shareKidney) {
+    if (section !== 'imaging' || !mayNeedContrast(part.items)) return 'hr.err.cannotShare';
+    if (!(await patientKidneyResults(deps.db, patientId)).some((k) => k.requestId === extra.shareKidney)) return 'hr.err.cannotShare';
+    shareKidney = extra.shareKidney;
+  }
   const note = (extra.note ?? '').trim().slice(0, 300);
   const f = await deps.db.query<{ name: string; phone_e164: string; preferred_locale: Locale; home_service: boolean }>(
     `select f.name, u.phone_e164, u.preferred_locale, f.home_service from facilities f join users u on u.id = f.user_id
@@ -299,13 +362,13 @@ export async function sendOrderPart(
   try {
     await deps.db.transaction(async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
-        `insert into order_requests (lab_order_id, section, patient_id, facility_id, created_at, updated_at, patient_note, home_visit)
-         values ($1, $2, $3, $4, $5, $5, $6, $7) returning id`,
-        [labOrderId, section, patientId, facilityId, deps.now(), note || null, !!extra.homeVisit],
+        `insert into order_requests (lab_order_id, section, patient_id, facility_id, created_at, updated_at, patient_note, home_visit, shared_kidney_request_id)
+         values ($1, $2, $3, $4, $5, $5, $6, $7, $8) returning id`,
+        [labOrderId, section, patientId, facilityId, deps.now(), note || null, !!extra.homeVisit, shareKidney],
       );
       const t = translator(centre.preferred_locale);
       await enqueueSms(tx, centre.phone_e164, t('hr.sms.newRequest', { link: `${deps.cfg.PUBLIC_ORIGIN}${centre.preferred_locale === 'en' ? '/en' : ''}/facility/requests` }));
-      await audit(tx, { actorId: patientId, action: 'order.send', entityType: 'order_request', entityId: rows[0]!.id, metadata: { section, facilityId }, ip });
+      await audit(tx, { actorId: patientId, action: 'order.send', entityType: 'order_request', entityId: rows[0]!.id, metadata: { section, facilityId, sharedKidney: !!shareKidney }, ip });
     });
   } catch (e) {
     if (isUniqueViolation(e)) return 'hr.err.alreadySent';
@@ -348,21 +411,30 @@ export interface CentreRequest {
   patient_note: string | null;
   home_visit: boolean;
   facility_instructions: string | null;
+  sample_taken_at: Date | null;
+  /** A kidney test the patient chose to share for a contrast scan (files only once released). */
+  shared_kidney: { ready_at: Date; facility_name: string; results: ResultFile[] } | null;
 }
 
 export async function listCentreRequests(db: Queryable, facilityId: string): Promise<CentreRequest[]> {
-  const { rows } = await db.query<Omit<CentreRequest, 'items' | 'results'> & { lab_order_id: string }>(
-    `select q.id, q.status, q.section, q.created_at, q.lab_order_id, q.facility_note, q.patient_note, q.home_visit, q.facility_instructions, p.full_name as patient_name, p.phone_e164 as patient_phone,
-            du.full_name as doctor_name, l.issued_at, l.notes, l.status = 'voided' as order_voided
+  const { rows } = await db.query<Omit<CentreRequest, 'items' | 'results' | 'shared_kidney'> & { lab_order_id: string; kidney_id: string | null; kidney_ready_at: Date | null; kidney_facility: string | null }>(
+    `select q.id, q.status, q.section, q.created_at, q.lab_order_id, q.facility_note, q.patient_note, q.home_visit, q.facility_instructions, q.sample_taken_at,
+            p.full_name as patient_name, p.phone_e164 as patient_phone,
+            du.full_name as doctor_name, l.issued_at, l.notes, l.status = 'voided' as order_voided,
+            k.id as kidney_id, k.ready_at as kidney_ready_at, kf.name as kidney_facility
        from order_requests q join users p on p.id = q.patient_id join lab_orders l on l.id = q.lab_order_id
        join users du on du.id = l.doctor_id
+       left join order_requests k on k.id = q.shared_kidney_request_id and k.status = 'ready' and k.patient_id = q.patient_id
+       left join facilities kf on kf.user_id = k.facility_id
       where q.facility_id = $1 and q.status <> 'cancelled'
       order by (q.status = 'ready'), q.created_at desc limit 200`,
     [facilityId],
   );
-  const [items, results] = await Promise.all([itemsFor(db, rows.map((r) => r.lab_order_id)), resultsFor(db, rows.map((r) => r.id))]);
-  return rows.map(({ lab_order_id, ...r }) => ({
+  const kidneyIds = rows.flatMap((r) => (r.kidney_id ? [r.kidney_id] : []));
+  const [items, results] = await Promise.all([itemsFor(db, rows.map((r) => r.lab_order_id)), resultsFor(db, [...rows.map((r) => r.id), ...kidneyIds])]);
+  return rows.map(({ lab_order_id, kidney_id, kidney_ready_at, kidney_facility, ...r }) => ({
     ...r,
+    shared_kidney: kidney_id && kidney_ready_at ? { ready_at: kidney_ready_at, facility_name: kidney_facility ?? '', results: results.get(kidney_id) ?? [] } : null,
     // Only the part sent to this centre: a lab never sees the patient's scans and vice versa.
     items: (items.get(lab_order_id) ?? []).filter((it) => sectionOf(it) === r.section),
     results: results.get(r.id) ?? [],
@@ -395,6 +467,21 @@ export async function markReceived(deps: Deps, facilityId: string, id: string, i
     }
     await audit(tx, { actorId: facilityId, action: 'order.received', entityType: 'order_request', entityId: id, ip });
   });
+}
+
+/** The sample was taken / the scan was done (a step on the patient's tracker). */
+export async function markSampleTaken(deps: Deps, facilityId: string, id: string, ip: string): Promise<MessageKey | null> {
+  const { rowCount } = await deps.db.query(
+    `update order_requests set sample_taken_at = $3, updated_at = $3
+      where id = $1 and facility_id = $2 and status = 'received' and sample_taken_at is null`,
+    [id, facilityId, deps.now()],
+  );
+  if (!rowCount) {
+    await getCentreRequest(deps.db, facilityId, id); // not found → 404
+    return 'hr.err.receiveFirst';
+  }
+  await audit(deps.db, { actorId: facilityId, action: 'order.sample_taken', entityType: 'order_request', entityId: id, ip });
+  return null;
 }
 
 export async function addResultFile(deps: Deps, facilityId: string, id: string, file: UploadedFile | undefined, ip: string): Promise<MessageKey | null> {
@@ -450,7 +537,8 @@ export async function markReady(deps: Deps, facilityId: string, id: string, note
   const clean = note.trim().slice(0, MAX_FACILITY_NOTE) || null;
   await deps.db.transaction(async (tx) => {
     const { rows } = await tx.query<{ phone_e164: string; preferred_locale: Locale; name: string }>(
-      `update order_requests q set status = 'ready', ready_at = $3, updated_at = $3, facility_note = $4
+      `update order_requests q set status = 'ready', ready_at = $3, updated_at = $3, facility_note = $4,
+              sample_taken_at = coalesce(q.sample_taken_at, $3)
          from users p, facilities f
         where q.id = $1 and q.facility_id = $2 and q.status = 'received' and p.id = q.patient_id and f.user_id = q.facility_id
         returning p.phone_e164, p.preferred_locale, f.name`,
@@ -460,6 +548,16 @@ export async function markReady(deps: Deps, facilityId: string, id: string, note
     if (!p) throw new DomainError('hr.err.receiveFirst');
     const t = translator(p.preferred_locale);
     await enqueueSms(tx, p.phone_e164, t('hr.sms.ready', { centre: p.name, link: `${deps.cfg.PUBLIC_ORIGIN}${p.preferred_locale === 'en' ? '/en' : ''}/health-record` }));
+    // Tell the ordering doctor too (no names or results in the message itself).
+    const d = await tx.query<{ phone_e164: string; preferred_locale: Locale }>(
+      `select u.phone_e164, u.preferred_locale from order_requests q join lab_orders l on l.id = q.lab_order_id join users u on u.id = l.doctor_id
+        where q.id = $1 and u.status = 'active'`,
+      [id],
+    );
+    const doc = d.rows[0];
+    if (doc) {
+      await enqueueSms(tx, doc.phone_e164, translator(doc.preferred_locale)('res.sms.doctor', { link: `${deps.cfg.PUBLIC_ORIGIN}${doc.preferred_locale === 'en' ? '/en' : ''}/dashboard/results` }));
+    }
     await audit(tx, { actorId: facilityId, action: 'order.ready', entityType: 'order_request', entityId: id, ip });
   });
   return null;
@@ -475,6 +573,94 @@ export async function doctorOrderResults(db: Queryable, doctorId: string, labOrd
   return openRequestsFor(db, rows.map((r) => r.id));
 }
 
+export interface ResultToReview {
+  id: string;
+  section: Section;
+  readyAt: Date;
+  reviewedAt: Date | null;
+  doctorComment: string | null;
+  followUp: boolean;
+  patientName: string;
+  encounterId: string;
+  facilityName: string;
+  facilityNote: string | null;
+  items: { test_code: string | null; test_name: string | null }[];
+  results: ResultFile[];
+}
+
+export const MAX_DOCTOR_COMMENT = 500;
+
+/** Released results of the doctor's own orders: waiting for review (oldest first), or recently reviewed. */
+export async function doctorResults(db: Queryable, doctorId: string, which: 'pending' | 'reviewed'): Promise<ResultToReview[]> {
+  const { rows } = await db.query<Omit<ResultToReview, 'items' | 'results'> & { lab_order_id: string }>(
+    `select q.id, q.section, q.ready_at as "readyAt", q.reviewed_at as "reviewedAt", q.doctor_comment as "doctorComment", q.follow_up as "followUp",
+            pr.full_name as "patientName", l.encounter_id as "encounterId", f.name as "facilityName", q.facility_note as "facilityNote", q.lab_order_id
+       from order_requests q join lab_orders l on l.id = q.lab_order_id
+       join encounters e on e.id = l.encounter_id and e.doctor_id = l.doctor_id
+       join patient_records pr on pr.id = e.record_id
+       join facilities f on f.user_id = q.facility_id
+      where l.doctor_id = $1 and q.status = 'ready' and ${which === 'pending' ? 'q.reviewed_at is null' : 'q.reviewed_at is not null'}
+      order by ${which === 'pending' ? 'q.ready_at asc' : 'q.reviewed_at desc'} limit 100`,
+    [doctorId],
+  );
+  const [items, results] = await Promise.all([itemsFor(db, rows.map((r) => r.lab_order_id)), resultsFor(db, rows.map((r) => r.id))]);
+  return rows.map(({ lab_order_id, ...r }) => ({
+    ...r,
+    items: (items.get(lab_order_id) ?? []).filter((it) => sectionOf(it) === r.section),
+    results: results.get(r.id) ?? [],
+  }));
+}
+
+export async function countResultsToReview(db: Queryable, doctorId: string): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(
+    `select count(*)::int as n from order_requests q join lab_orders l on l.id = q.lab_order_id
+      where l.doctor_id = $1 and q.status = 'ready' and q.reviewed_at is null`,
+    [doctorId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * The ordering doctor has looked at the results. The comment and the follow-up request are shown to
+ * the patient, who is told by SMS (the message itself carries no medical detail).
+ */
+export async function reviewResults(
+  deps: Deps,
+  doctorId: string,
+  requestId: string,
+  input: { comment: string; followUp: boolean },
+  ip: string,
+): Promise<MessageKey | null> {
+  const comment = input.comment.trim().replace(/\r\n/g, '\n');
+  if (comment.length > MAX_DOCTOR_COMMENT) return 'res.err.tooLong';
+  return deps.db.transaction(async (tx) => {
+    const { rows } = await tx.query<{ phone_e164: string; preferred_locale: Locale; doctor_name: string }>(
+      `update order_requests q set reviewed_at = $3, doctor_comment = $4, follow_up = $5, updated_at = $3
+         from lab_orders l, users p, users du
+        where q.id = $1 and l.id = q.lab_order_id and l.doctor_id = $2 and q.status = 'ready' and q.reviewed_at is null
+          and p.id = q.patient_id and du.id = l.doctor_id
+        returning p.phone_e164, p.preferred_locale, du.full_name as doctor_name`,
+      [requestId, doctorId, deps.now(), comment || null, input.followUp],
+    );
+    const p = rows[0];
+    if (!p) {
+      const exists = await tx.query(
+        `select 1 from order_requests q join lab_orders l on l.id = q.lab_order_id where q.id = $1 and l.doctor_id = $2 and q.status = 'ready'`,
+        [requestId, doctorId],
+      );
+      if (!exists.rows.length) throw notFound();
+      return 'res.err.already';
+    }
+    const t = translator(p.preferred_locale);
+    await enqueueSms(tx, p.phone_e164, t(input.followUp ? 'res.sms.patientFollowUp' : 'res.sms.patient', {
+      doctor: p.doctor_name,
+      link: `${deps.cfg.PUBLIC_ORIGIN}${p.preferred_locale === 'en' ? '/en' : ''}/health-record`,
+    }));
+    await audit(tx, { actorId: doctorId, action: 'order.reviewed', entityType: 'order_request', entityId: requestId, metadata: { followUp: input.followUp, comment: !!comment }, ip });
+    return null;
+  });
+}
+
 // ---------------------------------------------------------------- reading a result file
 
 export type ResultViewer = { patientId: string } | { facilityId: string } | { doctorId: string };
@@ -487,11 +673,20 @@ export async function readResultFile(deps: Deps, viewer: ResultViewer, resultId:
     [resultId],
   );
   const row = rows[0];
-  const allowed =
-    row &&
+  let allowed =
+    !!row &&
     ('facilityId' in viewer
       ? row.facility_id === viewer.facilityId
       : row.status === 'ready' && ('patientId' in viewer ? row.patient_id === viewer.patientId : row.doctor_id === viewer.doctorId));
+  // A scan centre may open a released kidney test the patient shared with one of its open requests.
+  if (row && !allowed && 'facilityId' in viewer && row.status === 'ready') {
+    const shared = await deps.db.query(
+      `select 1 from order_requests q join order_results r on r.request_id = q.shared_kidney_request_id
+        where r.id = $1 and q.facility_id = $2 and q.status <> 'cancelled' and q.patient_id = $3`,
+      [resultId, viewer.facilityId, row.patient_id],
+    );
+    allowed = shared.rows.length > 0;
+  }
   if (!row || !allowed) throw notFound();
   const actorId = 'patientId' in viewer ? viewer.patientId : 'facilityId' in viewer ? viewer.facilityId : viewer.doctorId;
   await audit(deps.db, { actorId, action: 'order.result_viewed', entityType: 'order_result', entityId: resultId, ip });

@@ -10,6 +10,8 @@ import { log, errorFields } from '../log.js';
 
 export const QUEUE_REASON = 'Demo live queue';
 export const UPCOMING_REASON = 'Demo follow-up — Yasmin';
+/** A past queue visit that a demo doctor worked on: kept, no longer part of the queue. */
+const KEPT_REASON = 'Check-up';
 const DEMO_DOCTOR_PHONE = '+201000000101';
 /** Patients 01000000201 … 208; index 0 is Yasmin. */
 const QUEUE_PATIENT_PHONES = Array.from({ length: 8 }, (_, i) => `+2010000002${String(i + 1).padStart(2, '0')}`);
@@ -46,6 +48,15 @@ export async function refreshTodayQueue(
   ];
   await tx.query('savepoint demo_queue');
   try {
+    // Visits a demo doctor already worked on (a visit record, payment, review…) are kept as ordinary
+    // history; only untouched queue bookings are replaced.
+    await tx.query(
+      `update appointments a set reason = $3 where a.doctor_id = $1 and a.reason = $2 and (
+         exists (select 1 from encounters e where e.appointment_id = a.id) or exists (select 1 from payments p where p.appointment_id = a.id)
+         or exists (select 1 from reviews r where r.appointment_id = a.id) or exists (select 1 from doctor_strikes s where s.appointment_id = a.id)
+         or exists (select 1 from visit_issues v where v.appointment_id = a.id))`,
+      [doctor.userId, QUEUE_REASON, KEPT_REASON],
+    );
     await tx.query('delete from appointments where doctor_id = $1 and reason = $2', [doctor.userId, QUEUE_REASON]);
     // Make room: nothing else of this doctor's may overlap the demo queue today.
     await tx.query(

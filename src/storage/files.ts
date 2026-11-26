@@ -14,7 +14,7 @@ export interface FileStorage {
   remove(key: string): Promise<void>;
 }
 
-const KEY_RE = /^[0-9a-f]{32}\.(pdf|jpg|png)$/;
+const KEY_RE = /^[0-9a-f]{32}\.(pdf|jpg|png|webp|heic|avif)$/;
 
 export class LocalFileStorage implements FileStorage {
   constructor(private readonly dir: string) {}
@@ -67,6 +67,25 @@ export class DbFileStorage implements FileStorage {
 }
 
 /** Detect type from content, never from the filename or the browser's claim. */
+export type FacilityDocMime = 'application/pdf' | 'image/jpeg' | 'image/png' | 'image/webp' | 'image/heic' | 'image/heif' | 'image/avif';
+
+/**
+ * Any photo a phone produces, or a PDF — recognised by content, not by name: JPG, PNG, WebP,
+ * iPhone HEIC/HEIF, AVIF, PDF. Anything else (Word files, videos, …) is refused.
+ */
+export function sniffFacilityDocument(data: Buffer): { mime: FacilityDocMime; ext: 'pdf' | 'jpg' | 'png' | 'webp' | 'heic' | 'avif' } | null {
+  const basic = sniffDocumentType(data);
+  if (basic) return basic;
+  if (data.length >= 12 && data.subarray(0, 4).toString('latin1') === 'RIFF' && data.subarray(8, 12).toString('latin1') === 'WEBP') return { mime: 'image/webp', ext: 'webp' };
+  if (data.length >= 12 && data.subarray(4, 8).toString('latin1') === 'ftyp') {
+    const brand = data.subarray(8, 12).toString('latin1');
+    if (['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis'].includes(brand)) return { mime: 'image/heic', ext: 'heic' };
+    if (['mif1', 'msf1'].includes(brand)) return { mime: 'image/heif', ext: 'heic' };
+    if (['avif', 'avis'].includes(brand)) return { mime: 'image/avif', ext: 'avif' };
+  }
+  return null;
+}
+
 export function sniffDocumentType(data: Buffer): { mime: 'application/pdf' | 'image/jpeg' | 'image/png'; ext: 'pdf' | 'jpg' | 'png' } | null {
   if (data.subarray(0, 5).toString('latin1') === '%PDF-') return { mime: 'application/pdf', ext: 'pdf' };
   if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg' };

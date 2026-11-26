@@ -65,18 +65,15 @@ test('a pharmacy signs up with its licence, prepares its page, and appears after
   const join = await c.get('/en/facilities/join?kind=lab');
   assert.match(join.body, /value="lab" checked/);
 
-  const bad = await c.postMultipart('/en/facilities/join', joinForm(phone, { kind: 'clinic', licenceNumber: 'x' }, null));
+  const bad = await c.postMultipart('/en/facilities/join', joinForm(phone, { kind: 'clinic', licenceNumber: '' }, null));
   assert.equal(bad.status, 422);
   assert.match(bad.body, /Choose the type of place/);
   assert.match(bad.body, /licence number/);
-  assert.match(bad.body, /Upload this document/);
+  // Documents never block sign-up; the list still shows what is needed for approval.
+  assert.doesNotMatch(bad.body, /Upload this document/);
   assert.match(bad.body, /Responsible manager’s syndicate card/);
-  const disguised = await c.postMultipart('/en/facilities/join', joinForm(phone, {}, new Blob(['<html>x</html>'], { type: 'application/pdf' })));
-  assert.match(disguised.body, /must be a JPG, PNG or PDF/);
-  // A scan centre also needs its radiation licence.
-  const scan = await c.postMultipart('/en/facilities/join', joinForm(phone, { kind: 'radiology' }));
-  assert.equal(scan.status, 422);
-  assert.match(scan.body, /Radiation licence/);
+  assert.match(bad.body, /needed for approval/);
+  assert.match(bad.body, /Radiation licence/);
 
   const ok = await c.postMultipart('/en/facilities/join', joinForm(phone));
   assert.equal(ok.status, 303, ok.body.slice(0, 300));

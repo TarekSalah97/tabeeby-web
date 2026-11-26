@@ -1,4 +1,5 @@
 import { html, type SafeHtml } from '../html.js';
+import { facilityDocs } from '../../domain/documents.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { adminShell } from './adminConsole.js';
@@ -122,7 +123,11 @@ export function adminFacilitiesPage(ctx: Ctx, data: { pending: FacilityReviewIte
       ? html`<ul class="appt-list">${rows.map(
           (f) => html`<li class="appt-row"><div class="stack-sm">
               <a href="${href(ctx, `/admin/facilities/${f.user_id}`)}"><strong>${f.name}</strong></a>
-              <span class="muted small">${ctx.t(`fac.kind.${f.kind}` as MessageKey)} · ${f.contact_name} · ${formatDateTime(f.created_at, ctx.locale, tz)}</span>
+              <span class="muted small">${ctx.t(`fac.kind.${f.kind}` as MessageKey)} · ${f.contact_name} · ${formatDateTime(f.created_at, ctx.locale, tz)}
+                · ${ctx.t('fdocs.countN', { n: f.doc_count })}</span>
+              ${f.docs_updated_at && f.docs_requested_at && f.docs_updated_at > f.docs_requested_at
+                ? html`<span class="chip hr-status hr-ready" data-testid="new-docs">${ctx.t('fdocs.newUploads')}</span>`
+                : f.docs_requested_at ? html`<span class="chip">${ctx.t('fdocs.waitingForDocs')}</span>` : ''}
             </div>${vstatus(ctx, f.verification_status)}</li>`,
         )}</ul>`
       : html`<p class="muted">${ctx.t('adm.facNone')}</p>`;
@@ -158,14 +163,29 @@ export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityRevie
           : '—'}</dd></div>
       </dl>
     </section>
-    <section class="panel stack">
-      <h2>${ctx.t('admin.documents')}</h2>
+    <section class="panel stack" data-testid="admin-docs">
+      <h2>${ctx.t('admin.documents')} <span class="muted">(${f.documents.length})</span></h2>
       <p class="hint">${ctx.t('adm.facDocHint')}</p>
-      ${f.documents.map((doc) => html`<p class="row-wrap"><strong>${ctx.t(`docs.kind.${doc.kind}` as MessageKey)}</strong> <a class="btn btn-outline btn-sm" href="${href(ctx, `/admin/facility-documents/${doc.id}`)}" target="_blank" rel="noopener">${ctx.t('admin.viewDocument')}</a>
-        <span class="muted"> ${doc.mime_type} · ${Math.round(doc.size_bytes / 1024)} KB</span></p>`)}
+      ${f.docs_request_note ? alert('info', html`${ctx.t('fdocs.adminAsked')} <q dir="auto">${f.docs_request_note}</q>`) : ''}
+      ${facilityDocs(f.kind).filter((s) => s.required && !f.documents.some((d) => d.kind === s.kind)).length
+        ? html`<p class="small" data-testid="admin-docs-missing"><strong>${ctx.t('fdocs.adminMissing')}</strong> ${facilityDocs(f.kind)
+            .filter((s) => s.required && !f.documents.some((d) => d.kind === s.kind))
+            .map((s) => ctx.t(`docs.kind.${s.kind}` as MessageKey)).join(' · ')}</p>`
+        : ''}
+      ${facilityDocs(f.kind).filter((s) => f.documents.some((d) => d.kind === s.kind)).map((s) => html`<div class="stack-sm">
+        <h3 class="h4">${ctx.t(`docs.kind.${s.kind}` as MessageKey)}</h3>
+        <ul class="doc-thumbs">${f.documents.filter((d) => d.kind === s.kind).map((doc) => html`<li class="doc-thumb">
+          <a href="${href(ctx, `/admin/facility-documents/${doc.id}`)}" target="_blank" rel="noopener" aria-label="${ctx.t('admin.viewDocument')}">
+            ${['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(doc.mime_type)
+              ? html`<img src="${href(ctx, `/admin/facility-documents/${doc.id}`)}" alt="${ctx.t(`docs.kind.${s.kind}` as MessageKey)}" loading="lazy">`
+              : html`<span class="doc-icon">${doc.mime_type === 'application/pdf' ? 'PDF' : 'HEIC'}</span>`}</a>
+          <span class="small muted">${formatDateTime(doc.uploaded_at, ctx.locale, tz)} · ${Math.round(doc.size_bytes / 1024)} KB</span>
+        </li>`)}</ul></div>`)}
+      ${f.documents.some((d) => d.mime_type === 'image/heic' || d.mime_type === 'image/heif') ? html`<p class="hint">${ctx.t('fdocs.heicHint')}</p>` : ''}
     </section>
     <section class="panel row-wrap align-start">
       ${st === 'pending' || st === 'rejected' ? action('approve', 'admin.approve', false, true) : ''}
+      ${st === 'pending' || st === 'rejected' ? action('request_docs', 'fdocs.askMore', true) : ''}
       ${st === 'pending' ? action('reject', 'admin.reject', true) : ''}
       ${st === 'approved' || st === 'pending' ? action('suspend', 'admin.suspend', true) : ''}
       ${st === 'suspended' ? action('reinstate', 'admin.reinstate', false, true) : ''}

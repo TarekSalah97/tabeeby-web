@@ -2,11 +2,12 @@ import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
-import { alert, consentField, csrfField, directionsHref, districtOptionGroups, cityOptions, placeName, placeForMaps, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs, documentFields } from '../components.js';
+import { alert, consentField, csrfField, directionsHref, districtOptionGroups, cityOptions, placeName, placeForMaps, fieldError, icon, initials, input, passwordInput, select, errorSummary, searchTabs } from '../components.js';
 import { pick, formatNumber, type MessageKey } from '../../i18n/index.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
-import { facilityDocs } from '../../domain/documents.js';
+import { facilityDocs, docField, MAX_FILES_PER_DOC, type FacilityDocKind } from '../../domain/documents.js';
+import type { FacilityDoc, KeptFile } from '../../services/facilityDocuments.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import {
@@ -37,7 +38,7 @@ const openChip = (ctx: Ctx, open: boolean) =>
 // Sign-up
 // ---------------------------------------------------------------------------
 
-export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>; errors?: FieldErrors }): SafeHtml {
+export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>; errors?: FieldErrors; kept?: KeptFile[]; refused?: string[] }): SafeHtml {
   const v = o.values ?? {};
   const kind = v['kind'] ?? '';
   const body = html`<div class="container page narrow stack-lg">
@@ -45,7 +46,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
       <h1>${ctx.t('facjoin.title')}</h1>
       <p class="muted">${ctx.t('facjoin.lead')}</p>
     </div>
-    ${errorSummary(ctx, o.errors, { reenter: ['password', 'file'] })}
+    ${errorSummary(ctx, o.errors, { reenter: ['password'] })}
     <form class="panel stack-lg" method="post" action="${href(ctx, '/facilities/join')}" enctype="multipart/form-data" novalidate>
       ${csrfField(ctx)}
       <fieldset class="stack-sm">
@@ -62,7 +63,7 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
         ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: v['phone'], prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('facjoin.phoneHint'), errors: o.errors, required: true })}
         ${input(ctx, { name: 'email', label: ctx.t('join.email'), type: 'email', value: v['email'], autocomplete: 'email', maxlength: 254, errors: o.errors, required: true })}
         ${passwordInput(ctx, { name: 'password', label: ctx.t('auth.password'), autocomplete: 'new-password', hint: ctx.t('auth.passwordHint'), errors: o.errors, required: true })}
-        ${documentFields(ctx, facilityDocs('radiology'), o.errors, { radiation_licence: 'radiology' })}
+        ${facilityDocFields(ctx, facilityDocs('radiology'), { kept: o.kept, refused: o.refused, onlyFor: { radiation_licence: 'radiology' }, signup: true })}
       </div>
       ${consentField(ctx, o.errors)}
       <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('facjoin.submit')}</button>
@@ -72,11 +73,84 @@ export function facilityJoinPage(ctx: Ctx, o: { values?: Record<string, string>;
   return layout(ctx, { title: `${ctx.t('facjoin.title')} — ${ctx.t('brand')}`, body, noindex: false });
 }
 
+const PREVIEWABLE = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+
+/**
+ * Upload boxes for labs, pharmacies and scan centres: several photos per document, any phone photo
+ * or PDF, nothing required. Files already uploaded on an earlier try are listed (and sent back) so
+ * they never have to be chosen again.
+ */
+export function facilityDocFields(
+  ctx: Ctx,
+  specs: readonly { kind: FacilityDocKind; required: boolean }[],
+  o: { kept?: KeptFile[]; refused?: string[]; onlyFor?: Partial<Record<FacilityDocKind, string>>; signup?: boolean; have?: Map<FacilityDocKind, number> } = {},
+): SafeHtml {
+  return html`<fieldset class="stack docs-fieldset span-all">
+    <legend>${ctx.t('docs.title')}</legend>
+    <p class="hint">${ctx.t(o.signup ? 'fdocs.signupLead' : 'fdocs.lead')}</p>
+    ${o.refused?.length ? alert('warning', html`${ctx.t('fdocs.refused')} <bdi>${o.refused.join('، ')}</bdi>`) : ''}
+    <div class="docs-grid">${specs.map((d) => {
+      const name = docField(d.kind);
+      const id = `doc-${d.kind}`;
+      const kept = (o.kept ?? []).filter((k) => k.kind === d.kind);
+      const have = o.have?.get(d.kind) ?? 0;
+      return html`<div class="field doc-field"${o.onlyFor?.[d.kind] ? html` data-only-kind="${o.onlyFor[d.kind]}"` : ''}>
+        <label class="dropzone" for="${id}">
+          ${icon.upload}
+          <span class="stack-sm"><strong>${ctx.t(`docs.kind.${d.kind}` as MessageKey)}</strong>
+            <span class="hint">${d.required ? html`<span class="req-tag">${ctx.t('fdocs.needed')}</span>` : ctx.t('docs.optional')} · ${ctx.t('fdocs.choose')}</span>
+            ${have ? html`<span class="small ok-text">✓ ${ctx.t('fdocs.haveN', { n: formatNumber(have, ctx.locale) })}</span>` : ''}
+            <span class="file-name small" data-file-name></span></span>
+          <input id="${id}" name="${name}" type="file" multiple accept="image/*,.heic,.heif,application/pdf" data-shrink>
+        </label>
+        ${kept.length
+          ? html`<ul class="kept-files">${kept.map((k) => html`<li><label class="check"><input type="checkbox" name="keep_doc" value="${k.token}" checked>
+              <span>✓ <bdi>${k.name}</bdi> <span class="muted">(${ctx.t('fdocs.alreadyUploaded')})</span></span></label></li>`)}</ul>`
+          : ''}
+      </div>`;
+    })}</div>
+  </fieldset>`;
+}
+
+/** The facility's documents: what is still needed, what was uploaded, and adding more. */
+export function facilityDocumentsPage(ctx: Ctx, f: OwnFacility, docs: FacilityDoc[], o: { notice?: { kind: 'success' | 'error'; key: MessageKey }; refused?: string[] } = {}): SafeHtml {
+  const specs = facilityDocs(f.kind);
+  const have = new Map<FacilityDocKind, number>();
+  for (const d of docs) have.set(d.kind, (have.get(d.kind) ?? 0) + 1);
+  const missing = specs.filter((s) => s.required && !have.get(s.kind));
+  const locked = f.verification_status === 'approved' || f.verification_status === 'suspended';
+  const content = html`<div class="stack-sm"><h1>${ctx.t('fdocs.title')}</h1><p class="muted">${ctx.t('fdocs.pageLead')}</p></div>
+    ${f.verification_status === 'pending' && f.docs_request_note ? alert('warning', html`${ctx.t('fdocs.requestedBody')} <q dir="auto">${f.docs_request_note}</q>`, ctx.t('fdocs.requestedTitle')) : ''}
+    ${missing.length && !locked
+      ? html`<section class="panel stack-sm" data-testid="docs-missing"><h2 class="h3">${ctx.t('fdocs.stillNeeded')}</h2>
+          <ul>${missing.map((m) => html`<li>${ctx.t(`docs.kind.${m.kind}` as MessageKey)}</li>`)}</ul></section>`
+      : ''}
+    <section class="panel stack">
+      <h2>${ctx.t('fdocs.uploaded')} <span class="muted">(${formatNumber(docs.length, ctx.locale)})</span></h2>
+      ${docs.length
+        ? html`<ul class="doc-thumbs">${docs.map((d) => html`<li class="doc-thumb" data-testid="own-doc">
+            <a href="${href(ctx, `/facility/documents/${d.id}`)}" target="_blank" rel="noopener">
+              ${PREVIEWABLE.has(d.mime_type) ? html`<img src="${href(ctx, `/facility/documents/${d.id}`)}" alt="" loading="lazy">` : html`<span class="doc-icon">${d.mime_type === 'application/pdf' ? 'PDF' : 'HEIC'}</span>`}
+            </a>
+            <span class="small">${ctx.t(`docs.kind.${d.kind}` as MessageKey)}</span>
+            ${locked ? '' : html`<form method="post" action="${href(ctx, `/facility/documents/${d.id}/delete`)}" class="inline-form">${csrfField(ctx)}
+              <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('fdocs.remove')}</button></form>`}
+          </li>`)}</ul>`
+        : html`<p class="muted">${ctx.t('fdocs.none')}</p>`}
+    </section>
+    <form class="panel stack" method="post" action="${href(ctx, '/facility/documents')}" enctype="multipart/form-data">${csrfField(ctx)}
+      ${facilityDocFields(ctx, specs, { refused: o.refused, have })}
+      <div><button class="btn btn-primary" type="submit">${icon.upload}${ctx.t('fdocs.add')}</button></div>
+      <p class="hint">${ctx.t('fdocs.limit', { n: formatNumber(MAX_FILES_PER_DOC, ctx.locale) })}</p>
+    </form>`;
+  return facilityShell(ctx, f, 'documents', content, o.notice);
+}
+
 // ---------------------------------------------------------------------------
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights';
+export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights' | 'documents';
 
 export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
@@ -89,10 +163,16 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
         ]
       : [{ key: 'prescriptions' as const, path: '/facility/prescriptions', label: 'rxsend.inbox' as const }]),
     { key: 'insights' as const, path: '/facility/insights', label: 'fins.title' as const },
+    { key: 'documents' as const, path: '/facility/documents', label: 'fdocs.nav' as const },
   ];
   const status = f.verification_status;
+  const docsLink = html` <a href="${href(ctx, '/facility/documents')}">${ctx.t('fdocs.open')}</a>`;
   const banner =
-    status === 'pending'
+    status === 'pending' && f.docs_request_note
+      ? alert('warning', html`${ctx.t('fdocs.requestedBody')} <q dir="auto">${f.docs_request_note}</q>${docsLink}`, ctx.t('fdocs.requestedTitle'))
+      : status === 'pending' && !f.doc_count
+        ? alert('info', html`${ctx.t('fdocs.noneYetBody')}${docsLink}`, ctx.t('dash.pendingTitle'))
+      : status === 'pending'
       ? alert('info', ctx.t('facdash.pendingBody'), ctx.t('dash.pendingTitle'))
       : status === 'rejected'
         ? alert('error', ctx.t('dash.rejectedBody', { note: f.verification_note ?? '—' }), ctx.t('dash.rejectedTitle'))

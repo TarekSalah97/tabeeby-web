@@ -5,6 +5,7 @@ import { log, errorFields } from '../log.js';
 import { expireOldEntries } from '../services/waitlist.js';
 import { sendDueReminders } from '../services/medReminders.js';
 import { keepDemoQueue } from '../services/demoQueue.js';
+import { purgePendingUploads } from '../services/facilityDocuments.js';
 
 /**
  * Queues reminders exactly once: the UPDATE … RETURNING claims each
@@ -52,6 +53,8 @@ export async function cleanup(deps: Deps): Promise<void> {
   await deps.db.query("delete from email_codes where created_at < now() - interval '2 days'");
   // Dose history is only needed for a while (ticks shown for recent days).
   await deps.db.query("delete from medicine_doses where due_at < now() - interval '90 days'");
+  // Files from sign-up forms that were never completed.
+  await purgePendingUploads(deps);
 }
 
 export function startWorker(deps: Deps): () => void {

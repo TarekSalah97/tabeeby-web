@@ -338,7 +338,9 @@
   Array.prototype.forEach.call(document.querySelectorAll('.doc-field input[type=file]'), function (input) {
     input.addEventListener('change', function () {
       var out = input.closest('.doc-field').querySelector('[data-file-name]');
-      if (out) out.textContent = input.files && input.files[0] ? '✓ ' + input.files[0].name : '';
+      var n = input.files ? input.files.length : 0;
+      if (out) out.textContent = n === 0 ? '' : n === 1 ? '✓ ' + input.files[0].name
+        : '✓ ' + (document.documentElement.lang === 'ar' ? n + ' ملفات' : n + ' files');
       input.closest('.doc-field').classList.toggle('has-file', !!(input.files && input.files[0]));
     });
   });
@@ -527,4 +529,52 @@ document.addEventListener('click', function (e) {
       }).then(function () { window.location.reload(); }).catch(function () { off.disabled = false; });
     });
   }).catch(function () { show(unsupported, true); });
+})();
+
+
+// Big phone photos are made smaller before upload (still sharp enough to read a licence), so
+// several photos fit in one form and upload quickly on mobile data. PDFs and anything the browser
+// can't draw (e.g. HEIC outside Safari) are sent as they are; the server accepts those too.
+(function () {
+  var MAX_SIDE = 2200, QUALITY = 0.85, MIN_BYTES = 1.2 * 1024 * 1024;
+  if (!window.DataTransfer || !window.HTMLCanvasElement) return;
+  function shrink(file) {
+    return new Promise(function (resolve) {
+      if (!/^image\//.test(file.type) || file.size < MIN_BYTES) return resolve(file);
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(function (blob) {
+          if (!blob || blob.size >= file.size) return resolve(file);
+          resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+        }, 'image/jpeg', QUALITY);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[type=file][data-shrink]'), function (input) {
+    input.addEventListener('change', function () {
+      if (input.dataset.shrinking === '1' || !input.files || !input.files.length) return;
+      var form = input.form;
+      var btn = form && form.querySelector('button[type=submit]');
+      if (btn) btn.disabled = true;
+      Promise.all(Array.prototype.map.call(input.files, shrink)).then(function (files) {
+        try {
+          var dt = new DataTransfer();
+          files.forEach(function (f) { dt.items.add(f); });
+          input.dataset.shrinking = '1';
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) { /* keep the originals */ }
+        input.dataset.shrinking = '';
+        if (btn) btn.disabled = false;
+      });
+    });
+  });
 })();

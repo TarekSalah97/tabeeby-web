@@ -11,7 +11,7 @@ import { destroyUserSessions } from '../auth/sessions.js';
 import { isOpenAt, type OpeningHours } from '../domain/facilityHours.js';
 import { labTest } from '../domain/clinical.js';
 import { facilityDocs, type FacilityDocKind } from '../domain/documents.js';
-import { checkDocuments, storeDocuments, removeDocuments, insertDocuments } from './documents.js';
+import { attachSignupFiles, keepFiles, keptAsList, loadKept, takeFiles, type KeptFile } from './facilityDocuments.js';
 import type { UploadedFile } from '../http/body.js';
 import { audit } from './audit.js';
 import { enqueueSms } from './outbox.js';
@@ -62,14 +62,20 @@ export interface FacilitySignup {
   email: string;
   password: string;
   licenceNumber: string;
-  /** All uploaded sign-up documents (licence, manager's card and ID, ...). */
+  /** All uploaded sign-up documents (licence, manager's card and ID, ...); none are required. */
   files: UploadedFile[];
+  /** Files kept from an earlier try of this form ("<id>:<secret>"). */
+  keep: string[];
   consent: boolean;
   locale: Locale;
   ip: string;
 }
 
-export async function registerFacility(deps: Deps, input: FacilitySignup): Promise<{ userId: string } | { errors: FieldErrors }> {
+export type FacilitySignupResult =
+  | { userId: string; refused: string[] }
+  | { errors: FieldErrors; kept: KeptFile[]; refused: string[] };
+
+export async function registerFacility(deps: Deps, input: FacilitySignup): Promise<FacilitySignupResult> {
   const { db, cfg, storage } = deps;
   const errors: FieldErrors = {};
   const phone = normalizeEgyptMobile(input.phone);
@@ -84,15 +90,21 @@ export async function registerFacility(deps: Deps, input: FacilitySignup): Promi
   if (!EMAIL_RE.test(email)) errors['email'] = 'email.invalid';
   const pwErr = checkPasswordPolicy(input.password, [input.contactName, name, email.split('@')[0] ?? '']);
   if (pwErr) errors['password'] = pwErr;
-  if (licence.length < 3 || licence.length > 40) errors['licenceNumber'] = 'fac.licenceInvalid';
-  const docs = checkDocuments(cfg, facilityDocs(input.kind), input.files, errors);
+  if (licence.length < 1 || licence.length > 40) errors['licenceNumber'] = 'fac.licenceInvalid';
+  // Documents never block sign-up: bad files are left out (and named), good ones are kept.
+  const taken = takeFiles(cfg.MAX_UPLOAD_BYTES, input.files);
+  const kept = await loadKept(db, input.keep);
   if (!input.consent) errors['consent'] = 'auth.consentRequired';
-  if (Object.keys(errors).length || !phone || !isFacilityKind(input.kind)) return { errors };
+  if (Object.keys(errors).length || !phone || !isFacilityKind(input.kind)) {
+    // Keep what was uploaded so the form comes back with it.
+    const newlyKept = await keepFiles(deps, taken.files, input.ip);
+    return { errors, kept: [...keptAsList(kept), ...newlyKept], refused: taken.refused };
+  }
   const kind = input.kind;
 
   if (!(await hitRateLimit(db, `signup:ip:${input.ip}`, LIMITS.signupPerIp.limit, LIMITS.signupPerIp.window))) throw tooManyRequests();
   const passwordHash = await hashPassword(input.password);
-  const keys = await storeDocuments(storage, docs);
+  let keys: string[] = [];
   try {
     const userId = await db.transaction(async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
@@ -106,16 +118,18 @@ export async function registerFacility(deps: Deps, input: FacilitySignup): Promi
         `insert into facilities (user_id, kind, slug, name, licence_number, phone_e164) values ($1, $2, $3, $4, $5, $6)`,
         [id, kind, slug, name, licence, phone],
       );
-      await insertDocuments(tx, 'facility_documents', id, docs, keys);
-      await audit(tx, { actorId: id, action: 'facility.signup', entityType: 'facility', entityId: id, metadata: { kind }, ip: input.ip });
+      keys = await attachSignupFiles(tx, storage, id, kept, taken.files);
+      await audit(tx, { actorId: id, action: 'facility.signup', entityType: 'facility', entityId: id, metadata: { kind, documents: kept.length + taken.files.length }, ip: input.ip });
       return id;
     });
-    return { userId };
+    return { userId, refused: taken.refused };
   } catch (e) {
-    await removeDocuments(storage, keys);
-    if (isUniqueViolation(e, 'users_phone_e164_key')) return { errors: { phone: 'auth.phoneTaken' } };
-    if (isUniqueViolation(e, 'users_email_key')) return { errors: { email: 'join.emailTaken' } };
-    throw e;
+    for (const k of keys) await storage.remove(k).catch(() => undefined);
+    const fieldErr: FieldErrors | null = isUniqueViolation(e, 'users_phone_e164_key') ? { phone: 'auth.phoneTaken' } : isUniqueViolation(e, 'users_email_key') ? { email: 'join.emailTaken' } : null;
+    if (!fieldErr) throw e;
+    // Kept files are still pending (the transaction rolled back); keep the new ones too.
+    const newlyKept = await keepFiles(deps, taken.files, input.ip);
+    return { errors: fieldErr, kept: [...keptAsList(kept), ...newlyKept], refused: taken.refused };
   }
 }
 
@@ -136,12 +150,16 @@ export interface OwnFacility {
   verification_status: 'pending' | 'approved' | 'rejected' | 'suspended';
   verification_note: string | null;
   contact_name: string;
+  /** The admin's request for more documents (while pending). */
+  docs_request_note: string | null;
+  doc_count: number;
 }
 
 export async function getOwnFacility(db: Queryable, userId: string): Promise<OwnFacility> {
   const { rows } = await db.query<OwnFacility>(
     `select f.user_id, f.kind, f.slug, f.name, f.description, f.licence_number, f.phone_e164, f.whatsapp_e164, f.home_service,
-            f.verification_status, f.verification_note, u.full_name as contact_name
+            f.verification_status, f.verification_note, u.full_name as contact_name, f.docs_request_note,
+            (select count(*)::int from facility_documents d where d.facility_id = f.user_id) as doc_count
        from facilities f join users u on u.id = f.user_id where f.user_id = $1`,
     [userId],
   );
@@ -510,13 +528,22 @@ export interface FacilityReviewItem {
   contact_name: string;
   verification_status: string;
   created_at: Date;
+  /** How many documents were uploaded. */
+  doc_count: number;
+  /** Asked for more documents and not answered yet / answered since. */
+  docs_requested_at: Date | null;
+  docs_updated_at: Date | null;
 }
 
 export async function listFacilitiesForReview(db: Queryable): Promise<{ pending: FacilityReviewItem[]; recent: FacilityReviewItem[] }> {
-  const base = `select f.user_id, f.kind, f.name, u.full_name as contact_name, f.verification_status, f.created_at
+  const base = `select f.user_id, f.kind, f.name, u.full_name as contact_name, f.verification_status, f.created_at,
+                       (select count(*)::int from facility_documents d where d.facility_id = f.user_id) as doc_count,
+                       f.docs_requested_at, f.docs_updated_at
                   from facilities f join users u on u.id = f.user_id`;
   const [pending, recent] = await Promise.all([
-    db.query<FacilityReviewItem>(`${base} where f.verification_status = 'pending' order by f.created_at limit 200`),
+    // New uploads after a request for more documents come first.
+    db.query<FacilityReviewItem>(`${base} where f.verification_status = 'pending'
+      order by (f.docs_updated_at is not null and (f.docs_requested_at is null or f.docs_updated_at > f.docs_requested_at)) desc, f.created_at limit 200`),
     db.query<FacilityReviewItem>(`${base} where f.verification_status <> 'pending' order by f.updated_at desc limit 30`),
   ]);
   return { pending: pending.rows, recent: recent.rows };
@@ -528,6 +555,7 @@ export interface FacilityReviewDetail extends FacilityReviewItem {
   phone_e164: string;
   email: string | null;
   verification_note: string | null;
+  docs_request_note: string | null;
   documents: { id: string; kind: FacilityDocKind; mime_type: string; size_bytes: number; uploaded_at: Date }[];
   branches: BranchRow[];
 }
@@ -535,7 +563,8 @@ export interface FacilityReviewDetail extends FacilityReviewItem {
 export async function getFacilityForReview(db: Queryable, id: string): Promise<FacilityReviewDetail> {
   const { rows } = await db.query<Omit<FacilityReviewDetail, 'documents' | 'branches'>>(
     `select f.user_id, f.kind, f.name, u.full_name as contact_name, f.verification_status, f.created_at, f.slug, f.licence_number,
-            u.phone_e164, u.email, f.verification_note
+            u.phone_e164, u.email, f.verification_note, f.docs_request_note, f.docs_requested_at, f.docs_updated_at,
+            (select count(*)::int from facility_documents d where d.facility_id = f.user_id) as doc_count
        from facilities f join users u on u.id = f.user_id where f.user_id = $1`,
     [id],
   );
@@ -547,8 +576,10 @@ export async function getFacilityForReview(db: Queryable, id: string): Promise<F
   return { ...rows[0], documents: docs.rows, branches };
 }
 
-export type FacilityDecision = 'approve' | 'reject' | 'suspend' | 'reinstate';
+export type FacilityDecision = 'approve' | 'reject' | 'suspend' | 'reinstate' | 'request_docs';
 const NEXT: Record<FacilityDecision, { from: string[]; to: string }> = {
+  // Stays (or goes back to) pending; the facility sees the note and uploads more.
+  request_docs: { from: ['pending', 'rejected'], to: 'pending' },
   approve: { from: ['pending', 'rejected'], to: 'approved' },
   reject: { from: ['pending'], to: 'rejected' },
   suspend: { from: ['approved', 'pending'], to: 'suspended' },
@@ -558,7 +589,7 @@ export const isFacilityDecision = (d: string): d is FacilityDecision => d in NEX
 
 export async function decideFacility(deps: Deps, adminId: string, id: string, decision: FacilityDecision, note: string, ip: string): Promise<void> {
   const rule = NEXT[decision];
-  if ((decision === 'reject' || decision === 'suspend') && note.trim().length < 3) throw new DomainError('admin.noteRequired');
+  if ((decision === 'reject' || decision === 'suspend' || decision === 'request_docs') && note.trim().length < 3) throw new DomainError('admin.noteRequired');
   await deps.db.transaction(async (tx) => {
     const { rows } = await tx.query<{ verification_status: string; phone_e164: string; preferred_locale: Locale }>(
       `select f.verification_status, u.phone_e164, u.preferred_locale from facilities f join users u on u.id = f.user_id where f.user_id = $1 for update of f`,
@@ -567,12 +598,22 @@ export async function decideFacility(deps: Deps, adminId: string, id: string, de
     const f = rows[0];
     if (!f) throw notFound();
     if (!rule.from.includes(f.verification_status)) throw new DomainError('appt.notAllowed');
-    await tx.query(
-      `update facilities set verification_status = $2, verification_note = $3, updated_at = now(),
-              verified_at = case when $2 = 'approved' then now() else verified_at end where user_id = $1`,
-      [id, rule.to, note.trim().slice(0, 500) || null],
-    );
+    if (decision === 'request_docs') {
+      await tx.query(
+        `update facilities set verification_status = 'pending', docs_request_note = $2, docs_requested_at = now(), updated_at = now() where user_id = $1`,
+        [id, note.trim().slice(0, 500)],
+      );
+    } else {
+      await tx.query(
+        `update facilities set verification_status = $2, verification_note = $3, updated_at = now(),
+                verified_at = case when $2 = 'approved' then now() else verified_at end,
+                docs_request_note = case when $2 = 'approved' then null else docs_request_note end
+          where user_id = $1`,
+        [id, rule.to, note.trim().slice(0, 500) || null],
+      );
+    }
     const t = translator(f.preferred_locale);
+    if (decision === 'request_docs') await enqueueSms(tx, f.phone_e164, t('sms.facilityDocsRequested'));
     if (decision === 'approve') await enqueueSms(tx, f.phone_e164, t('sms.facilityApproved'));
     if (decision === 'reject') await enqueueSms(tx, f.phone_e164, t('sms.facilityRejected'));
     if (decision === 'suspend') await destroyUserSessions(tx, id);

@@ -1,4 +1,5 @@
 import { labInsights, pharmacyInsights } from '../services/facilityInsights.js';
+import { addFacilityDocuments, deleteFacilityDocument, listFacilityDocuments, readOwnFacilityDocument } from '../services/facilityDocuments.js';
 import { isPeriod } from '../services/insights.js';
 import { facilityInsightsPage } from '../views/pages/facilityInsights.js';
 import type { Router } from '../http/router.js';
@@ -16,7 +17,7 @@ import {
   FACILITY_KINDS, type BranchInput, type FacilityKind,
 } from '../services/facilities.js';
 import {
-  facilityJoinPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
+  facilityJoinPage, facilityDocumentsPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
 } from '../views/pages/facilities.js';
 import { adminFacilitiesPage, adminFacilityPage } from '../views/pages/admin.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -74,14 +75,15 @@ export function facilityRoutes(r: Router): void {
       password: f['password']?.[0] ?? '',
       licenceNumber: values['licenceNumber']!,
       files: ctx.files,
+      keep: f['keep_doc'] ?? [],
       consent: field(f, 'consent') === 'yes',
       locale: ctx.locale,
       ip: ctx.ip,
     });
-    if ('errors' in result) return sendHtml(ctx, 422, facilityJoinPage(ctx, { values, errors: result.errors }));
+    if ('errors' in result) return sendHtml(ctx, 422, facilityJoinPage(ctx, { values, errors: result.errors, kept: result.kept, refused: result.refused }));
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
     await startSession(ctx, result.userId, 'facility');
-    redirect(ctx, href(ctx, '/facility', { ok: 'facilityJoined' }));
+    redirect(ctx, href(ctx, '/facility', { ok: result.refused.length ? 'facilityJoinedRefused' : 'facilityJoined' }));
   });
 
   // --- The facility's dashboard --------------------------------------------
@@ -218,6 +220,43 @@ export function facilityRoutes(r: Router): void {
   }
 
   // --- Admin ----------------------------------------------------------------
+  // --- Verification documents (the facility's own) ---------------------------
+  r.get('/facility/documents', async (ctx) => {
+    const user = requireFacility(ctx);
+    const [f, docs] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listFacilityDocuments(ctx.deps.db, user.id)]);
+    const n = notice(ctx);
+    sendHtml(ctx, 200, facilityDocumentsPage(ctx, f, docs, { notice: n }));
+  });
+
+  r.post('/facility/documents', async (ctx) => {
+    const user = requireFacility(ctx);
+    const result = await addFacilityDocuments(ctx.deps, user.id, ctx.files, ctx.ip);
+    if (result.refused.length || result.problem) {
+      const [f, docs] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listFacilityDocuments(ctx.deps.db, user.id)]);
+      const key = result.problem ?? (result.added ? 'fdocs.addedSome' : 'fdocs.err.noneValid');
+      return sendHtml(ctx, result.added ? 200 : 422, facilityDocumentsPage(ctx, f, docs, {
+        notice: { kind: result.added ? 'success' : 'error', key }, refused: result.refused,
+      }));
+    }
+    redirect(ctx, href(ctx, '/facility/documents', { ok: 'docsAdded' }));
+  });
+
+  r.get('/facility/documents/:id', async (ctx) => {
+    const user = requireFacility(ctx);
+    const doc = await readOwnFacilityDocument(ctx.deps, user.id, uuidParam(ctx, 'id'));
+    applyDocumentHeaders(ctx.res);
+    ctx.res.statusCode = 200;
+    ctx.res.setHeader('Content-Type', doc.mime);
+    ctx.res.setHeader('Content-Disposition', 'inline');
+    ctx.res.end(doc.data);
+  });
+
+  r.post('/facility/documents/:id/delete', async (ctx) => {
+    const user = requireFacility(ctx);
+    const problem = await deleteFacilityDocument(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/facility/documents', problem ? { error: problem } : { ok: 'docRemoved' }));
+  });
+
   r.get('/admin/facilities', async (ctx) => {
     requireUser(ctx, 'admin');
     sendHtml(ctx, 200, adminFacilitiesPage(ctx, await listFacilitiesForReview(ctx.deps.db), noticeFrom(ctx) ?? undefined));

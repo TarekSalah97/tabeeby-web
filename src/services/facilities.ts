@@ -14,6 +14,7 @@ import { facilityDocs, type FacilityDocKind } from '../domain/documents.js';
 import { attachSignupFiles, keepFiles, keptAsList, loadKept, takeFiles, type KeptFile } from './facilityDocuments.js';
 import type { UploadedFile } from '../http/body.js';
 import { normalizeMapsUrl } from '../domain/mapsLink.js';
+import { parseBranchPhones } from '../domain/branchPhones.js';
 import { publicPhotos, listFacilityPhotos, type FacilityPhoto } from './facilityPhotos.js';
 import { audit } from './audit.js';
 import { enqueueSms } from './outbox.js';
@@ -204,6 +205,8 @@ export interface BranchRow {
   district_id: number;
   address: string;
   phone_e164: string | null;
+  /** More numbers after phone_e164 (the first). */
+  extra_phones: string[];
   /** Exact Google Maps pin, when the place added one. */
   maps_url: string | null;
   open_24h: boolean;
@@ -213,7 +216,7 @@ export interface BranchRow {
   is_active: boolean;
 }
 
-const BRANCH_COLUMNS = `b.id, b.name, b.district_id, b.address, b.phone_e164, b.maps_url, b.open_24h, b.open_days,
+const BRANCH_COLUMNS = `b.id, b.name, b.district_id, b.address, b.phone_e164, b.extra_phones, b.maps_url, b.open_24h, b.open_days,
   to_char(b.opens, 'HH24:MI') as opens, to_char(b.closes, 'HH24:MI') as closes, b.is_active`;
 
 export async function listOwnBranches(db: Queryable, facilityId: string): Promise<BranchRow[]> {
@@ -242,8 +245,8 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
   if (name.length < 2 || name.length > 120) errors['name'] = 'fac.branchNameInvalid';
   if (!ref.districtById.has(input.districtId)) errors['district'] = 'clinics.districtInvalid';
   if (address.length < 5 || address.length > 300) errors['address'] = 'clinics.addressInvalid';
-  const phone = optionalPhone(input.phone);
-  if (!phone.ok) errors['phone'] = 'phone.invalid';
+  const phones = parseBranchPhones(input.phone);
+  if (phones === 'invalid') errors['phone'] = 'fac.phonesInvalid';
   const mapsUrl = normalizeMapsUrl(input.mapsUrl);
   if (mapsUrl === 'invalid') errors['mapsUrl'] = 'fac.mapsInvalid';
   const days = [...new Set(input.days.map(Number))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort();
@@ -256,14 +259,15 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
     else if (opens === closes) errors['closes'] = 'fac.sameTimes';
   }
   if (Object.keys(errors).length) return errors;
-  const values = [facilityId, name, input.districtId, address, phone.value, input.open24h, days,
-    input.open24h ? '00:00' : opens, input.open24h ? '23:59' : closes, input.isActive, mapsUrl === 'invalid' ? null : mapsUrl];
+  const list = phones === 'invalid' ? [] : phones;
+  const values = [facilityId, name, input.districtId, address, list[0] ?? null, input.open24h, days,
+    input.open24h ? '00:00' : opens, input.open24h ? '23:59' : closes, input.isActive, mapsUrl === 'invalid' ? null : mapsUrl, list.slice(1)];
   await deps.db.transaction(async (tx) => {
     if (branchId) {
       const r = await tx.query(
         `update facility_branches set name = $2, district_id = $3, address = $4, phone_e164 = $5, open_24h = $6, open_days = $7::smallint[],
-                opens = $8::time, closes = $9::time, is_active = $10, maps_url = $11, updated_at = now()
-          where id = $12 and facility_id = $1`,
+                opens = $8::time, closes = $9::time, is_active = $10, maps_url = $11, extra_phones = $12::text[], updated_at = now()
+          where id = $13 and facility_id = $1`,
         [...values, branchId],
       );
       if (r.rowCount === 0) throw notFound();
@@ -271,8 +275,8 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
       const count = await tx.query<{ n: number }>('select count(*)::int as n from facility_branches where facility_id = $1', [facilityId]);
       if ((count.rows[0]?.n ?? 0) >= MAX_BRANCHES) throw new DomainError('fac.tooManyBranches');
       await tx.query(
-        `insert into facility_branches (facility_id, name, district_id, address, phone_e164, open_24h, open_days, opens, closes, is_active, maps_url)
-         values ($1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10, $11)`,
+        `insert into facility_branches (facility_id, name, district_id, address, phone_e164, open_24h, open_days, opens, closes, is_active, maps_url, extra_phones)
+         values ($1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10, $11, $12::text[])`,
         values,
       );
     }

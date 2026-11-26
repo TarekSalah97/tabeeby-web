@@ -117,3 +117,26 @@ test('address: shown on the profile, a Google Maps pin is used for directions, o
   assert.doesNotMatch(after.body, /href="\/en\/facility\/documents"/);
   assert.equal((await c.get('/en/facility/documents')).location, '/en/facility');
 });
+
+test('a branch can list several phone numbers and close after midnight', async () => {
+  const { c, id, slug } = await newPharmacy();
+  const district = (await h.db.query<{ id: number }>("select id from districts where slug = 'smouha'")).rows[0]!.id;
+  const base = { name: 'Night branch', district: String(district), address: '20 Fouad Street, Smouha', mapsUrl: '', days: ['0', '1', '2', '3', '4', '5', '6'], active: 'yes' };
+  const bad = await c.post('/en/facility/branches', { ...base, phone: '01012345678 - 12', opens: '09:00', closes: '01:00' });
+  assert.equal(bad.status, 422);
+  assert.match(bad.body, /separated by a dash/);
+  const ok = await c.post('/en/facility/branches', { ...base, phone: '01012345678 - 034567890 - 01112345678', opens: '09:00', closes: '01:00' });
+  assert.equal(ok.status, 303, ok.body.slice(0, 300));
+  const row = (await h.db.query<{ phone_e164: string; extra_phones: string[]; opens: string; closes: string }>(
+    "select phone_e164, extra_phones, to_char(opens, 'HH24:MI') opens, to_char(closes, 'HH24:MI') closes from facility_branches where facility_id = $1", [id])).rows[0]!;
+  assert.deepEqual([row.phone_e164, ...row.extra_phones], ['+201012345678', '+2034567890', '+201112345678']);
+  assert.deepEqual([row.opens, row.closes], ['09:00', '01:00']);
+  // The edit form shows them back the same way.
+  assert.match((await c.get('/en/facility/branches')).body, /value="01012345678 - 034567890 - 01112345678"/);
+
+  await h.db.query("update facilities set verification_status = 'approved', verified_at = now() where user_id = $1", [id]);
+  const pub = (await new Client(h.baseUrl).get(`/en/pharmacies/${slug}`)).body;
+  for (const n of ['tel:+201012345678', 'tel:+2034567890', 'tel:+201112345678']) assert.ok(pub.includes(n), n);
+  assert.match(pub, /9:00 AM/);
+  assert.match(pub, /1:00 AM \(next day\)/);
+});

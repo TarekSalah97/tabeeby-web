@@ -1,4 +1,5 @@
 import { html, attrIf, type SafeHtml } from '../html.js';
+import { format12h, formatEgyptPhone } from '../../domain/branchPhones.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
@@ -25,11 +26,15 @@ const testName = (ctx: Ctx, code: string) => {
 };
 const WEEKDAY: MessageKey[] = ['weekday.0', 'weekday.1', 'weekday.2', 'weekday.3', 'weekday.4', 'weekday.5', 'weekday.6'];
 
-/** "Every day, 09:00–02:00" / "Open 24 hours"; times are kept left-to-right in Arabic. */
+/** "Every day, 9:00 AM–2:00 AM (next day)" / "Open 24 hours". */
 export function hoursText(ctx: Ctx, b: Pick<BranchRow, 'open_24h' | 'open_days' | 'opens' | 'closes'>): string {
   const days = b.open_days.length === 7 ? ctx.t('fac.everyDay') : b.open_days.map((d) => ctx.t(WEEKDAY[d]!)).join(ctx.locale === 'ar' ? '، ' : ', ');
   if (b.open_24h) return ctx.t('fac.hours24', { days });
-  return ctx.t('fac.hoursRange', { days, opens: `⁦${b.opens}`, closes: `${b.closes}⁩` });
+  const nextDay = b.closes <= b.opens ? ` ${ctx.t('fac.nextDay')}` : '';
+  const opens = format12h(b.opens, ctx.locale);
+  const closes = `${format12h(b.closes, ctx.locale)}${nextDay}`;
+  // Arabic times read right-to-left naturally; English ones are kept together left-to-right.
+  return ctx.locale === 'ar' ? ctx.t('fac.hoursRange', { days, opens, closes }) : ctx.t('fac.hoursRange', { days, opens: `⁦${opens}`, closes: `${closes}⁩` });
 }
 
 const openChip = (ctx: Ctx, open: boolean) =>
@@ -315,7 +320,7 @@ export function facilityBranchesPage(
       isTarget && o.values
         ? o.values
         : b
-          ? { name: b.name, district: String(b.district_id), address: b.address, mapsUrl: b.maps_url ?? '', phone: b.phone_e164 ? formatEgyptMobile(b.phone_e164).replace(/\s/g, '') : '',
+          ? { name: b.name, district: String(b.district_id), address: b.address, mapsUrl: b.maps_url ?? '', phone: [b.phone_e164, ...b.extra_phones].filter((x): x is string => !!x).map((x) => '0' + x.slice(3)).join(' - '),
               open24h: b.open_24h ? 'yes' : '', days: b.open_days.map(String), opens: b.opens, closes: b.closes, active: b.is_active ? 'yes' : '' }
           : { days: ['0', '1', '2', '3', '4', '5', '6'], opens: '09:00', closes: '23:00', active: 'yes' };
     const errors = isTarget ? o.errors : undefined;
@@ -332,7 +337,7 @@ export function facilityBranchesPage(
         </div>
         ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: str('address'), hint: ctx.t('fac.addressHint'), maxlength: 300, errors, required: true })}
         ${input(ctx, { idPrefix, name: 'mapsUrl', label: ctx.t('fac.mapsLink'), type: 'url', value: str('mapsUrl'), hint: ctx.t('fac.mapsHint'), maxlength: 500, errors })}
-        ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('facdash.branchPhone'), type: 'tel', value: str('phone'), inputmode: 'tel', errors })}
+        ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('facdash.branchPhones'), type: 'tel', value: str('phone'), inputmode: 'tel', hint: ctx.t('facdash.branchPhonesHint'), maxlength: 120, errors })}
       </div>
       <fieldset class="stack-sm"><legend class="label">${ctx.t('facdash.openDays')}</legend>
         ${errors?.['days'] ? html`<p class="field-error">${ctx.t(errors['days'])}</p>` : ''}
@@ -523,7 +528,7 @@ export function facilityPublicPage(ctx: Ctx, ref: ReferenceData, p: PublicFacili
           <span class="muted" dir="auto">${dist ? placeName(ctx, dist) : ''} · ${b.address}</span>
           <span class="small">${hoursText(ctx, b)}</span>
           <div class="row-wrap">
-            ${b.phone_e164 ? html`<a class="btn btn-outline btn-sm" href="tel:${b.phone_e164}" dir="ltr">${formatEgyptMobile(b.phone_e164)}</a>` : ''}
+            ${[b.phone_e164, ...b.extra_phones].filter((x): x is string => !!x).map((x) => html`<a class="btn btn-outline btn-sm" href="tel:${x}" dir="ltr">${icon.phone}${formatEgyptPhone(x)}</a>`)}
             <a class="btn btn-outline btn-sm" href="${b.maps_url ?? directionsHref(b.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${ctx.t('doctor.directions')}</a>
           </div>
         </li>`;

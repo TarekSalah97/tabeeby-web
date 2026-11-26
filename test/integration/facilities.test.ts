@@ -127,7 +127,7 @@ test('a pharmacy signs up with its licence, prepares its page, and appears after
   const pub = await new Client(h.baseUrl).get(`/en/pharmacies/${f.slug}`);
   assert.equal(pub.status, 200);
   assert.match(pub.body, /Delivery across Smouha/);
-  assert.match(pub.body, /Every day, ⁦?10:00–02:00/);
+  assert.match(pub.body, /Every day, ⁦?10:00\sAM–2:00\sAM \(next day\)/);
   assert.match(pub.body, /wa\.me\/201012345678/);
   assert.match(pub.body, /tel:\+2034251234/);
   assert.match((await new Client(h.baseUrl).get('/en/pharmacies?home=1')).body, /Nile Pharmacy/);

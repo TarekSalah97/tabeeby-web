@@ -1048,7 +1048,7 @@ export const en = {
   'facdash.branchPhone': "Branch phone (optional)",
   'facdash.branchesLead': "Where patients can find you and when you are open.",
   'facdash.closes': "Closes",
-  'facdash.closesHint': "Closing after midnight? Enter the time, e.g. 02:00.",
+  'facdash.closesHint': "Any times work, including after midnight: open 9:00 AM, close 1:00 AM means you close at 1 AM the next day.",
   'facdash.deleteBranch': "Delete this branch",
   'facdash.description': "About",
   'facdash.descriptionHint.lab': "Services, accreditation, how long results take, parking…",
@@ -2010,4 +2010,8 @@ export const en = {
   'reset.adminLinkTitle': "Reset link for {name}",
   'reset.adminLinkLead': "Send this link to the person on WhatsApp, to the number on their account. It works once, for 24 hours.",
   'reset.adminLinkHint': "Anyone with this link can set the password, so only send it to the account owner. Making a new link cancels this one.",
+  'facdash.branchPhones': "Phone numbers (optional)",
+  'facdash.branchPhonesHint': "Up to 5 numbers, mobile or landline, separated by a dash. For example: 01012345678 - 034567890",
+  'fac.phonesInvalid': "Check the numbers: write up to 5 Egyptian numbers separated by a dash, like 01012345678 - 034567890.",
+  'fac.nextDay': "(next day)",
 } as const;

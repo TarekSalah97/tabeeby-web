@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { SOCIAL_KINDS, normalizeSocial, type SocialKind } from '../domain/social.js';
 import type { Deps } from '../http/context.js';
 import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
@@ -175,6 +176,9 @@ export interface OwnDoctor {
   /** The doctor chose to use the Income section and payment buttons. */
   show_income: boolean;
   instapay_address: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  tiktok_url: string | null;
   /** Set when the doctor has a photo (its last change, for cache-busting). */
   photo_version: number | null;
 }
@@ -204,6 +208,7 @@ export async function getOwnDoctor(db: Queryable, userId: string): Promise<OwnDo
   const { rows } = await db.query<OwnDoctor>(
     `select d.user_id, d.slug, d.kind, u.full_name, d.title_en, d.title_ar, d.bio, d.specialty_id, d.graduation_year,
             d.gender, d.languages, d.verification_status, d.verification_note, d.records_enabled, d.show_income, d.instapay_address,
+            d.facebook_url, d.instagram_url, d.tiktok_url,
             case when d.photo_key is not null then floor(extract(epoch from d.photo_updated_at) * 1000)::float8 end as photo_version
        from doctors d join users u on u.id = d.user_id where d.user_id = $1`,
     [userId],
@@ -464,6 +469,8 @@ export interface ProfileInput {
   languages: string[];
   subspecialtyIds: number[];
   insurerIds: number[];
+  /** Links or usernames as typed; empty removes the link. */
+  social: Record<SocialKind, string>;
 }
 
 export async function updateProfile(deps: Deps, doctorId: string, input: ProfileInput): Promise<FieldErrors> {
@@ -473,6 +480,12 @@ export async function updateProfile(deps: Deps, doctorId: string, input: Profile
   if (input.bio.length > 2000) errors['bio'] = 'profile.bioTooLong';
   const validSubs = new Set(ref.specialtyById.get(doctor.specialty_id)?.subspecialties.map((s) => s.id) ?? []);
   if (input.subspecialtyIds.some((id) => !validSubs.has(id))) errors['subspecialties'] = 'join.subsMismatch';
+  const social = {} as Record<SocialKind, string | null>;
+  for (const k of SOCIAL_KINDS) {
+    const v = normalizeSocial(k, input.social[k] ?? '');
+    if (v === 'invalid') errors[k] = `social.err.${k}`;
+    else social[k] = v;
+  }
   if (Object.keys(errors).length) return errors;
   const validInsurers = new Set(ref.insurers.map((i) => i.id));
   const languages = input.languages.filter((l): l is (typeof LANGUAGES)[number] => (LANGUAGES as readonly string[]).includes(l));
@@ -480,8 +493,10 @@ export async function updateProfile(deps: Deps, doctorId: string, input: Profile
 
   await deps.db.transaction(async (tx) => {
     await tx.query(
-      `update doctors set title_en = $2, title_ar = $3, bio = $4, gender = $5, languages = $6::text[], updated_at = now() where user_id = $1`,
-      [doctorId, input.titleEn.trim().slice(0, 160), input.titleAr.trim().slice(0, 160), input.bio.trim(), gender, languages.length ? languages : ['ar']],
+      `update doctors set title_en = $2, title_ar = $3, bio = $4, gender = $5, languages = $6::text[],
+              facebook_url = $7, instagram_url = $8, tiktok_url = $9, updated_at = now() where user_id = $1`,
+      [doctorId, input.titleEn.trim().slice(0, 160), input.titleAr.trim().slice(0, 160), input.bio.trim(), gender, languages.length ? languages : ['ar'],
+        social.facebook, social.instagram, social.tiktok],
     );
     await tx.query('delete from doctor_subspecialties where doctor_id = $1', [doctorId]);
     if (input.subspecialtyIds.length) {

@@ -109,7 +109,7 @@ async function renderHours(ctx: Ctx, user: SessionUser, extra: { ruleError?: Rul
   sendHtml(ctx, status, hoursPage(ctx, doctor, clinics, rules, blocks, { notice: ok(ctx), ...extra }));
 }
 
-async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Record<string, MessageKey>; positionError?: MessageKey; photoError?: MessageKey } = {}, status = 200): Promise<void> {
+async function renderProfile(ctx: Ctx, user: SessionUser, extra: { errors?: Record<string, MessageKey>; positionError?: MessageKey; photoError?: MessageKey; social?: Record<'facebook' | 'instagram' | 'tiktok', string> } = {}, status = 200): Promise<void> {
   const db = ctx.deps.db;
   const [doctor, ref, sel, positions] = await Promise.all([getOwnDoctor(db, user.id), getReference(db), getOwnSelections(db, user.id), listPositions(db, [user.id])]);
   const own = positions.get(user.id) ?? [];
@@ -544,8 +544,9 @@ export function dashboardRoutes(r: Router): void {
       languages: fieldAll(ctx.form, 'languages'),
       subspecialtyIds: fieldAll(ctx.form, 'subspecialties').map(Number).filter(Number.isInteger),
       insurerIds: fieldAll(ctx.form, 'insurers').map(Number).filter(Number.isInteger),
+      social: { facebook: formValue(ctx, 'facebook'), instagram: formValue(ctx, 'instagram'), tiktok: formValue(ctx, 'tiktok') },
     });
-    if (Object.keys(errors).length) return renderProfile(ctx, user, { errors: errors as Record<string, MessageKey> }, 422);
+    if (Object.keys(errors).length) return renderProfile(ctx, user, { errors: errors as Record<string, MessageKey>, social: { facebook: formValue(ctx, 'facebook'), instagram: formValue(ctx, 'instagram'), tiktok: formValue(ctx, 'tiktok') } }, 422);
     redirect(ctx, href(ctx, '/dashboard/profile', { ok: 'saved' }));
   });
 

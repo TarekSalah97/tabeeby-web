@@ -157,6 +157,7 @@ export async function loadCards(db: Queryable, ids: string[], now: Date): Promis
 
 export interface PublicProfile extends DoctorCard {
   bio: string;
+  social: { facebook: string | null; instagram: string | null; tiktok: string | null };
   graduationYear: number;
   languages: string[];
   insurerIds: number[];
@@ -166,8 +167,8 @@ export interface PublicProfile extends DoctorCard {
 
 /** Only approved, active doctors have a public page. */
 export async function getPublicProfile(db: Queryable, slug: string, now: Date): Promise<PublicProfile | null> {
-  const { rows } = await db.query<{ user_id: string; bio: string; graduation_year: number; languages: string[] }>(
-    `select d.user_id, d.bio, d.graduation_year, d.languages
+  const { rows } = await db.query<{ user_id: string; bio: string; graduation_year: number; languages: string[]; facebook_url: string | null; instagram_url: string | null; tiktok_url: string | null }>(
+    `select d.user_id, d.bio, d.graduation_year, d.languages, d.facebook_url, d.instagram_url, d.tiktok_url
        from doctors d join users u on u.id = d.user_id
       where d.slug = $1 and d.verification_status = 'approved' and u.status = 'active'`,
     [slug],
@@ -188,6 +189,7 @@ export async function getPublicProfile(db: Queryable, slug: string, now: Date): 
   return {
     ...card,
     bio: d.bio,
+    social: { facebook: d.facebook_url, instagram: d.instagram_url, tiktok: d.tiktok_url },
     graduationYear: d.graduation_year,
     languages: d.languages,
     insurerIds: insurers.rows.map((r) => r.insurer_id),

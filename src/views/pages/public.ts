@@ -1,4 +1,5 @@
 import { serviceName, type ClinicService } from '../../services/clinicServices.js';
+import { SOCIAL_KINDS } from '../../domain/social.js';
 import { formatEgyptMobile } from '../../domain/phone.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
@@ -437,6 +438,12 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       <section class="panel stack">
         <h2>${ctx.t('doctor.about')}</h2>
         <p class="prose" dir="auto">${d.bio || ctx.t('doctor.noBio')}</p>
+        ${d.social.facebook || d.social.instagram || d.social.tiktok
+          ? html`<div class="stack-sm" data-testid="social"><span class="label">${ctx.t('social.follow')}</span>
+              <div class="row-wrap">${SOCIAL_KINDS.filter((k) => d.social[k]).map(
+                (k) => html`<a class="btn btn-outline btn-sm" href="${d.social[k]!}" target="_blank" rel="noopener noreferrer nofollow ugc">${icon.link}${ctx.t(`social.${k}`)}</a>`,
+              )}</div></div>`
+          : ''}
         <h3>${ctx.t('doctor.insurance')}</h3>
         <div class="tags">${d.insurerIds.map((id) => {
           const i = ref.insurers.find((x) => x.id === id);
@@ -531,6 +538,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       ...(clinic.phone ? { telephone: clinic.phone } : {}),
     } : {}),
     ...(d.minFee !== null ? { priceRange: `EGP ${d.minFee}+` } : {}),
+    ...(SOCIAL_KINDS.some((k) => d.social[k]) ? { sameAs: SOCIAL_KINDS.flatMap((k) => (d.social[k] ? [d.social[k]] : [])) } : {}),
     ...(d.rating && d.rating.count > 0 ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: d.rating.avg.toFixed(1), reviewCount: d.rating.count, bestRating: 5 } } : {}),
   };
   const desc = [title, clinic?.name, d.minFee !== null ? ctx.t('common.egp', { amount: String(d.minFee) }) : null].filter(Boolean).join(' · ');

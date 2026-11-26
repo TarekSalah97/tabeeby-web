@@ -1894,4 +1894,13 @@ export const en = {
   'med.push.bodyMany': "{n} medicines are due now ({time}). Tap to see them.",
   'med.push.testTitle': "Tabeeby reminders are on",
   'med.push.testBody': "You'll get medicine reminders on this device.",
+  'social.title': "Social media",
+  'social.hint': "Optional. Paste the link to your page, or just your username (like @drahmed). Patients see these on your profile.",
+  'social.facebook': "Facebook",
+  'social.instagram': "Instagram",
+  'social.tiktok': "TikTok",
+  'social.follow': "Follow the doctor",
+  'social.err.facebook': "That isn't a Facebook page link. Paste the link from your page, e.g. facebook.com/yourpage.",
+  'social.err.instagram': "That isn't an Instagram account. Use your username (e.g. @drahmed) or the link to your profile.",
+  'social.err.tiktok': "That isn't a TikTok account. Use your username (e.g. @drahmed) or the link to your profile.",
 } as const;

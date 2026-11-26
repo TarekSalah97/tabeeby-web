@@ -1897,4 +1897,13 @@ export const ar: Record<keyof typeof en, string> = {
   'med.push.bodyMany': "{n} أدوية ميعادها دلوقتي ({time}). اضغط عشان تشوفها.",
   'med.push.testTitle': "تذكير طبيبي شغال",
   'med.push.testBody': "هيوصلك تذكير الأدوية على الجهاز ده.",
+  'social.title': "صفحات التواصل الاجتماعي",
+  'social.hint': "اختياري. الصق رابط صفحتك، أو اكتب اسم المستخدم بس (زي @drahmed). المرضى هيشوفوها في صفحتك.",
+  'social.facebook': "فيسبوك",
+  'social.instagram': "إنستجرام",
+  'social.tiktok': "تيك توك",
+  'social.follow': "تابع الطبيب",
+  'social.err.facebook': "ده مش رابط صفحة فيسبوك. الصق رابط صفحتك، مثلاً facebook.com/yourpage.",
+  'social.err.instagram': "ده مش حساب إنستجرام. اكتب اسم المستخدم (زي @drahmed) أو رابط حسابك.",
+  'social.err.tiktok': "ده مش حساب تيك توك. اكتب اسم المستخدم (زي @drahmed) أو رابط حسابك.",
 };

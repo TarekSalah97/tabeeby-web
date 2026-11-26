@@ -1,4 +1,5 @@
 import { serviceName, type ClinicService } from '../../services/clinicServices.js';
+import { SOCIAL_KINDS, type SocialKind } from '../../domain/social.js';
 import { suggestionsFor } from '../../domain/serviceSuggestions.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
@@ -433,9 +434,10 @@ export function profileEditPage(
   ctx: Ctx,
   doctor: OwnDoctor,
   ref: ReferenceData,
-  o: { subspecialtyIds: number[]; insurerIds: number[]; positions: PositionRow[]; years: number; errors?: FieldErrors; positionError?: MessageKey; photoError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { subspecialtyIds: number[]; insurerIds: number[]; positions: PositionRow[]; years: number; errors?: FieldErrors; positionError?: MessageKey; photoError?: MessageKey; notice?: { kind: 'success' | 'error'; key: MessageKey }; social?: Record<SocialKind, string> },
 ): SafeHtml {
   const spec = ref.specialtyById.get(doctor.specialty_id);
+  const socialValue = (k: SocialKind) => o.social?.[k] ?? doctor[`${k}_url`] ?? '';
   const maxMonth = ctx.deps.now().toISOString().slice(0, 7);
   const content = html`
     <div><h1>${ctx.t('profile.title')}</h1><p class="muted">${ctx.t('profile.lead')}</p></div>
@@ -480,6 +482,20 @@ export function profileEditPage(
       </div>
       <div class="field${o.errors?.['bio'] ? ' has-error' : ''}"><label for="bio">${ctx.t('profile.bio')}</label>
         <textarea id="bio" name="bio" rows="5" maxlength="2000">${doctor.bio}</textarea></div>
+      <fieldset class="stack-sm" id="social"><legend class="label">${ctx.t('social.title')}</legend>
+        <p class="hint">${ctx.t('social.hint')}</p>
+        <div class="form-grid">
+          ${SOCIAL_KINDS.map((k) => input(ctx, {
+            name: k,
+            label: ctx.t(`social.${k}`),
+            value: socialValue(k),
+            maxlength: 300,
+            placeholder: k === 'tiktok' ? '@username' : k === 'facebook' ? 'facebook.com/…' : '@username',
+            attrs: html` dir="ltr" inputmode="url" autocomplete="off" spellcheck="false"`,
+            errors: o.errors,
+          }))}
+        </div>
+      </fieldset>
       <div class="form-grid">
         ${select(ctx, {
           name: 'subspecialties',

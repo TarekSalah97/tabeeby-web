@@ -28,7 +28,7 @@ export async function recordPayment(deps: Deps, doctor: SessionUser, appointment
   const note = input.note.trim().slice(0, 200);
   try {
     return await deps.db.transaction(async (tx) => {
-      const { rows } = await tx.query<{ id: string; status: string; fee_egp: number }>(
+      const { rows } = await tx.query<{ id: string; status: string; fee_egp: number | null }>(
         'select id, status, fee_egp from appointments where id = $1 and doctor_id = $2 for update',
         [appointmentId, doctor.id],
       );
@@ -36,7 +36,8 @@ export async function recordPayment(deps: Deps, doctor: SessionUser, appointment
       if (!a) throw notFound(); // also hides other doctors' visits
       if (!PAYABLE.includes(a.status)) throw new DomainError('pay.notPayable');
       const digits = normalizeDigits(input.amount).replace(/[,\s]/g, '');
-      const amount = digits === '' ? a.fee_egp : /^\d{1,6}$/.test(digits) ? Number(digits) : NaN;
+      if (digits === '' && a.fee_egp === null) throw new DomainError('pay.amountRequired');
+      const amount = digits === '' ? (a.fee_egp ?? NaN) : /^\d{1,6}$/.test(digits) ? Number(digits) : NaN;
       if (!Number.isInteger(amount) || amount < 0 || amount > 100000) throw new DomainError('pay.amountInvalid');
       const ins = await tx.query<{ id: string }>(
         `insert into payments (appointment_id, doctor_id, amount_egp, method, note, recorded_by) values ($1, $2, $3, $4, $5, $2) returning id`,
@@ -99,7 +100,7 @@ export interface UnpaidVisit {
   id: string;
   starts_at: Date;
   patient_name: string;
-  fee_egp: number;
+  fee_egp: number | null;
   clinic_name: string;
 }
 

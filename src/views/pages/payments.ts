@@ -19,14 +19,14 @@ export function paidChip(ctx: Ctx, p: { amount: number; method: PaymentMethod },
 }
 
 /** Compact "Mark paid" form: method (cash first) and an optional amount (empty = the visit price). */
-export function markPaidForm(ctx: Ctx, appointmentId: string, fee: number, back: Record<string, string>, opts: { big?: boolean } = {}): SafeHtml {
+export function markPaidForm(ctx: Ctx, appointmentId: string, fee: number | null, back: Record<string, string>, opts: { big?: boolean } = {}): SafeHtml {
   return html`<form method="post" action="${href(ctx, `/dashboard/appointments/${appointmentId}/pay`)}" class="pay-form">
     ${csrfField(ctx)}
     ${Object.entries(back).map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}
     <label class="sr-only" for="m-${appointmentId}">${ctx.t('pay.method')}</label>
     <select id="m-${appointmentId}" name="method">${PAYMENT_METHODS.map((m) => html`<option value="${m}">${methodLabel(ctx, m)}</option>`)}</select>
     <label class="sr-only" for="a-${appointmentId}">${ctx.t('pay.amount')}</label>
-    <input id="a-${appointmentId}" name="amount" inputmode="numeric" placeholder="${String(fee)}" class="pay-amount">
+    <input id="a-${appointmentId}" name="amount" inputmode="numeric" placeholder="${fee === null ? ctx.t('pay.amount') : String(fee)}" class="pay-amount"${attrIf(fee === null, 'required')}>
     <button type="submit" class="btn ${opts.big ? 'btn-primary' : 'btn-outline btn-sm'}">${ctx.t('pay.markPaid')}</button>
   </form>`;
 }

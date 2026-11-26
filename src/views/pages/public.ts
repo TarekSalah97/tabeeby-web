@@ -16,7 +16,8 @@ import type { PublicReview } from '../../services/reviews.js';
 import type { RecentDoctor } from '../../services/patientHome.js';
 
 const listSep = (ctx: Ctx) => (ctx.locale === 'ar' ? '، ' : ', ');
-export const money = (ctx: Ctx, n: number) => ctx.t('common.egp', { amount: formatNumber(n, ctx.locale) });
+/** A price, or "Price at the clinic" when the doctor chose not to show one. */
+export const money = (ctx: Ctx, n: number | null) => (n === null ? ctx.t('fee.atClinic') : ctx.t('common.egp', { amount: formatNumber(n, ctx.locale) }));
 
 function searchForm(ctx: Ctx, ref: ReferenceData, f: Partial<SearchFilters>, compact = false): SafeHtml {
   return html`<form class="search-form${compact ? ' compact' : ''}" method="get" action="${href(ctx, '/search')}" role="search">
@@ -489,7 +490,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
       ${booking.notice ? alert('success', ctx.t(booking.notice)) : ''}
       ${booking.paused ? alert('warning', ctx.t('booking.doctorPaused')) : ''}
       ${clinic ? html`<div class="fee-row"><span class="muted">${ctx.t('search.feeLabel')}</span><strong>${money(ctx, clinic.fee)}</strong></div>` : ''}
-      ${clinic && clinic.followUpFee !== null && clinic.followUpFee < clinic.fee
+      ${clinic && clinic.followUpFee !== null && (clinic.fee === null || clinic.followUpFee < clinic.fee)
         ? html`<div class="fee-row"><span class="muted">${ctx.t('doctor.followUpFee', { days: clinic.followUpDays })}</span><strong>${money(ctx, clinic.followUpFee)}</strong></div>`
         : ''}
       ${booking.services?.length

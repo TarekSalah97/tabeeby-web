@@ -68,7 +68,8 @@ export async function startGuestBooking(deps: Deps, input: GuestBookingInput): P
 
   // The slot must still be real and free (throws a booking error the route turns into a redirect).
   const target = await resolveSlot(deps, deps.db, input.clinicId, input.startsAt);
-  const payChoice = checkPayChoice(input.payChoice, target);
+  // A new patient pays the consultation price, or the chosen service's own price.
+  const payChoice = checkPayChoice(input.payChoice, target, input.serviceId ? 0 : target.fee);
   if (Object.keys(errors).length || !phone || !email) return { errors };
 
   if (!(await hitRateLimit(deps.db, `guest:ip:${input.ip}`, LIMITS.guestStartPerIp.limit, LIMITS.guestStartPerIp.window))) throw tooManyRequests();

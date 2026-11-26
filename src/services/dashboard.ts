@@ -11,7 +11,7 @@ export interface DoctorDayAppointment {
   service_name: string | null;
   service_name_ar: string | null;
   reason: string | null;
-  fee_egp: number;
+  fee_egp: number | null;
   /** Null for phone / walk-in bookings made by the clinic. */
   patient_id: string | null;
   booked_by: 'patient' | 'doctor';

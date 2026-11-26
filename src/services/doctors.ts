@@ -223,7 +223,7 @@ export interface ClinicRow {
   district_id: number;
   address: string;
   phone_e164: string | null;
-  fee_egp: number;
+  fee_egp: number | null;
   follow_up_fee_egp: number | null;
   follow_up_days: number;
   is_active: boolean;
@@ -259,19 +259,20 @@ export const parseFee = (raw: string): number => {
 export async function validateClinic(
   db: Queryable,
   input: ClinicInput,
-): Promise<{ errors: FieldErrors; phone: string | null; fee: number; followUpFee: number | null; followUpDays: number }> {
+): Promise<{ errors: FieldErrors; phone: string | null; fee: number | null; followUpFee: number | null; followUpDays: number }> {
   const errors: FieldErrors = {};
   const ref = await getReference(db);
   if (input.name.trim().length < 2 || input.name.trim().length > 120) errors['name'] = 'clinics.nameInvalid';
   if (!ref.districtById.has(input.districtId)) errors['district'] = 'clinics.districtInvalid';
   if (input.address.trim().length < 5 || input.address.trim().length > 300) errors['address'] = 'clinics.addressInvalid';
-  const fee = parseFee(input.fee);
-  if (Number.isNaN(fee)) errors['fee'] = 'clinics.feeInvalid';
+  // Empty = the doctor prefers not to show a price ("price at the clinic").
+  const fee = input.fee.trim() ? parseFee(input.fee) : null;
+  if (fee !== null && Number.isNaN(fee)) errors['fee'] = 'clinics.feeInvalid';
   let followUpFee: number | null = null;
   if (input.followUpFee.trim()) {
     followUpFee = parseFee(input.followUpFee);
     if (Number.isNaN(followUpFee)) errors['followUpFee'] = 'clinics.feeInvalid';
-    else if (!Number.isNaN(fee) && followUpFee > fee) errors['followUpFee'] = 'clinics.followUpFeeTooHigh';
+    else if (fee !== null && !Number.isNaN(fee) && followUpFee > fee) errors['followUpFee'] = 'clinics.followUpFeeTooHigh';
   }
   const daysDigits = normalizeDigits(input.followUpDays).trim();
   const followUpDays = daysDigits === '' ? 14 : /^\d{1,2}$/.test(daysDigits) ? Number(daysDigits) : NaN;

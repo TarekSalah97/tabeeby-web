@@ -29,7 +29,7 @@ export interface DoctorCard {
   subspecialtyIds: number[];
   years: number;
   minFee: number | null;
-  clinics: { id: string; name: string; districtId: number; address: string; fee: number; followUpFee: number | null; followUpDays: number; phone: string | null }[];
+  clinics: { id: string; name: string; districtId: number; address: string; fee: number | null; followUpFee: number | null; followUpDays: number; phone: string | null }[];
   nextSlots: Slot[];
   /** Average of verified reviews; null until the doctor has one. */
   rating: RatingSummary | null;
@@ -123,7 +123,7 @@ export async function loadCards(db: Queryable, ids: string[], now: Date): Promis
          from doctors d join users u on u.id = d.user_id where d.user_id = any($1::uuid[])`,
       [ids],
     ),
-    db.query<{ id: string; doctor_id: string; name: string; district_id: number; address: string; fee_egp: number; follow_up_fee_egp: number | null; follow_up_days: number; phone_e164: string | null }>(
+    db.query<{ id: string; doctor_id: string; name: string; district_id: number; address: string; fee_egp: number | null; follow_up_fee_egp: number | null; follow_up_days: number; phone_e164: string | null }>(
       `select id, doctor_id, name, district_id, address, fee_egp, follow_up_fee_egp, follow_up_days, phone_e164 from clinics where doctor_id = any($1::uuid[]) and is_active order by created_at`,
       [ids],
     ),
@@ -146,7 +146,7 @@ export async function loadCards(db: Queryable, ids: string[], now: Date): Promis
         specialtyId: d.specialty_id,
         subspecialtyIds: subs.rows.filter((s) => s.doctor_id === d.user_id).map((s) => s.subspecialty_id),
         years: experienceYears(toRanges(positions.get(d.user_id) ?? []), now),
-        minFee: own.length ? Math.min(...own.map((c) => c.fee_egp)) : null,
+        minFee: own.some((c) => c.fee_egp !== null) ? Math.min(...own.flatMap((c) => (c.fee_egp === null ? [] : [c.fee_egp]))) : null,
         clinics: own.map((c) => ({ id: c.id, name: c.name, districtId: c.district_id, address: c.address, fee: c.fee_egp, followUpFee: c.follow_up_fee_egp, followUpDays: c.follow_up_days, phone: c.phone_e164 })),
         nextSlots: [],
         rating: ratings.get(d.user_id) ?? null,

@@ -25,7 +25,7 @@ import { queueCard } from './queue.js';
  */
 function visitChoice(ctx: Ctx, consult: Visit, services: ClinicService[], chosen: string): SafeHtml {
   if (!services.length) return html``;
-  const option = (value: string, label: string, fee: number, note?: string) =>
+  const option = (value: string, label: string, fee: number | null, note?: string) =>
     html`<label class="visit-option"><input type="radio" name="service" value="${value}"${attrIf(chosen === value, 'checked')}>
       <span class="stack-sm"><strong dir="auto">${label}</strong>${note ? html`<span class="small muted">${note}</span>` : ''}</span>
       <span class="visit-price">${money(ctx, fee)}</span></label>`;
@@ -40,7 +40,7 @@ function visitChoice(ctx: Ctx, consult: Visit, services: ClinicService[], chosen
  * How the patient will pay. Cash and card at the clinic are always there; InstaPay when the
  * doctor has an InstaPay address; online card, Fawry and wallets are shown as coming soon.
  */
-function payChoice(ctx: Ctx, target: BookingTarget, fee: number, chosen: string): SafeHtml {
+function payChoice(ctx: Ctx, target: BookingTarget, fee: number | null, chosen: string): SafeHtml {
   const current = chosen || 'cash';
   const option = (value: string, ic: SafeHtml, title: string, note: string) =>
     html`<label class="pay-option"><input type="radio" name="pay" value="${value}"${attrIf(current === value, 'checked')}>
@@ -49,7 +49,7 @@ function payChoice(ctx: Ctx, target: BookingTarget, fee: number, chosen: string)
   return html`<fieldset class="stack-sm pay-choice"><legend class="label">${ctx.t('payopt.title')}</legend>
     ${option('cash', icon.cash, ctx.t('payopt.cash'), ctx.t('payopt.cashNote'))}
     ${option('card_clinic', icon.card, ctx.t('payopt.card_clinic'), ctx.t('payopt.card_clinicNote'))}
-    ${target.instapayAddress
+    ${target.instapayAddress && fee !== null
       ? option('instapay', icon.instapay, ctx.t('payopt.instapay'), ctx.t('payopt.instapayNote', { fee: money(ctx, fee), address: target.instapayAddress }))
       : ''}
     <div class="pay-option disabled" aria-disabled="true"><span class="pay-icon" aria-hidden="true">${icon.wallet}</span>
@@ -60,9 +60,9 @@ function payChoice(ctx: Ctx, target: BookingTarget, fee: number, chosen: string)
 }
 
 /** Price row: the follow-up price is explained so the patient knows why it is lower. */
-function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number }): SafeHtml {
+function feeRow(ctx: Ctx, target: BookingTarget, visit: { type: VisitType; fee: number | null }): SafeHtml {
   const followUp = visit.type === 'follow_up';
-  return html`<div><dt>${ctx.t(followUp ? 'book.feeFollowUp' : 'book.fee')}</dt><dd>${money(ctx, visit.fee)} · ${ctx.t('doctor.payAtClinic')}${
+  return html`<div><dt>${ctx.t(followUp ? 'book.feeFollowUp' : 'book.fee')}</dt><dd>${visit.fee === null ? money(ctx, null) : html`${money(ctx, visit.fee)} · ${ctx.t('doctor.payAtClinic')}`}${
     followUp ? html`<br><span class="muted small">${ctx.t('book.followUpApplies', { days: target.followUpDays })}</span>` : ''
   }</dd></div>`;
 }

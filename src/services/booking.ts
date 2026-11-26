@@ -32,11 +32,14 @@ export interface BookingRequest {
 export const PAY_CHOICES = ['cash', 'card_clinic', 'instapay'] as const;
 export type PayChoice = (typeof PAY_CHOICES)[number];
 
-/** Checks the patient's choice against what this doctor accepts (InstaPay only with an address). */
-export function checkPayChoice(raw: string | undefined, target: Pick<BookingTarget, 'instapayAddress'>): PayChoice {
+/**
+ * Checks the patient's choice against what this doctor accepts: InstaPay needs the doctor's
+ * address and a known price to send (not when the doctor shows no price).
+ */
+export function checkPayChoice(raw: string | undefined, target: Pick<BookingTarget, 'instapayAddress'>, fee: number | null): PayChoice {
   const choice = raw || 'cash';
   if (!(PAY_CHOICES as readonly string[]).includes(choice)) throw new DomainError('payopt.invalid');
-  if (choice === 'instapay' && !target.instapayAddress) throw new DomainError('payopt.invalid');
+  if (choice === 'instapay' && (!target.instapayAddress || fee === null)) throw new DomainError('payopt.invalid');
   return choice as PayChoice;
 }
 
@@ -44,7 +47,8 @@ export interface BookingTarget {
   clinicId: string;
   clinicName: string;
   clinicAddress: string;
-  fee: number;
+  /** Null: the doctor shows no price. */
+  fee: number | null;
   followUpFee: number | null;
   followUpDays: number;
   clinicPhone: string | null;
@@ -63,7 +67,7 @@ export interface BookingTarget {
  */
 export async function resolveSlot(deps: Deps, db: Queryable, clinicId: string, startsAt: Date): Promise<BookingTarget> {
   const { rows } = await db.query<{
-    clinic_id: string; name: string; address: string; fee_egp: number; follow_up_fee_egp: number | null; follow_up_days: number;
+    clinic_id: string; name: string; address: string; fee_egp: number | null; follow_up_fee_egp: number | null; follow_up_days: number;
     phone_e164: string | null; doctor_id: string; full_name: string; slug: string; instapay_address: string | null;
   }>(
     `select c.id as clinic_id, c.name, c.address, c.fee_egp, c.follow_up_fee_egp, c.follow_up_days, c.phone_e164,
@@ -179,7 +183,7 @@ export async function book(deps: Deps, patient: SessionUser, req: BookingRequest
 
       const target = await resolveSlot(deps, tx, req.clinicId, req.startsAt);
       const visit = await quote(tx, patient.id, target, req.serviceId);
-      const payChoice = checkPayChoice(req.payChoice, target);
+      const payChoice = checkPayChoice(req.payChoice, target, visit.fee);
       const { rows } = await tx.query<{ id: string }>(
         `insert into appointments (doctor_id, clinic_id, patient_id, starts_at, ends_at, visit_type, reason, fee_egp, service_id, service_name, service_name_ar, pay_choice)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
@@ -207,7 +211,7 @@ export interface PatientAppointment {
   visit_type: 'new' | 'follow_up' | 'service';
   service_name: string | null;
   service_name_ar: string | null;
-  fee_egp: number;
+  fee_egp: number | null;
   clinic_id: string;
   clinic_name: string;
   clinic_address: string;

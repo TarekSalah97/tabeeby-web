@@ -28,7 +28,7 @@ export interface ClinicForBooking extends ClinicPrices {
 }
 
 export async function ownActiveClinics(db: Queryable, doctorId: string): Promise<ClinicForBooking[]> {
-  const { rows } = await db.query<{ id: string; name: string; address: string; phone_e164: string | null; fee_egp: number; follow_up_fee_egp: number | null; follow_up_days: number }>(
+  const { rows } = await db.query<{ id: string; name: string; address: string; phone_e164: string | null; fee_egp: number | null; follow_up_fee_egp: number | null; follow_up_days: number }>(
     `select id, name, address, phone_e164, fee_egp, follow_up_fee_egp, follow_up_days from clinics
       where doctor_id = $1 and is_active order by created_at`,
     [doctorId],

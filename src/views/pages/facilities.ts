@@ -345,13 +345,14 @@ export function facilityBranchesPage(
           (d) => html`<label class="check day-check"><input type="checkbox" name="days" value="${d}"${attrIf(days.includes(String(d)), 'checked')}><span>${ctx.t(WEEKDAY[d]!)}</span></label>`,
         )}</div>
       </fieldset>
-      <label class="check"><input type="checkbox" name="open24h" value="yes"${attrIf(str('open24h') === 'yes', 'checked')}><span>${ctx.t('facdash.open24h')}</span></label>
-      <div class="form-grid">
+      <label class="check"><input type="checkbox" name="open24h" value="yes" data-open24h${attrIf(str('open24h') === 'yes', 'checked')}><span>${ctx.t('facdash.open24h')}</span></label>
+      <p class="hint" data-hours-note>${ctx.t('facdash.open24hNote')}</p>
+      <div class="form-grid" data-hours>
         ${input(ctx, { idPrefix, name: 'opens', label: ctx.t('facdash.opens'), type: 'time', value: str('opens'), errors })}
         ${input(ctx, { idPrefix, name: 'closes', label: ctx.t('facdash.closes'), type: 'time', value: str('closes'), hint: ctx.t('facdash.closesHint'), errors })}
       </div>
       <label class="check"><input type="checkbox" name="active" value="yes"${attrIf(str('active') === 'yes', 'checked')}><span>${ctx.t('facdash.branchActive')}</span></label>
-      <div class="row-wrap"><button type="submit" class="btn btn-primary">${ctx.t(b ? 'clinics.update' : 'facdash.addBranch')}</button></div>
+      <div class="row-wrap"><button type="submit" class="btn btn-primary">${ctx.t(b ? 'facdash.saveBranch' : 'facdash.addBranch')}</button></div>
     </form>
     ${b
       ? html`<form method="post" action="${href(ctx, `/facility/branches/${b.id}/delete`)}">${csrfField(ctx)}

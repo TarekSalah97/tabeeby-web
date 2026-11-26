@@ -257,7 +257,7 @@ img, svg { max-width: 100%; }
 .field > label, fieldset > legend { font-size: .92rem; font-weight: 700; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 fieldset > legend { font-family: var(--font-display); font-size: 1.15rem; padding: 0; margin-block-end: 12px; }
-input[type=text], input:not([type]), input[type=email], input[type=tel], input[type=password], input[type=number], input[type=search], input[type=month], input[type=date], input[type=time],
+input[type=text], input[type=url], input:not([type]), input[type=email], input[type=tel], input[type=password], input[type=number], input[type=search], input[type=month], input[type=date], input[type=time],
 select, textarea { font: inherit; font-size: 1rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px;
   min-height: 48px; padding: 10px 14px; width: 100%; min-width: 0; }
 .search-field input, .search-field select { border: 0; min-height: 0; padding: 4px 0; border-radius: 0; background: transparent; }

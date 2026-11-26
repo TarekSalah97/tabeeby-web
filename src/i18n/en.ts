@@ -2014,4 +2014,6 @@ export const en = {
   'facdash.branchPhonesHint': "Up to 5 numbers, mobile or landline, separated by a dash. For example: 01012345678 - 034567890",
   'fac.phonesInvalid': "Check the numbers: write up to 5 Egyptian numbers separated by a dash, like 01012345678 - 034567890.",
   'fac.nextDay': "(next day)",
+  'facdash.open24hNote': "To set opening and closing times, untick “Open 24 hours”.",
+  'facdash.saveBranch': "Save branch",
 } as const;

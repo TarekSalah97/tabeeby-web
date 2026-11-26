@@ -584,3 +584,21 @@ document.addEventListener('click', function (e) {
     });
   });
 })();
+
+// Branch hours: "Open 24 hours" hides the time boxes; changing a time unticks it, so the times
+// someone types are the ones that get saved.
+(function () {
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-open24h]'), function (box) {
+    var form = box.form;
+    var times = form && form.querySelector('[data-hours]');
+    var note = form && form.querySelector('[data-hours-note]');
+    if (!times) return;
+    function sync() {
+      times.hidden = box.checked;
+      if (note) note.hidden = !box.checked;
+    }
+    times.addEventListener('input', function () { if (box.checked) { box.checked = false; sync(); } });
+    box.addEventListener('change', sync);
+    sync();
+  });
+})();

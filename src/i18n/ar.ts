@@ -2017,4 +2017,6 @@ export const ar: Record<keyof typeof en, string> = {
   'facdash.branchPhonesHint': "لحد ٥ أرقام، موبايل أو أرضي، بينهم شَرطة. مثلاً: 01012345678 - 034567890",
   'fac.phonesInvalid': "راجع الأرقام: اكتب لحد ٥ أرقام مصرية بينهم شَرطة، زي 01012345678 - 034567890.",
   'fac.nextDay': "(اليوم التالي)",
+  'facdash.open24hNote': "عشان تحدد مواعيد الفتح والقفل، شيل علامة «مفتوح ٢٤ ساعة».",
+  'facdash.saveBranch': "احفظ الفرع",
 };

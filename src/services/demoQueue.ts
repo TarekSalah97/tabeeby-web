@@ -13,7 +13,8 @@ export const UPCOMING_REASON = 'Demo follow-up — Yasmin';
 const DEMO_DOCTOR_PHONE = '+201000000101';
 /** Patients 01000000201 … 208; index 0 is Yasmin. */
 const QUEUE_PATIENT_PHONES = Array.from({ length: 8 }, (_, i) => `+2010000002${String(i + 1).padStart(2, '0')}`);
-const UPCOMING_DAYS = 14;
+/** Few enough to leave room under the per-patient limit on upcoming visits, so booking still works in a demo. */
+const UPCOMING_DAYS = 2;
 const HALF_HOUR = 30 * 60_000;
 
 /**
@@ -73,10 +74,19 @@ export async function refreshTodayQueue(
 }
 
 /** A booking for Yasmin on each of the coming days (first free half hour from 12:00 in clinic hours). */
-async function ensureUpcoming(tx: Queryable, doctor: { userId: string; clinicId: string }, yasminId: string, nowDate: Date, tz: string): Promise<number> {
+async function ensureUpcoming(tx: Queryable, doctor: { userId: string; clinicId: string }, yasminId: string, nowDate: Date, tz: string, maxActive: number): Promise<number> {
   const today = todayIn(tz, nowDate);
+  // Bookings beyond the window (from an earlier version that booked two weeks ahead) are removed.
+  await tx.query('delete from appointments where patient_id = $1 and reason = $2 and starts_at >= $3',
+    [yasminId, UPCOMING_REASON, zonedToUtc(addDays(today, UPCOMING_DAYS + 1), '00:00', tz)]);
   let added = 0;
   for (let offset = 1; offset <= UPCOMING_DAYS; offset++) {
+    // Always leave at least two free places under the limit for a live booking in a demo.
+    const active = await tx.query<{ n: number }>(
+      `select count(*)::int as n from appointments where patient_id = $1 and status in ('confirmed', 'arrived', 'in_consultation') and starts_at > now()`,
+      [yasminId],
+    );
+    if ((active.rows[0]?.n ?? 0) >= maxActive - 2) break;
     const date = addDays(today, offset);
     const [from, to] = [zonedToUtc(date, '00:00', tz), zonedToUtc(addDays(date, 1), '00:00', tz)];
     const has = await tx.query(
@@ -106,8 +116,8 @@ async function ensureUpcoming(tx: Queryable, doctor: { userId: string; clinicId:
 
 /**
  * Runs from the background worker on the demo site: if Yasmin has no visit waiting today (a new
- * day, or her visit was just finished in a demo), today's queue is rebuilt; her coming days are
- * kept booked. Does nothing outside demo mode.
+ * day, or her visit was just finished in a demo), today's queue is rebuilt; her next two days are
+ * kept booked, leaving room under the upcoming-visit limit for a live booking. Does nothing outside demo mode.
  */
 export async function keepDemoQueue(deps: Deps): Promise<'off' | 'missing' | 'ok' | 'rebuilt'> {
   if (!deps.cfg.DEMO_MODE) return 'off';
@@ -142,7 +152,7 @@ export async function keepDemoQueue(deps: Deps): Promise<'off' | 'missing' | 'ok
         [doctor.userId, yasmin, UPCOMING_REASON, dayStart, dayEnd]);
       rebuilt = (await refreshTodayQueue(tx, doctor, patientIds as string[], now, tz)) > 0;
     }
-    await ensureUpcoming(tx, doctor, yasmin, now, tz);
+    await ensureUpcoming(tx, doctor, yasmin, now, tz, deps.cfg.MAX_ACTIVE_APPOINTMENTS_PER_PATIENT);
   });
   return rebuilt ? 'rebuilt' : 'ok';
 }

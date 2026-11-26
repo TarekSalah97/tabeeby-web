@@ -35,10 +35,12 @@ const JPG = () => new Blob([new Uint8Array(jpegWithGps())], { type: 'image/jpeg'
 
 test('a pharmacy adds a logo and photos; they are cleaned, public after approval, and the admin can hide one', async () => {
   const { c, id, slug } = await newPharmacy();
-  assert.equal((await c.get('/en/facility/photos')).status, 200);
-  assert.equal((await c.postMultipart('/en/facility/photos?kind=logo', photoForm('logo', [JPG()]))).location, '/en/facility/photos?ok=facilityPhotosAdded');
+  assert.equal((await c.get('/en/facility/photos')).location, '/en/facility#photos');
+  assert.match((await c.get('/en/facility')).body, /id="photos"/);
+  assert.doesNotMatch((await c.get('/en/facility')).body, /href="\/en\/facility\/photos"/);
+  assert.equal((await c.postMultipart('/en/facility/photos?kind=logo', photoForm('logo', [JPG()]))).location, '/en/facility?ok=facilityPhotosAdded#photos');
   const mixed = await c.postMultipart('/en/facility/photos?kind=photo', photoForm('photos', [JPG(), JPG(), new Blob(['<svg onload=alert(1)>'], { type: 'image/jpeg' })]));
-  assert.equal(mixed.location, '/en/facility/photos?ok=facilityPhotosAddedSome');
+  assert.equal(mixed.location, '/en/facility?ok=facilityPhotosAddedSome#photos');
   // A second logo replaces the first.
   await c.postMultipart('/en/facility/photos?kind=logo', photoForm('logo', [JPG()]));
   const rows = (await h.db.query<{ id: string; kind: string; storage_key: string }>('select id, kind, storage_key from facility_photos where facility_id = $1 order by kind', [id])).rows;
@@ -75,7 +77,7 @@ test('a pharmacy adds a logo and photos; they are cleaned, public after approval
   assert.equal((await ac.post(`/en/admin/facility-photos/${rows[1]!.id}/hide`, {})).status, 303);
   assert.equal((await visitor.get(`/en/photos/facilities/${rows[1]!.id}`)).status, 404);
   assert.doesNotMatch((await visitor.get(`/en/pharmacies/${slug}`)).body, new RegExp(rows[1]!.id));
-  assert.match((await c.get('/en/facility/photos')).body, /Hidden by our team/);
+  assert.match((await c.get('/en/facility')).body, /Hidden by our team/);
   await ac.post(`/en/admin/facility-photos/${rows[1]!.id}/show`, {});
   assert.equal((await visitor.get(`/en/photos/facilities/${rows[1]!.id}`)).status, 200);
 

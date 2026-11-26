@@ -157,7 +157,8 @@ function facilityAvatar(ctx: Ctx, p: { name: string; logo: string | null }, cls 
     : html`<div class="avatar ${cls}" aria-hidden="true">${initials(p.name)}</div>`;
 }
 
-export function facilityPhotosPage(ctx: Ctx, f: OwnFacility, photos: FacilityPhoto[], notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+/** Logo and photos of the place, shown on the Profile page. */
+function facilityPhotosSection(ctx: Ctx, photos: FacilityPhoto[]): SafeHtml {
   const logo = photos.find((p) => p.kind === 'logo');
   const shots = photos.filter((p) => p.kind === 'photo');
   const thumb = (p: FacilityPhoto) => html`<li class="doc-thumb" data-testid="own-photo">
@@ -170,9 +171,9 @@ export function facilityPhotosPage(ctx: Ctx, f: OwnFacility, photos: FacilityPho
       <input type="file" name="${name}" accept="image/*"${attrIf(multiple, 'multiple')} data-shrink="always" required>
       ${icon.upload}<span class="stack-sm"><strong>${ctx.t(label)}</strong><span class="small muted">${ctx.t('fdocs.choose')}</span><span class="small ok-text" data-file-name></span></span>
     </label>`;
-  const content = html`<div class="stack-sm"><h1>${ctx.t('fphoto.title')}</h1><p class="muted">${ctx.t('fphoto.lead')}</p></div>
+  return html`<div class="stack-sm" id="photos"><h2>${ctx.t('fphoto.title')}</h2><p class="muted">${ctx.t('fphoto.lead')}</p></div>
     <section class="panel stack">
-      <h2 class="h3">${ctx.t('fphoto.logo')}</h2>
+      <h3 class="h3">${ctx.t('fphoto.logo')}</h3>
       <p class="hint">${ctx.t('fphoto.logoHint')}</p>
       ${logo ? html`<ul class="doc-thumbs logo-thumb">${thumb(logo)}</ul>` : ''}
       <form class="stack-sm" method="post" action="${href(ctx, '/facility/photos?kind=logo')}" enctype="multipart/form-data">${csrfField(ctx)}
@@ -181,7 +182,7 @@ export function facilityPhotosPage(ctx: Ctx, f: OwnFacility, photos: FacilityPho
       </form>
     </section>
     <section class="panel stack">
-      <h2 class="h3">${ctx.t('fphoto.photos')} <span class="muted">(${formatNumber(shots.length, ctx.locale)}/${formatNumber(MAX_FACILITY_PHOTOS, ctx.locale)})</span></h2>
+      <h3 class="h3">${ctx.t('fphoto.photos')} <span class="muted">(${formatNumber(shots.length, ctx.locale)}/${formatNumber(MAX_FACILITY_PHOTOS, ctx.locale)})</span></h2>
       <p class="hint">${ctx.t('fphoto.photosHint')}</p>
       ${shots.length ? html`<ul class="doc-thumbs">${shots.map(thumb)}</ul>` : html`<p class="muted">${ctx.t('fphoto.none')}</p>`}
       ${shots.length < MAX_FACILITY_PHOTOS
@@ -192,19 +193,17 @@ export function facilityPhotosPage(ctx: Ctx, f: OwnFacility, photos: FacilityPho
         : html`<p class="small muted">${ctx.t('fphoto.full', { n: formatNumber(MAX_FACILITY_PHOTOS, ctx.locale) })}</p>`}
     </section>
     <p class="hint">${ctx.t('fphoto.rules')}</p>`;
-  return facilityShell(ctx, f, 'photos', content, notice);
 }
 
 // ---------------------------------------------------------------------------
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'photos' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights' | 'documents';
+export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights' | 'documents';
 
 export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
     { key: 'profile', path: '/facility', label: 'facdash.nav.profile' },
-    { key: 'photos', path: '/facility/photos', label: 'fphoto.nav' },
     { key: 'branches', path: '/facility/branches', label: 'facdash.nav.branches' },
     ...(offersTests(f.kind)
       ? [
@@ -248,7 +247,7 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
 export function facilityProfilePage(
   ctx: Ctx,
   f: OwnFacility,
-  o: { branches: number; branchList?: BranchRow[]; ref?: ReferenceData; tests: number; values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { branches: number; branchList?: BranchRow[]; ref?: ReferenceData; photos?: FacilityPhoto[]; tests: number; values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey } },
 ): SafeHtml {
   const addresses = o.branchList ?? [];
   const v = o.values ?? {
@@ -297,7 +296,8 @@ export function facilityProfilePage(
           <div><a class="btn btn-outline btn-sm" href="${href(ctx, '/facility/branches')}">${ctx.t('fac.editAddress')}</a></div>`
         : html`<p class="muted">${ctx.t('fac.noAddress')}</p>
           <div><a class="btn btn-primary" href="${href(ctx, '/facility/branches')}">${ctx.t('fac.addAddress')}</a></div>`}
-    </section>`;
+    </section>
+    ${facilityPhotosSection(ctx, o.photos ?? [])}`;
   return facilityShell(ctx, f, 'profile', content, o.notice);
 }
 

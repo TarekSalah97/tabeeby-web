@@ -22,6 +22,7 @@ export function loginPage(ctx: Ctx, o: { phone?: string; error?: MessageKey; nex
         ${o.next ? html`<input type="hidden" name="next" value="${o.next}">` : ''}
         ${input(ctx, { name: 'phone', label: ctx.t('auth.phone'), type: 'tel', value: o.phone, prefix: '+20', autocomplete: 'tel-national', inputmode: 'tel', hint: ctx.t('auth.phoneHint'), required: true })}
         ${passwordInput(ctx, { name: 'password', label: ctx.t('auth.password'), autocomplete: 'current-password', required: true })}
+        <p class="forgot-link"><a href="${href(ctx, '/forgot-password')}">${ctx.t('reset.forgotLink')}</a></p>
         <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('auth.submitSignIn')}</button>
       </form>
       ${emailEnabled(ctx.deps.cfg) ? html`<a class="btn btn-ghost btn-block" href="${href(ctx, '/login/email', { next: o.next ?? undefined })}">${ctx.t('loginEmail.link')}</a>` : ''}
@@ -179,4 +180,52 @@ export function joinChoicePage(ctx: Ctx, next: string | null): SafeHtml {
     <p class="center muted">${ctx.t('joinChoice.haveAccount')} <a href="${href(ctx, '/login', { next: next ?? undefined })}">${ctx.t('nav.signIn')}</a></p>
   </div>`;
   return layout(ctx, { title: `${ctx.t('joinChoice.title')} — ${ctx.t('brand')}`, body });
+}
+
+/** "Forgot password": ask for the mobile number or email, or explain how to get help. */
+export function forgotPasswordPage(ctx: Ctx, o: { available: boolean; identifier?: string; error?: MessageKey }): SafeHtml {
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card">
+      <h1>${ctx.t('reset.title')}</h1>
+      ${o.available
+        ? html`<p class="muted">${ctx.t('reset.lead')}</p>
+          ${o.error ? alert('error', ctx.t(o.error)) : ''}
+          <form method="post" action="${href(ctx, '/forgot-password')}" class="stack" novalidate>
+            ${csrfField(ctx)}
+            ${input(ctx, { name: 'identifier', label: ctx.t('reset.identifier'), value: o.identifier, autocomplete: 'username', hint: ctx.t('reset.identifierHint'), maxlength: 254, required: true })}
+            <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('reset.send')}</button>
+          </form>`
+        : html`<p data-testid="reset-contact">${ctx.t('reset.contactLead')}</p>
+          <a class="btn btn-primary btn-block" href="${href(ctx, '/contact')}">${ctx.t('reset.contactButton')}</a>`}
+      <p class="center muted"><a href="${href(ctx, '/login')}">${ctx.t('reset.backToSignIn')}</a></p>
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('reset.title')} — ${ctx.t('brand')}`, body, noindex: true });
+}
+
+/** Enter the code (or, from an admin link, nothing) and choose a new password. */
+export function resetPasswordPage(
+  ctx: Ctx,
+  o: { action: string; mode: 'code' | 'link'; expired?: boolean; errors?: FieldErrors },
+): SafeHtml {
+  const body = html`<div class="container page auth-page">
+    <div class="auth-card">
+      <h1>${ctx.t('reset.newTitle')}</h1>
+      ${o.expired
+        ? html`${alert('error', ctx.t(o.errors?.['code'] ?? 'reset.expired'))}
+          <a class="btn btn-primary btn-block" href="${href(ctx, '/forgot-password')}">${ctx.t('reset.startOver')}</a>`
+        : html`<p class="muted">${ctx.t(o.mode === 'code' ? 'reset.codeLead' : 'reset.linkLead')}</p>
+          ${errorSummary(ctx, o.errors, { reenter: ['password'] })}
+          <form method="post" action="${o.action}" class="stack" novalidate>
+            ${csrfField(ctx)}
+            ${o.mode === 'code'
+              ? input(ctx, { name: 'code', label: ctx.t('reset.code'), inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, errors: o.errors, required: true })
+              : ''}
+            ${passwordInput(ctx, { name: 'password', label: ctx.t('reset.newPassword'), autocomplete: 'new-password', hint: ctx.t('auth.passwordHint'), errors: o.errors, required: true })}
+            <button class="btn btn-primary btn-lg btn-block" type="submit">${ctx.t('reset.save')}</button>
+          </form>
+          ${o.mode === 'code' ? html`<p class="center muted small">${ctx.t('reset.noCode')} <a href="${href(ctx, '/forgot-password')}">${ctx.t('reset.startOver')}</a></p>` : ''}`}
+    </div>
+  </div>`;
+  return layout(ctx, { title: `${ctx.t('reset.newTitle')} — ${ctx.t('brand')}`, body, noindex: true });
 }

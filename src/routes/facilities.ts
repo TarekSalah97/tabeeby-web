@@ -18,7 +18,7 @@ import {
   FACILITY_KINDS, type BranchInput, type FacilityKind,
 } from '../services/facilities.js';
 import {
-  facilityJoinPage, facilityDocumentsPage, facilityPhotosPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
+  facilityJoinPage, facilityDocumentsPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
 } from '../views/pages/facilities.js';
 import { adminFacilitiesPage, adminFacilityPage } from '../views/pages/admin.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -91,8 +91,8 @@ export function facilityRoutes(r: Router): void {
   // --- The facility's dashboard --------------------------------------------
   const renderProfile = async (ctx: Ctx, user: SessionUser, extra: { values?: Record<string, string>; errors?: FieldErrors } = {}, status = 200) => {
     const db = ctx.deps.db;
-    const [f, branches, tests] = await Promise.all([getOwnFacility(db, user.id), listOwnBranches(db, user.id), listOwnTests(db, user.id)]);
-    sendHtml(ctx, status, facilityProfilePage(ctx, f, { branches: branches.length, branchList: branches, ref: await getReference(db), tests: tests.size, notice: notice(ctx), ...extra }));
+    const [f, branches, tests, photos] = await Promise.all([getOwnFacility(db, user.id), listOwnBranches(db, user.id), listOwnTests(db, user.id), listFacilityPhotos(db, user.id)]);
+    sendHtml(ctx, status, facilityProfilePage(ctx, f, { branches: branches.length, branchList: branches, ref: await getReference(db), photos, tests: tests.size, notice: notice(ctx), ...extra }));
   };
 
   r.get('/facility', async (ctx) => renderProfile(ctx, requireFacility(ctx)));
@@ -261,24 +261,24 @@ export function facilityRoutes(r: Router): void {
   });
 
   // ---- Public photos: logo and photos of the place
+  // Photos live on the Profile page now; old links still work.
   r.get('/facility/photos', async (ctx) => {
-    const user = requireFacility(ctx);
-    const [f, photos] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listFacilityPhotos(ctx.deps.db, user.id)]);
-    sendHtml(ctx, 200, facilityPhotosPage(ctx, f, photos, notice(ctx)));
+    requireFacility(ctx);
+    redirect(ctx, `${href(ctx, '/facility')}#photos`);
   });
 
   r.post('/facility/photos', async (ctx) => {
     const user = requireFacility(ctx);
     const kind = ctx.query.get('kind') === 'logo' ? 'logo' : 'photo';
     const result = await addFacilityPhotos(ctx.deps, user.id, kind, ctx.files, ctx.ip);
-    if (result.problem) return redirect(ctx, href(ctx, '/facility/photos', { error: result.problem }));
-    redirect(ctx, href(ctx, '/facility/photos', { ok: result.skipped ? 'facilityPhotosAddedSome' : 'facilityPhotosAdded' }));
+    if (result.problem) return redirect(ctx, `${href(ctx, '/facility', { error: result.problem })}#photos`);
+    redirect(ctx, `${href(ctx, '/facility', { ok: result.skipped ? 'facilityPhotosAddedSome' : 'facilityPhotosAdded' })}#photos`);
   });
 
   r.post('/facility/photos/:id/delete', async (ctx) => {
     const user = requireFacility(ctx);
     await deleteFacilityPhoto(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
-    redirect(ctx, href(ctx, '/facility/photos', { ok: 'photoRemovedF' }));
+    redirect(ctx, `${href(ctx, '/facility', { ok: 'photoRemovedF' })}#photos`);
   });
 
   r.get('/photos/facilities/:id', async (ctx) => {

@@ -17,6 +17,7 @@ const NOTICES: Record<string, MessageKey> = {
   done: 'admin.done',
   deleted: 'common.deleted',
   facilityJoined: 'facdash.joined',
+  passwordReset: 'reset.done',
   facilityJoinedRefused: 'fdocs.joinedRefused',
   docsAdded: 'fdocs.added',
   docRemoved: 'fdocs.removed',

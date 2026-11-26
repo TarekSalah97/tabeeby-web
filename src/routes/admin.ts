@@ -1,4 +1,5 @@
 import type { Router } from '../http/router.js';
+import { createResetLink } from '../services/passwordReset.js';
 import { href, requireUser } from '../http/context.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { applyDocumentHeaders } from '../http/security.js';
@@ -37,6 +38,22 @@ export function adminRoutes(r: Router): void {
     const results = q.trim().length >= 2 ? await searchAccounts(ctx.deps.db, q, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : null;
     const recent = results === null ? await recentAccounts(ctx.deps.db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : undefined;
     sendHtml(ctx, 200, adminAccountsPage(ctx, { q, results, recent, notice: noticeFrom(ctx), error: errorFrom(ctx) }));
+  });
+
+  // A one-time "set a new password" link to send someone on WhatsApp (shown once, not stored).
+  r.post('/admin/accounts/:id/reset-link', async (ctx) => {
+    const admin = requireUser(ctx, 'admin');
+    const q = formValue(ctx, 'q').slice(0, 120);
+    try {
+      const link = await createResetLink(ctx.deps, admin.id, uuidParam(ctx, 'id'), ctx.ip);
+      const results = q.trim().length >= 2 ? await searchAccounts(ctx.deps.db, q, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : null;
+      const recent = results === null ? await recentAccounts(ctx.deps.db, ctx.deps.cfg.NO_SHOW_WINDOW_DAYS) : undefined;
+      ctx.res.setHeader('Cache-Control', 'no-store');
+      sendHtml(ctx, 200, adminAccountsPage(ctx, { q, results, recent, resetLink: { name: link.name, url: `${ctx.deps.cfg.PUBLIC_ORIGIN}${link.path}` } }));
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e;
+      redirect(ctx, href(ctx, '/admin/accounts', { q: q || undefined, error: e.messageKey }));
+    }
   });
 
   r.post('/admin/accounts/:id/:action', async (ctx) => {

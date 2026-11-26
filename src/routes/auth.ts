@@ -9,7 +9,8 @@ import { authenticate, registerPatient, issuePhoneOtp, verifyPhoneOtp, setPrefer
 import { registerDoctor, type PositionInput } from '../services/doctors.js';
 import { getReference } from '../services/reference.js';
 import { destroySession, SESSION_COOKIE, type Role } from '../auth/sessions.js';
-import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage, joinChoicePage } from '../views/pages/auth.js';
+import { loginPage, signupPage, verifyPage, loginEmailPage, emailCodePage, setPasswordPage, joinChoicePage, forgotPasswordPage, resetPasswordPage } from '../views/pages/auth.js';
+import { requestPasswordReset, pendingReset, completePasswordReset, resetByCodeAvailable } from '../services/passwordReset.js';
 import { requestLoginCode, confirmLoginCode, setFirstPassword, hasPassword } from '../services/guestBooking.js';
 import { pendingEmailCode, maskEmail } from '../services/emailCodes.js';
 import { notFound } from '../http/errors.js';
@@ -119,6 +120,65 @@ export function authRoutes(r: Router): void {
     await startSession(ctx, result.userId, result.role);
     await setPreferredLocale(ctx.deps, result.userId, ctx.locale);
     redirect(ctx, afterAuth(ctx, result.role, nextParam(ctx)));
+  });
+
+  // ---- Forgot password: a code by SMS/email, or a one-time link the admin sends.
+  r.get('/forgot-password', async (ctx) => {
+    if (ctx.user) return redirect(ctx, homeFor(ctx, ctx.user.role));
+    sendHtml(ctx, 200, forgotPasswordPage(ctx, { available: resetByCodeAvailable(ctx.deps.cfg) }));
+  });
+
+  r.post('/forgot-password', async (ctx) => {
+    if (!resetByCodeAvailable(ctx.deps.cfg)) return redirect(ctx, href(ctx, '/forgot-password'));
+    const identifier = formValue(ctx, 'identifier');
+    const result = await requestPasswordReset(ctx.deps, identifier, ctx.locale, ctx.ip);
+    if ('error' in result) return sendHtml(ctx, 422, forgotPasswordPage(ctx, { available: true, identifier, error: result.error }));
+    redirect(ctx, href(ctx, `/forgot-password/${result.resetId}`));
+  });
+
+  const finishReset = async (ctx: Ctx, id: string, mode: 'code' | 'link', secret: string, action: string) => {
+    const result = await completePasswordReset(ctx.deps, id, { kind: mode, secret }, ctx.form['password']?.[0] ?? '', ctx.ip);
+    if ('error' in result) {
+      const expired = result.error === 'reset.expired' || result.error === 'reset.tooManyAttempts' || (mode === 'link' && result.field === 'code');
+      return sendHtml(ctx, 422, resetPasswordPage(ctx, { action, mode, expired, errors: { [result.field ?? 'code']: result.error } }));
+    }
+    if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
+    await startSession(ctx, result.userId, result.role);
+    redirect(ctx, `${homeFor(ctx, result.role)}?ok=passwordReset`);
+  };
+
+  r.get('/forgot-password/:id', async (ctx) => {
+    const id = uuidParam(ctx, 'id');
+    const pending = await pendingReset(ctx.deps.db, id);
+    const ok = pending && pending.channel !== 'admin_link';
+    sendHtml(ctx, ok ? 200 : 410, resetPasswordPage(ctx, { action: href(ctx, `/forgot-password/${id}`), mode: 'code', expired: !ok }));
+  });
+
+  r.post('/forgot-password/:id', async (ctx) => {
+    const id = uuidParam(ctx, 'id');
+    await finishReset(ctx, id, 'code', formValue(ctx, 'code'), href(ctx, `/forgot-password/${id}`));
+  });
+
+  const linkSecret = (ctx: Ctx) => {
+    const s = ctx.params['secret'] ?? '';
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(s)) throw notFound();
+    return s;
+  };
+
+  r.get('/reset-password/:id/:secret', async (ctx) => {
+    const id = uuidParam(ctx, 'id');
+    linkSecret(ctx);
+    const pending = await pendingReset(ctx.deps.db, id);
+    const ok = pending?.channel === 'admin_link';
+    // The secret stays in this page's URL only; no-referrer keeps it from leaking to other sites.
+    ctx.res.setHeader('Referrer-Policy', 'no-referrer');
+    sendHtml(ctx, ok ? 200 : 410, resetPasswordPage(ctx, { action: ctx.url.pathname, mode: 'link', expired: !ok }));
+  });
+
+  r.post('/reset-password/:id/:secret', async (ctx) => {
+    const id = uuidParam(ctx, 'id');
+    ctx.res.setHeader('Referrer-Policy', 'no-referrer');
+    await finishReset(ctx, id, 'link', linkSecret(ctx), ctx.url.pathname);
   });
 
   // First password for patients who joined with an emailed code.

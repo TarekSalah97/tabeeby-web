@@ -1149,3 +1149,5 @@ a.med-link { text-decoration: none; color: inherit; }
 .logo-thumb { grid-template-columns: repeat(auto-fill, minmax(120px, 160px)); }
 .doc-thumb.is-hidden img { opacity: .35; }
 .error-text { color: var(--danger, #b42318); }
+.forgot-link { margin: -6px 0 0; text-align: end; font-size: .92rem; }
+.copy-field { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem; }

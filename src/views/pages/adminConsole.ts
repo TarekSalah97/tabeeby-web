@@ -141,7 +141,7 @@ export function adminDashboardPage(ctx: Ctx, s: AdminStats, range: DayRange): Sa
 const roleLabel = (ctx: Ctx, role: string) =>
   ctx.t(role === 'assistant' ? 'adm.roleAssistant' : role === 'doctor' ? 'adm.roleDoctor' : role === 'admin' ? 'adm.roleAdmin' : role === 'facility' ? 'adm.roleFacility' : 'adm.rolePatient');
 
-export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; recent?: AccountRow[]; notice?: MessageKey; error?: MessageKey }): SafeHtml {
+export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[] | null; recent?: AccountRow[]; notice?: MessageKey; error?: MessageKey; resetLink?: { name: string; url: string } }): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
   const row = (a: AccountRow) => html`<li class="appt-row${a.status === 'suspended' ? ' muted-row' : ''}">
     <div class="stack-sm">
@@ -170,6 +170,11 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
           : html`<form method="post" action="${href(ctx, `/admin/accounts/${a.id}/reactivate`)}">${csrfField(ctx)}
               <input type="hidden" name="q" value="${o.q}">
               <button type="submit" class="btn btn-primary btn-sm">${ctx.t('adm.reactivate')}</button></form>`}
+      ${a.role === 'admin' || a.status !== 'active'
+        ? ''
+        : html`<form method="post" action="${href(ctx, `/admin/accounts/${a.id}/reset-link`)}">${csrfField(ctx)}
+            <input type="hidden" name="q" value="${o.q}">
+            <button type="submit" class="btn btn-ghost btn-sm">${ctx.t('reset.adminButton')}</button></form>`}
       ${a.role === 'admin'
         ? ''
         : html`<details class="remove-account"><summary class="btn btn-ghost btn-sm danger">${ctx.t('adm.remove')}</summary>
@@ -184,6 +189,14 @@ export function adminAccountsPage(ctx: Ctx, o: { q: string; results: AccountRow[
   const content = html`
     <div><h1>${ctx.t('adm.nav.accounts')}</h1><p class="muted">${ctx.t('adm.accountsLead')}</p></div>
     ${o.notice ? alert('success', ctx.t(o.notice)) : ''}
+    ${o.resetLink
+      ? html`<section class="panel stack-sm reset-link-box" data-testid="reset-link">
+          <h2 class="h3">${ctx.t('reset.adminLinkTitle', { name: o.resetLink.name })}</h2>
+          <p class="small">${ctx.t('reset.adminLinkLead')}</p>
+          <input class="copy-field" type="text" readonly value="${o.resetLink.url}" dir="ltr" aria-label="${ctx.t('reset.adminLinkTitle', { name: o.resetLink.name })}">
+          <p class="hint">${ctx.t('reset.adminLinkHint')}</p>
+        </section>`
+      : ''}
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
     <form method="get" action="${href(ctx, '/admin/accounts')}" class="panel row-wrap search-row" role="search">
       <label class="sr-only" for="q">${ctx.t('adm.searchLabel')}</label>

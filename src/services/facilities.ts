@@ -13,6 +13,8 @@ import { labTest } from '../domain/clinical.js';
 import { facilityDocs, type FacilityDocKind } from '../domain/documents.js';
 import { attachSignupFiles, keepFiles, keptAsList, loadKept, takeFiles, type KeptFile } from './facilityDocuments.js';
 import type { UploadedFile } from '../http/body.js';
+import { normalizeMapsUrl } from '../domain/mapsLink.js';
+import { publicPhotos, listFacilityPhotos, type FacilityPhoto } from './facilityPhotos.js';
 import { audit } from './audit.js';
 import { enqueueSms } from './outbox.js';
 import { getReference } from './reference.js';
@@ -202,6 +204,8 @@ export interface BranchRow {
   district_id: number;
   address: string;
   phone_e164: string | null;
+  /** Exact Google Maps pin, when the place added one. */
+  maps_url: string | null;
   open_24h: boolean;
   open_days: number[];
   opens: string;
@@ -209,7 +213,7 @@ export interface BranchRow {
   is_active: boolean;
 }
 
-const BRANCH_COLUMNS = `b.id, b.name, b.district_id, b.address, b.phone_e164, b.open_24h, b.open_days,
+const BRANCH_COLUMNS = `b.id, b.name, b.district_id, b.address, b.phone_e164, b.maps_url, b.open_24h, b.open_days,
   to_char(b.opens, 'HH24:MI') as opens, to_char(b.closes, 'HH24:MI') as closes, b.is_active`;
 
 export async function listOwnBranches(db: Queryable, facilityId: string): Promise<BranchRow[]> {
@@ -221,6 +225,8 @@ export interface BranchInput {
   districtId: number;
   address: string;
   phone: string;
+  /** Optional Google Maps link. */
+  mapsUrl: string;
   open24h: boolean;
   days: string[];
   opens: string;
@@ -238,6 +244,8 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
   if (address.length < 5 || address.length > 300) errors['address'] = 'clinics.addressInvalid';
   const phone = optionalPhone(input.phone);
   if (!phone.ok) errors['phone'] = 'phone.invalid';
+  const mapsUrl = normalizeMapsUrl(input.mapsUrl);
+  if (mapsUrl === 'invalid') errors['mapsUrl'] = 'fac.mapsInvalid';
   const days = [...new Set(input.days.map(Number))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort();
   if (!days.length) errors['days'] = 'msgset.daysRequired';
   const opens = normalizeDigits(input.opens).trim();
@@ -249,13 +257,13 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
   }
   if (Object.keys(errors).length) return errors;
   const values = [facilityId, name, input.districtId, address, phone.value, input.open24h, days,
-    input.open24h ? '00:00' : opens, input.open24h ? '23:59' : closes, input.isActive];
+    input.open24h ? '00:00' : opens, input.open24h ? '23:59' : closes, input.isActive, mapsUrl === 'invalid' ? null : mapsUrl];
   await deps.db.transaction(async (tx) => {
     if (branchId) {
       const r = await tx.query(
         `update facility_branches set name = $2, district_id = $3, address = $4, phone_e164 = $5, open_24h = $6, open_days = $7::smallint[],
-                opens = $8::time, closes = $9::time, is_active = $10, updated_at = now()
-          where id = $11 and facility_id = $1`,
+                opens = $8::time, closes = $9::time, is_active = $10, maps_url = $11, updated_at = now()
+          where id = $12 and facility_id = $1`,
         [...values, branchId],
       );
       if (r.rowCount === 0) throw notFound();
@@ -263,8 +271,8 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
       const count = await tx.query<{ n: number }>('select count(*)::int as n from facility_branches where facility_id = $1', [facilityId]);
       if ((count.rows[0]?.n ?? 0) >= MAX_BRANCHES) throw new DomainError('fac.tooManyBranches');
       await tx.query(
-        `insert into facility_branches (facility_id, name, district_id, address, phone_e164, open_24h, open_days, opens, closes, is_active)
-         values ($1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10)`,
+        `insert into facility_branches (facility_id, name, district_id, address, phone_e164, open_24h, open_days, opens, closes, is_active, maps_url)
+         values ($1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10, $11)`,
         values,
       );
     }
@@ -418,6 +426,9 @@ export interface PublicFacility {
   tests: { code: string; price: number }[];
   /** Tests the place added itself (name, price, note). */
   extraTests: ExtraTest[];
+  /** Visible logo and photos (ids for /photos/facilities/:id). */
+  logo: string | null;
+  photos: string[];
 }
 
 export interface FacilitySearch {
@@ -458,7 +469,7 @@ export async function searchFacilities(deps: Deps, s: FacilitySearch): Promise<P
 async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []): Promise<PublicFacility[]> {
   if (!ids.length) return [];
   const db = deps.db;
-  const [facilities, branches, tests, extras] = await Promise.all([
+  const [facilities, branches, tests, extras, pics] = await Promise.all([
     db.query<{ user_id: string; kind: FacilityKind; slug: string; name: string; description: string; phone_e164: string | null; whatsapp_e164: string | null; home_service: boolean }>(
       `select user_id, kind, slug, name, description, phone_e164, whatsapp_e164, home_service from facilities where user_id = any($1::uuid[])`,
       [ids],
@@ -475,6 +486,7 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
       'select facility_id, id, name, price_egp, note from facility_extra_tests where facility_id = any($1::uuid[]) order by lower(name)',
       [ids],
     ),
+    publicPhotos(db, ids),
   ]);
   const now = deps.now();
   const tz = deps.cfg.TIME_ZONE;
@@ -495,6 +507,8 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
         phone: f.phone_e164,
         whatsapp: f.whatsapp_e164,
         homeService: f.home_service,
+        logo: pics.get(f.user_id)?.logo ?? null,
+        photos: pics.get(f.user_id)?.photos ?? [],
         branches: own,
         openNow: own.some((b) => b.openNow),
         total: askedTests.length ? asked.reduce((sum, t) => sum + t.price, 0) : null,
@@ -558,10 +572,11 @@ export interface FacilityReviewDetail extends FacilityReviewItem {
   docs_request_note: string | null;
   documents: { id: string; kind: FacilityDocKind; mime_type: string; size_bytes: number; uploaded_at: Date }[];
   branches: BranchRow[];
+  photos: FacilityPhoto[];
 }
 
 export async function getFacilityForReview(db: Queryable, id: string): Promise<FacilityReviewDetail> {
-  const { rows } = await db.query<Omit<FacilityReviewDetail, 'documents' | 'branches'>>(
+  const { rows } = await db.query<Omit<FacilityReviewDetail, 'documents' | 'branches' | 'photos'>>(
     `select f.user_id, f.kind, f.name, u.full_name as contact_name, f.verification_status, f.created_at, f.slug, f.licence_number,
             u.phone_e164, u.email, f.verification_note, f.docs_request_note, f.docs_requested_at, f.docs_updated_at,
             (select count(*)::int from facility_documents d where d.facility_id = f.user_id) as doc_count
@@ -573,7 +588,7 @@ export async function getFacilityForReview(db: Queryable, id: string): Promise<F
     db.query<FacilityReviewDetail['documents'][number]>('select id, kind, mime_type, size_bytes, uploaded_at from facility_documents where facility_id = $1 order by uploaded_at', [id]),
     listOwnBranches(db, id),
   ]);
-  return { ...rows[0], documents: docs.rows, branches };
+  return { ...rows[0], documents: docs.rows, branches, photos: await listFacilityPhotos(db, id) };
 }
 
 export type FacilityDecision = 'approve' | 'reject' | 'suspend' | 'reinstate' | 'request_docs';

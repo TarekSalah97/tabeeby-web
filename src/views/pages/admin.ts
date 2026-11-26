@@ -183,6 +183,18 @@ export function adminFacilityPage(ctx: Ctx, ref: ReferenceData, f: FacilityRevie
         </li>`)}</ul></div>`)}
       ${f.documents.some((d) => d.mime_type === 'image/heic' || d.mime_type === 'image/heif') ? html`<p class="hint">${ctx.t('fdocs.heicHint')}</p>` : ''}
     </section>
+    <section class="panel stack" data-testid="admin-photos">
+      <h2>${ctx.t('fphoto.adminTitle')} <span class="muted">(${f.photos.length})</span></h2>
+      <p class="hint">${ctx.t('fphoto.adminHint')}</p>
+      ${f.photos.length
+        ? html`<ul class="doc-thumbs">${f.photos.map((p) => html`<li class="doc-thumb${p.hidden ? ' is-hidden' : ''}">
+            <a href="${href(ctx, `/photos/facilities/${p.id}`)}" target="_blank" rel="noopener"><img src="${href(ctx, `/photos/facilities/${p.id}`)}" alt="" loading="lazy"></a>
+            <span class="small">${ctx.t(p.kind === 'logo' ? 'fphoto.logo' : 'fphoto.photo')}${p.hidden ? html` · <strong class="error-text">${ctx.t('fphoto.hidden')}</strong>` : ''}</span>
+            <form method="post" action="${href(ctx, `/admin/facility-photos/${p.id}/${p.hidden ? 'show' : 'hide'}`)}" class="inline-form">${csrfField(ctx)}
+              <button class="btn btn-outline btn-sm" type="submit">${ctx.t(p.hidden ? 'fphoto.show' : 'fphoto.hide')}</button></form>
+          </li>`)}</ul>`
+        : html`<p class="muted">${ctx.t('fphoto.none')}</p>`}
+    </section>
     <section class="panel row-wrap align-start">
       ${st === 'pending' || st === 'rejected' ? action('approve', 'admin.approve', false, true) : ''}
       ${st === 'pending' || st === 'rejected' ? action('request_docs', 'fdocs.askMore', true) : ''}

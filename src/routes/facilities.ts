@@ -1,4 +1,5 @@
 import { labInsights, pharmacyInsights } from '../services/facilityInsights.js';
+import { addFacilityPhotos, deleteFacilityPhoto, listFacilityPhotos, readFacilityPhoto, setFacilityPhotoHidden } from '../services/facilityPhotos.js';
 import { addFacilityDocuments, deleteFacilityDocument, listFacilityDocuments, readOwnFacilityDocument } from '../services/facilityDocuments.js';
 import { isPeriod } from '../services/insights.js';
 import { facilityInsightsPage } from '../views/pages/facilityInsights.js';
@@ -17,7 +18,7 @@ import {
   FACILITY_KINDS, type BranchInput, type FacilityKind,
 } from '../services/facilities.js';
 import {
-  facilityJoinPage, facilityDocumentsPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
+  facilityJoinPage, facilityDocumentsPage, facilityPhotosPage, facilityProfilePage, facilityBranchesPage, facilityPricesPage, facilityListPage, facilityPublicPage, KIND_PATH,
 } from '../views/pages/facilities.js';
 import { adminFacilitiesPage, adminFacilityPage } from '../views/pages/admin.js';
 import { DomainError, notFound } from '../http/errors.js';
@@ -45,6 +46,7 @@ function branchInput(ctx: Ctx): BranchInput {
   return {
     name: formValue(ctx, 'name'),
     districtId: Number(formValue(ctx, 'district')),
+    mapsUrl: formValue(ctx, 'mapsUrl'),
     address: formValue(ctx, 'address'),
     phone: formValue(ctx, 'phone'),
     open24h: formValue(ctx, 'open24h') === 'yes',
@@ -90,7 +92,7 @@ export function facilityRoutes(r: Router): void {
   const renderProfile = async (ctx: Ctx, user: SessionUser, extra: { values?: Record<string, string>; errors?: FieldErrors } = {}, status = 200) => {
     const db = ctx.deps.db;
     const [f, branches, tests] = await Promise.all([getOwnFacility(db, user.id), listOwnBranches(db, user.id), listOwnTests(db, user.id)]);
-    sendHtml(ctx, status, facilityProfilePage(ctx, f, { branches: branches.length, tests: tests.size, notice: notice(ctx), ...extra }));
+    sendHtml(ctx, status, facilityProfilePage(ctx, f, { branches: branches.length, branchList: branches, ref: await getReference(db), tests: tests.size, notice: notice(ctx), ...extra }));
   };
 
   r.get('/facility', async (ctx) => renderProfile(ctx, requireFacility(ctx)));
@@ -113,7 +115,7 @@ export function facilityRoutes(r: Router): void {
     sendHtml(ctx, status, facilityBranchesPage(ctx, f, ref, branches, { notice: notice(ctx), ...extra }));
   };
   const rawBranch = (ctx: Ctx) => ({
-    ...Object.fromEntries(['name', 'district', 'address', 'phone', 'open24h', 'opens', 'closes', 'active'].map((k) => [k, formValue(ctx, k)])),
+    ...Object.fromEntries(['name', 'district', 'address', 'phone', 'mapsUrl', 'open24h', 'opens', 'closes', 'active'].map((k) => [k, formValue(ctx, k)])),
     days: fieldAll(ctx.form, 'days'),
   });
 
@@ -224,6 +226,7 @@ export function facilityRoutes(r: Router): void {
   r.get('/facility/documents', async (ctx) => {
     const user = requireFacility(ctx);
     const [f, docs] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listFacilityDocuments(ctx.deps.db, user.id)]);
+    if (f.verification_status === 'approved') return redirect(ctx, href(ctx, '/facility'));
     const n = notice(ctx);
     sendHtml(ctx, 200, facilityDocumentsPage(ctx, f, docs, { notice: n }));
   });
@@ -256,6 +259,46 @@ export function facilityRoutes(r: Router): void {
     const problem = await deleteFacilityDocument(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
     redirect(ctx, href(ctx, '/facility/documents', problem ? { error: problem } : { ok: 'docRemoved' }));
   });
+
+  // ---- Public photos: logo and photos of the place
+  r.get('/facility/photos', async (ctx) => {
+    const user = requireFacility(ctx);
+    const [f, photos] = await Promise.all([getOwnFacility(ctx.deps.db, user.id), listFacilityPhotos(ctx.deps.db, user.id)]);
+    sendHtml(ctx, 200, facilityPhotosPage(ctx, f, photos, notice(ctx)));
+  });
+
+  r.post('/facility/photos', async (ctx) => {
+    const user = requireFacility(ctx);
+    const kind = ctx.query.get('kind') === 'logo' ? 'logo' : 'photo';
+    const result = await addFacilityPhotos(ctx.deps, user.id, kind, ctx.files, ctx.ip);
+    if (result.problem) return redirect(ctx, href(ctx, '/facility/photos', { error: result.problem }));
+    redirect(ctx, href(ctx, '/facility/photos', { ok: result.skipped ? 'facilityPhotosAddedSome' : 'facilityPhotosAdded' }));
+  });
+
+  r.post('/facility/photos/:id/delete', async (ctx) => {
+    const user = requireFacility(ctx);
+    await deleteFacilityPhoto(ctx.deps, user.id, uuidParam(ctx, 'id'), ctx.ip);
+    redirect(ctx, href(ctx, '/facility/photos', { ok: 'photoRemovedF' }));
+  });
+
+  r.get('/photos/facilities/:id', async (ctx) => {
+    const photo = await readFacilityPhoto(ctx.deps, uuidParam(ctx, 'id'), ctx.user ? { id: ctx.user.id, role: ctx.user.role } : null);
+    ctx.res.statusCode = 200;
+    ctx.res.setHeader('Content-Type', photo.mime);
+    ctx.res.setHeader('X-Content-Type-Options', 'nosniff');
+    ctx.res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    // A photo never changes under the same id; hidden or private ones must not sit in shared caches.
+    ctx.res.setHeader('Cache-Control', photo.isPublic ? 'public, max-age=86400' : 'private, no-store');
+    ctx.res.end(photo.data);
+  });
+
+  for (const hidden of [true, false]) {
+    r.post(`/admin/facility-photos/:id/${hidden ? 'hide' : 'show'}`, async (ctx) => {
+      const admin = requireUser(ctx, 'admin');
+      const facilityId = await setFacilityPhotoHidden(ctx.deps, admin.id, uuidParam(ctx, 'id'), hidden, ctx.ip);
+      redirect(ctx, href(ctx, `/admin/facilities/${facilityId}`));
+    });
+  }
 
   r.get('/admin/facilities', async (ctx) => {
     requireUser(ctx, 'admin');

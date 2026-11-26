@@ -538,19 +538,24 @@ document.addEventListener('click', function (e) {
 (function () {
   var MAX_SIDE = 2200, QUALITY = 0.85, MIN_BYTES = 1.2 * 1024 * 1024;
   if (!window.DataTransfer || !window.HTMLCanvasElement) return;
-  function shrink(file) {
+  // data-shrink="always" (public photos): every picture is redrawn as JPG, which also turns
+  // iPhone HEIC into JPG and keeps the photo upright once hidden metadata is removed on the server.
+  function shrink(file, always) {
     return new Promise(function (resolve) {
-      if (!/^image\//.test(file.type) || file.size < MIN_BYTES) return resolve(file);
+      if (!/^image\//.test(file.type) && !(always && /\.(heic|heif)$/i.test(file.name))) return resolve(file);
+      if (!always && file.size < MIN_BYTES) return resolve(file);
       var url = URL.createObjectURL(file);
       var img = new Image();
       img.onload = function () {
         var scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
         var c = document.createElement('canvas');
         c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); // transparent logos: white, not black
+        g.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
         c.toBlob(function (blob) {
-          if (!blob || blob.size >= file.size) return resolve(file);
+          if (!blob || (!always && blob.size >= file.size)) return resolve(file);
           resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
         }, 'image/jpeg', QUALITY);
       };
@@ -564,7 +569,8 @@ document.addEventListener('click', function (e) {
       var form = input.form;
       var btn = form && form.querySelector('button[type=submit]');
       if (btn) btn.disabled = true;
-      Promise.all(Array.prototype.map.call(input.files, shrink)).then(function (files) {
+      var always = input.getAttribute('data-shrink') === 'always';
+      Promise.all(Array.prototype.map.call(input.files, function (f) { return shrink(f, always); })).then(function (files) {
         try {
           var dt = new DataTransfer();
           files.forEach(function (f) { dt.items.add(f); });

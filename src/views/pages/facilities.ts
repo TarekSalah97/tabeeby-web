@@ -8,6 +8,7 @@ import { formatEgyptMobile } from '../../domain/phone.js';
 import { LAB_TESTS } from '../../domain/clinical.js';
 import { facilityDocs, docField, MAX_FILES_PER_DOC, type FacilityDocKind } from '../../domain/documents.js';
 import type { FacilityDoc, KeptFile } from '../../services/facilityDocuments.js';
+import { MAX_FACILITY_PHOTOS, type FacilityPhoto } from '../../services/facilityPhotos.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { FieldErrors } from '../../services/accounts.js';
 import {
@@ -146,15 +147,64 @@ export function facilityDocumentsPage(ctx: Ctx, f: OwnFacility, docs: FacilityDo
   return facilityShell(ctx, f, 'documents', content, o.notice);
 }
 
+/** Link to a place's photo (public once the place is approved). */
+export const facilityPhotoHref = (ctx: Ctx, id: string): string => href(ctx, `/photos/facilities/${id}`);
+
+/** The logo when there is one, otherwise initials. */
+function facilityAvatar(ctx: Ctx, p: { name: string; logo: string | null }, cls = ''): SafeHtml {
+  return p.logo
+    ? html`<img class="avatar avatar-img ${cls}" src="${facilityPhotoHref(ctx, p.logo)}" alt="" loading="lazy">`
+    : html`<div class="avatar ${cls}" aria-hidden="true">${initials(p.name)}</div>`;
+}
+
+export function facilityPhotosPage(ctx: Ctx, f: OwnFacility, photos: FacilityPhoto[], notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
+  const logo = photos.find((p) => p.kind === 'logo');
+  const shots = photos.filter((p) => p.kind === 'photo');
+  const thumb = (p: FacilityPhoto) => html`<li class="doc-thumb" data-testid="own-photo">
+      <a href="${facilityPhotoHref(ctx, p.id)}" target="_blank" rel="noopener"><img src="${facilityPhotoHref(ctx, p.id)}" alt="" loading="lazy"></a>
+      ${p.hidden ? html`<span class="small error-text">${ctx.t('fphoto.hiddenByTeam')}</span>` : ''}
+      <form method="post" action="${href(ctx, `/facility/photos/${p.id}/delete`)}" class="inline-form">${csrfField(ctx)}
+        <button class="btn btn-ghost btn-sm" type="submit">${ctx.t('fdocs.remove')}</button></form>
+    </li>`;
+  const picker = (name: string, multiple: boolean, label: MessageKey) => html`<label class="doc-field">
+      <input type="file" name="${name}" accept="image/*"${attrIf(multiple, 'multiple')} data-shrink="always" required>
+      ${icon.upload}<span class="stack-sm"><strong>${ctx.t(label)}</strong><span class="small muted">${ctx.t('fdocs.choose')}</span><span class="small ok-text" data-file-name></span></span>
+    </label>`;
+  const content = html`<div class="stack-sm"><h1>${ctx.t('fphoto.title')}</h1><p class="muted">${ctx.t('fphoto.lead')}</p></div>
+    <section class="panel stack">
+      <h2 class="h3">${ctx.t('fphoto.logo')}</h2>
+      <p class="hint">${ctx.t('fphoto.logoHint')}</p>
+      ${logo ? html`<ul class="doc-thumbs logo-thumb">${thumb(logo)}</ul>` : ''}
+      <form class="stack-sm" method="post" action="${href(ctx, '/facility/photos?kind=logo')}" enctype="multipart/form-data">${csrfField(ctx)}
+        ${picker('logo', false, logo ? 'fphoto.changeLogo' : 'fphoto.addLogo')}
+        <div><button class="btn btn-primary" type="submit">${icon.upload}${ctx.t('fdocs.add')}</button></div>
+      </form>
+    </section>
+    <section class="panel stack">
+      <h2 class="h3">${ctx.t('fphoto.photos')} <span class="muted">(${formatNumber(shots.length, ctx.locale)}/${formatNumber(MAX_FACILITY_PHOTOS, ctx.locale)})</span></h2>
+      <p class="hint">${ctx.t('fphoto.photosHint')}</p>
+      ${shots.length ? html`<ul class="doc-thumbs">${shots.map(thumb)}</ul>` : html`<p class="muted">${ctx.t('fphoto.none')}</p>`}
+      ${shots.length < MAX_FACILITY_PHOTOS
+        ? html`<form class="stack-sm" method="post" action="${href(ctx, '/facility/photos?kind=photo')}" enctype="multipart/form-data">${csrfField(ctx)}
+            ${picker('photos', true, 'fphoto.addPhotos')}
+            <div><button class="btn btn-primary" type="submit">${icon.upload}${ctx.t('fdocs.add')}</button></div>
+          </form>`
+        : html`<p class="small muted">${ctx.t('fphoto.full', { n: formatNumber(MAX_FACILITY_PHOTOS, ctx.locale) })}</p>`}
+    </section>
+    <p class="hint">${ctx.t('fphoto.rules')}</p>`;
+  return facilityShell(ctx, f, 'photos', content, notice);
+}
+
 // ---------------------------------------------------------------------------
 // The facility's dashboard
 // ---------------------------------------------------------------------------
 
-export type FacilitySection = 'profile' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights' | 'documents';
+export type FacilitySection = 'profile' | 'photos' | 'branches' | 'prices' | 'requests' | 'prescriptions' | 'insights' | 'documents';
 
 export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection, content: SafeHtml, notice?: { kind: 'success' | 'error'; key: MessageKey }): SafeHtml {
   const items: { key: FacilitySection; path: string; label: MessageKey }[] = [
     { key: 'profile', path: '/facility', label: 'facdash.nav.profile' },
+    { key: 'photos', path: '/facility/photos', label: 'fphoto.nav' },
     { key: 'branches', path: '/facility/branches', label: 'facdash.nav.branches' },
     ...(offersTests(f.kind)
       ? [
@@ -163,7 +213,8 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
         ]
       : [{ key: 'prescriptions' as const, path: '/facility/prescriptions', label: 'rxsend.inbox' as const }]),
     { key: 'insights' as const, path: '/facility/insights', label: 'fins.title' as const },
-    { key: 'documents' as const, path: '/facility/documents', label: 'fdocs.nav' as const },
+    // Once approved, documents are only a record for our team, so the section is not shown.
+    ...(f.verification_status === 'approved' ? [] : [{ key: 'documents' as const, path: '/facility/documents', label: 'fdocs.nav' as const }]),
   ];
   const status = f.verification_status;
   const docsLink = html` <a href="${href(ctx, '/facility/documents')}">${ctx.t('fdocs.open')}</a>`;
@@ -197,8 +248,9 @@ export function facilityShell(ctx: Ctx, f: OwnFacility, section: FacilitySection
 export function facilityProfilePage(
   ctx: Ctx,
   f: OwnFacility,
-  o: { branches: number; tests: number; values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey } },
+  o: { branches: number; branchList?: BranchRow[]; ref?: ReferenceData; tests: number; values?: Record<string, string>; errors?: FieldErrors; notice?: { kind: 'success' | 'error'; key: MessageKey } },
 ): SafeHtml {
+  const addresses = o.branchList ?? [];
   const v = o.values ?? {
     name: f.name,
     description: f.description,
@@ -232,7 +284,20 @@ export function facilityProfilePage(
       </div>
       <label class="check"><input type="checkbox" name="homeService" value="yes"${attrIf(v['homeService'] === 'yes', 'checked')}><span>${ctx.t(`fac.homeService.${f.kind}` as MessageKey)}</span></label>
       <div><button class="btn btn-primary" type="submit">${ctx.t('common.save')}</button></div>
-    </form>`;
+    </form>
+    <section class="panel stack-sm" data-testid="profile-address">
+      <h2 class="h3">${ctx.t('fac.addressTitle')}</h2>
+      ${addresses.length
+        ? html`<ul class="branch-list">${addresses.map((b) => {
+            const dist = o.ref?.districtById.get(b.district_id);
+            return html`<li class="stack-sm"><strong dir="auto">${b.name}</strong>
+              <span dir="auto">${dist && o.ref ? placeName(ctx, dist) : ''} · ${b.address}</span>
+              ${b.maps_url ? html`<a class="small" href="${b.maps_url}" target="_blank" rel="noopener noreferrer">${ctx.t('fac.mapsOpen')}</a>` : html`<span class="small muted">${ctx.t('fac.mapsMissing')}</span>`}</li>`;
+          })}</ul>
+          <div><a class="btn btn-outline btn-sm" href="${href(ctx, '/facility/branches')}">${ctx.t('fac.editAddress')}</a></div>`
+        : html`<p class="muted">${ctx.t('fac.noAddress')}</p>
+          <div><a class="btn btn-primary" href="${href(ctx, '/facility/branches')}">${ctx.t('fac.addAddress')}</a></div>`}
+    </section>`;
   return facilityShell(ctx, f, 'profile', content, o.notice);
 }
 
@@ -250,7 +315,7 @@ export function facilityBranchesPage(
       isTarget && o.values
         ? o.values
         : b
-          ? { name: b.name, district: String(b.district_id), address: b.address, phone: b.phone_e164 ? formatEgyptMobile(b.phone_e164).replace(/\s/g, '') : '',
+          ? { name: b.name, district: String(b.district_id), address: b.address, mapsUrl: b.maps_url ?? '', phone: b.phone_e164 ? formatEgyptMobile(b.phone_e164).replace(/\s/g, '') : '',
               open24h: b.open_24h ? 'yes' : '', days: b.open_days.map(String), opens: b.opens, closes: b.closes, active: b.is_active ? 'yes' : '' }
           : { days: ['0', '1', '2', '3', '4', '5', '6'], opens: '09:00', closes: '23:00', active: 'yes' };
     const errors = isTarget ? o.errors : undefined;
@@ -265,7 +330,8 @@ export function facilityBranchesPage(
           ${select(ctx, { idPrefix, name: 'city', label: ctx.t('search.city'), value: (() => { const d = ref.districtById.get(Number(str('district'))); return d ? (ref.governorateById.get(d.governorate_id)?.slug ?? '') : ''; })(), options: [{ value: '', label: '—' }, ...cityOptions(ctx, ref)] })}
           ${select(ctx, { idPrefix, name: 'district', label: ctx.t('clinics.district'), value: str('district'), options: [{ value: '', label: '—' }, ...districtOptions], errors, required: true })}
         </div>
-        ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: str('address'), maxlength: 300, errors, required: true })}
+        ${input(ctx, { idPrefix, name: 'address', label: ctx.t('clinics.address'), value: str('address'), hint: ctx.t('fac.addressHint'), maxlength: 300, errors, required: true })}
+        ${input(ctx, { idPrefix, name: 'mapsUrl', label: ctx.t('fac.mapsLink'), type: 'url', value: str('mapsUrl'), hint: ctx.t('fac.mapsHint'), maxlength: 500, errors })}
         ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('facdash.branchPhone'), type: 'tel', value: str('phone'), inputmode: 'tel', errors })}
       </div>
       <fieldset class="stack-sm"><legend class="label">${ctx.t('facdash.openDays')}</legend>
@@ -368,7 +434,7 @@ function contactButtons(ctx: Ctx, p: PublicFacility, branch: PublicBranch | unde
   return html`<div class="row-wrap">
     ${phone ? html`<a class="btn btn-primary" href="tel:${phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
     ${p.whatsapp ? html`<a class="btn btn-outline" href="https://wa.me/${p.whatsapp.replace('+', '')}" target="_blank" rel="noopener noreferrer">${icon.chat}${ctx.t('fac.whatsapp')}</a>` : ''}
-    ${branch ? html`<a class="btn btn-outline" href="${directionsHref(branch.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>` : ''}
+    ${branch ? html`<a class="btn btn-outline" href="${branch.maps_url ?? directionsHref(branch.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>` : ''}
   </div>`;
 }
 
@@ -402,7 +468,7 @@ export function facilityListPage(ctx: Ctx, ref: ReferenceData, s: FacilitySearch
           const dist = branch ? ref.districtById.get(branch.district_id) : undefined;
           return html`<li class="panel facility-card">
             <div class="facility-head">
-              <div class="avatar" aria-hidden="true">${initials(p.name)}</div>
+              ${facilityAvatar(ctx, p)}
               <div class="stack-sm">
                 <h2 class="h3"><a href="${href(ctx, `${base}/${p.slug}`, testsAsked.length ? { tests: testsAsked.join(',') } : undefined)}">${p.name}</a></h2>
                 <span class="row-wrap tight">${openChip(ctx, p.openNow)}${p.homeService ? html`<span class="chip">${ctx.t(`fac.homeService.${p.kind}` as MessageKey)}</span>` : ''}
@@ -428,14 +494,18 @@ export function facilityPublicPage(ctx: Ctx, ref: ReferenceData, p: PublicFacili
     <a class="back-link" href="${href(ctx, KIND_PATH[p.kind])}">${icon.chevronStart}${ctx.t(`fac.list.${p.kind}` as MessageKey)}</a>
     <section class="panel stack">
       <div class="facility-head">
-        <div class="avatar xl" aria-hidden="true">${initials(p.name)}</div>
+        ${facilityAvatar(ctx, p, 'xl')}
         <div class="stack-sm">
           <h1>${p.name}</h1>
           <span class="row-wrap tight"><span class="chip">${kindLabel(ctx, p.kind)}</span>${openChip(ctx, p.openNow)}${p.homeService ? html`<span class="chip">${ctx.t(`fac.homeService.${p.kind}` as MessageKey)}</span>` : ''}
             <span class="chip status-confirmed">${icon.check}${ctx.t('fac.verified')}</span></span>
+          ${p.branches[0] ? (() => { const d = ref.districtById.get(p.branches[0]!.district_id); return html`<span class="muted" dir="auto" data-testid="place-address">${icon.pin}${d ? placeName(ctx, d) : ''} · ${p.branches[0]!.address}</span>`; })() : ''}
         </div>
       </div>
       ${p.description ? html`<p class="prose" dir="auto">${p.description}</p>` : ''}
+      ${p.photos.length
+        ? html`<ul class="place-gallery" data-testid="place-photos">${p.photos.map((id) => html`<li><a href="${facilityPhotoHref(ctx, id)}" target="_blank" rel="noopener"><img src="${facilityPhotoHref(ctx, id)}" alt="${ctx.t('fphoto.altOf', { name: p.name })}" loading="lazy"></a></li>`)}</ul>`
+        : ''}
       ${contactButtons(ctx, p, p.branches[0], ref)}
     </section>
     ${askedTests.length
@@ -454,7 +524,7 @@ export function facilityPublicPage(ctx: Ctx, ref: ReferenceData, p: PublicFacili
           <span class="small">${hoursText(ctx, b)}</span>
           <div class="row-wrap">
             ${b.phone_e164 ? html`<a class="btn btn-outline btn-sm" href="tel:${b.phone_e164}" dir="ltr">${formatEgyptMobile(b.phone_e164)}</a>` : ''}
-            <a class="btn btn-outline btn-sm" href="${directionsHref(b.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${ctx.t('doctor.directions')}</a>
+            <a class="btn btn-outline btn-sm" href="${b.maps_url ?? directionsHref(b.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${ctx.t('doctor.directions')}</a>
           </div>
         </li>`;
       })}</ul>

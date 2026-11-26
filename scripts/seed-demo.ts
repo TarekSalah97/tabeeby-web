@@ -14,6 +14,7 @@ import { createDb, type Queryable } from '../src/db/db.js';
 import { hashPassword } from '../src/auth/password.js';
 import { clearReferenceCache } from '../src/services/reference.js';
 import { DEMO_PASSWORD } from '../src/demo.js';
+import { refreshTodayQueue } from '../src/services/demoQueue.js';
 import { addDays, todayIn, weekdayOf, zonedToUtc } from '../src/domain/time.js';
 import { DbFileStorage, LocalFileStorage } from '../src/storage/files.js';
 import { sectionOf, type Section } from '../src/services/orderResults.js';
@@ -152,60 +153,6 @@ function slotNear(d: DemoDoctor, daysAgo: number, used: Set<string>, r: ReturnTy
   throw new Error('no free slot');
 }
 
-
-const QUEUE_REASON = 'Demo live queue';
-
-/**
- * A realistic clinic "today" for the first demo doctor, rebuilt around the current time on every
- * start (the free demo restarts after being idle, so the queue is fresh whenever someone visits).
- * Patient 01000000201 ends up 3rd in line, so the live waiting-time tracker has something to show.
- */
-async function refreshTodayQueue(tx: Queryable, doctor: { userId: string; clinicId: string }, patientIds: string[]): Promise<number> {
-  const now = Date.now();
-  const day = todayIn(TZ, new Date(now));
-  const lo = zonedToUtc(day, '03:00', TZ).getTime();
-  const hi = zonedToUtc(day, '19:00', TZ).getTime();
-  const half = 30 * 60_000;
-  const anchor = Math.floor(Math.min(hi, Math.max(lo, now)) / half) * half;
-  const at = (min: number) => new Date(anchor + min * 60_000);
-  const ago = (min: number) => new Date(now - min * 60_000);
-  // [patient index, slot offset (min), status, consult started, completed]
-  const plan: [number, number, string, Date | null, Date | null][] = [
-    [4, -60, 'completed', ago(60), ago(35)],
-    [5, -30, 'completed', ago(35), ago(12)],
-    [6, 0, 'in_consultation', ago(12), null],
-    [7, 30, 'arrived', null, null],
-    [0, 60, 'arrived', null, null],
-    [1, 90, 'confirmed', null, null],
-  ];
-  await tx.query('savepoint demo_queue');
-  try {
-    await tx.query('delete from appointments where doctor_id = $1 and reason = $2', [doctor.userId, QUEUE_REASON]);
-    // Make room: nothing else of this doctor's may overlap the demo queue today.
-    await tx.query(
-      `update appointments set status = 'cancelled', cancelled_by = 'doctor', cancelled_at = now()
-        where doctor_id = $1 and status <> 'cancelled' and starts_at < $3 and ends_at > $2`,
-      [doctor.userId, at(-60), at(120)],
-    );
-    for (const [i, offset, status, started, done] of plan) {
-      const start = at(offset);
-      await tx.query(
-        `insert into appointments (doctor_id, clinic_id, patient_id, booked_by, starts_at, ends_at, visit_type, reason, fee_egp, status,
-                                   arrived_at, consult_started_at, completed_at)
-         values ($1, $2, $3, 'patient', $4, $5, 'new', $6, 500, $7, $8, $9, $10)`,
-        [doctor.userId, doctor.clinicId, patientIds[i], start, new Date(start.getTime() + half), QUEUE_REASON, status,
-          status === 'confirmed' ? null : ago(70), started, done],
-      );
-    }
-    await tx.query('release savepoint demo_queue');
-    return plan.length;
-  } catch (err) {
-    // The demo queue is a nice-to-have: never let it stop the demo from starting.
-    await tx.query('rollback to savepoint demo_queue');
-    console.warn('Demo queue skipped:', err instanceof Error ? err.message : err);
-    return 0;
-  }
-}
 
 // Realistic reasons for a heart clinic; also how a restart finds (and replaces) these bookings.
 const SCHEDULE_REASONS = ['Chest pain on effort', 'Palpitations', 'Blood pressure check', 'ECG review', 'Shortness of breath', 'Echo results', 'Check-up before surgery'];
@@ -394,7 +341,7 @@ try {
     // History is added once; running the script again only refreshes accounts (and today's demo queue).
     const already = await tx.query('select 1 from patient_records where doctor_id = $1 limit 1', [doctors[0]!.userId]);
     if (already.rows.length) {
-      const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
+      const q = await refreshTodayQueue(tx, doctors[0]!, patientIds, new Date(), TZ);
       const days = await refreshComingDays(tx, doctors[0]!, patientIds);
       await ensureDemoSecretary(tx, doctors[0]!.userId, await hashPassword(DEMO_PASSWORD));
       const res = await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));
@@ -516,7 +463,7 @@ try {
         await tx.query(`insert into messages (conversation_id, sender, body, created_at) values ($1, 'patient', $2, now() - interval '2 days'), ($1, 'doctor', $3, now() - interval '1 day')`, [conv.rows[0].id, q, a]);
       }
     }
-    const q = await refreshTodayQueue(tx, doctors[0]!, patientIds);
+    const q = await refreshTodayQueue(tx, doctors[0]!, patientIds, new Date(), TZ);
     const days = await refreshComingDays(tx, doctors[0]!, patientIds);
     await ensureDemoSecretary(tx, doctors[0]!.userId, hash);
     await seedDemoResults(tx, PATIENTS.slice(0, 6).map((p) => p.phone));

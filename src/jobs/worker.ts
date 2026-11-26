@@ -4,6 +4,7 @@ import { translator, formatTime, type Locale } from '../i18n/index.js';
 import { log, errorFields } from '../log.js';
 import { expireOldEntries } from '../services/waitlist.js';
 import { sendDueReminders } from '../services/medReminders.js';
+import { keepDemoQueue } from '../services/demoQueue.js';
 
 /**
  * Queues reminders exactly once: the UPDATE … RETURNING claims each
@@ -63,6 +64,7 @@ export function startWorker(deps: Deps): () => void {
     try {
       if (ticks % 12 === 0) await queueReminders(deps); // every minute
       if (ticks % 12 === 6) await sendDueReminders(deps); // medicine reminders, every minute
+      if (deps.cfg.DEMO_MODE && ticks % 60 === 1) await keepDemoQueue(deps); // demo site: Yasmin always waiting today
       await deliverPending(deps.db, deps.sms, 20, deps.email);
       if (ticks % 720 === 0) await cleanup(deps); // hourly
     } catch (err) {

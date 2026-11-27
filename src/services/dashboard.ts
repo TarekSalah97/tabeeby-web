@@ -7,6 +7,8 @@ export interface DoctorDayAppointment {
   starts_at: Date;
   ends_at: Date;
   status: AppointmentStatus;
+  /** When the visit was marked finished (null if not finished). */
+  completed_at: Date | null;
   visit_type: 'new' | 'follow_up' | 'service';
   service_name: string | null;
   service_name_ar: string | null;
@@ -29,7 +31,7 @@ export async function doctorDay(db: Queryable, doctorId: string, date: string, t
   const to = zonedToUtc(addDays(date, 1), '00:00', tz);
   return (
     await db.query<DoctorDayAppointment>(
-      `select a.id, a.starts_at, a.ends_at, a.status, a.visit_type, a.service_name, a.service_name_ar, a.reason, a.fee_egp, a.patient_id, a.booked_by, a.pay_choice, a.pay_ref,
+      `select a.id, a.starts_at, a.ends_at, a.status, a.completed_at, a.visit_type, a.service_name, a.service_name_ar, a.reason, a.fee_egp, a.patient_id, a.booked_by, a.pay_choice, a.pay_ref,
               coalesce(p.full_name, a.walk_in_name) as patient_name, coalesce(p.phone_e164, a.walk_in_phone) as patient_phone,
               p.email as patient_email, c.name as clinic_name
          from appointments a left join users p on p.id = a.patient_id join clinics c on c.id = a.clinic_id

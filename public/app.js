@@ -233,6 +233,22 @@
   setInterval(function () { if (document.visibilityState === 'visible') location.reload(); }, secs * 1000);
 })();
 
+// Schedule: when a just-finished visit's 3 minutes are up, reload so it moves to the end.
+// Waits while someone is typing in a box or the tab is hidden, so nothing typed is lost.
+(function () {
+  var el = document.querySelector('[data-reorder-in]');
+  if (!el) return;
+  var secs = parseInt(el.getAttribute('data-reorder-in'), 10);
+  if (!(secs > 0) || secs > 600) return;
+  function tryReload() {
+    var f = document.activeElement;
+    var typing = f && (f.tagName === 'INPUT' || f.tagName === 'TEXTAREA' || f.tagName === 'SELECT');
+    if (document.visibilityState !== 'visible' || typing) { setTimeout(tryReload, 10000); return; }
+    location.reload();
+  }
+  setTimeout(tryReload, secs * 1000);
+})();
+
 // DEMO ONLY: the fictional "Tabeeby AI" diagnosis helper on the visit notes form.
 // Results are built with textContent (never innerHTML), and nothing is added to the notes
 // unless the doctor presses "Add".

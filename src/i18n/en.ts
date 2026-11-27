@@ -2053,4 +2053,5 @@ export const en = {
   'teamswitch.switch': "Switch clinic",
   'visit.err.empty': "Nothing to save yet: write something in any box, or add a medicine or a test.",
   'med.noFrequency': "Your doctor didn't set how often, so no reminder is set. Ask your doctor or pharmacist.",
+  'sched.justFinished': "Just finished · book a follow-up?",
 } as const;

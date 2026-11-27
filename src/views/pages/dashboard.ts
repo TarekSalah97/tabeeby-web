@@ -1,6 +1,6 @@
 import { serviceName, type ClinicService } from '../../services/clinicServices.js';
 import { phonesForForm } from '../../domain/branchPhones.js';
-import { orderSchedule, matchesSchedule, foldName, FINISHED } from '../../domain/schedule.js';
+import { orderSchedule, matchesSchedule, foldName, FINISHED, isJustFinished, JUST_FINISHED_MS } from '../../domain/schedule.js';
 
 export type ScheduleView = 'all' | 'completed' | 'waiting';
 import { SOCIAL_KINDS, type SocialKind } from '../../domain/social.js';
@@ -127,7 +127,11 @@ export function todayPage(
   const show: ScheduleView = o.show ?? 'all';
   const q = (o.q ?? '').trim().slice(0, 60);
   // Working order: with the doctor, then still to come, then finished at the end.
-  const rows = orderSchedule(o.appointments)
+  const now = ctx.deps.now();
+  // Seconds until the first just-finished visit drops to the end, so the page can reorder itself then.
+  const freshEnds = o.appointments.filter((a) => isJustFinished(a, now)).map((a) => a.completed_at!.getTime() + JUST_FINISHED_MS - now.getTime());
+  const reorderIn = freshEnds.length ? Math.ceil(Math.min(...freshEnds) / 1000) + 1 : 0;
+  const rows = orderSchedule(o.appointments, now)
     .filter((a) => (show === 'completed' ? a.status === 'completed' : show === 'waiting' ? a.status === 'arrived' : true))
     .filter((a) => matchesSchedule(q, a.patient_name, a.patient_phone));
   const viewHref = (v: ScheduleView) => href(ctx, '/dashboard', { date: isToday ? undefined : o.date, show: v === 'all' ? undefined : v });
@@ -214,15 +218,16 @@ export function todayPage(
         </nav>
       </div>
       ${rows.length
-        ? html`<div class="table-scroll"><table class="table cards-on-phone">
+        ? html`<div class="table-scroll"><table class="table cards-on-phone"${attrIf(reorderIn > 0, `data-reorder-in="${reorderIn}"`)}>
             <thead><tr><th scope="col">${ctx.t('dash.time')}</th><th scope="col">${ctx.t('dash.patient')}</th><th scope="col">${ctx.t('dash.clinic')}</th>
               <th scope="col">${ctx.t('dash.type')}</th><th scope="col">${ctx.t('dash.reason')}</th><th scope="col">${ctx.t('dash.status')}</th><th scope="col">${ctx.t('dash.action')}</th></tr></thead>
             <tbody>${rows.map((a) => {
               const next = nextDoctorAction(a.status);
               const started = ctx.deps.now().getTime() >= a.starts_at.getTime();
-              return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : FINISHED.has(a.status) ? 'row-done' : ''}" data-search="${searchSpace(a)}">
+              const fresh = isJustFinished(a, now);
+              return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : fresh ? 'row-just-done' : FINISHED.has(a.status) ? 'row-done' : ''}" data-search="${searchSpace(a)}"${attrIf(fresh, 'data-testid="just-finished"')}>
                 <td class="nowrap cell-time" data-label="${ctx.t('dash.time')}"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
-                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong>${
+                <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong>${fresh ? html`<span class="chip status-confirmed">${ctx.t('sched.justFinished')}</span>` : ''}${
                   a.booked_by === 'doctor' || noShowsOf(a)
                     ? html`<span class="row-wrap tight">${a.booked_by === 'doctor' ? html`<span class="chip">${ctx.t('cbook.byClinic')}</span>` : ''}${
                         noShowsOf(a) ? html`<span class="chip status-cancelled">${ctx.t('cbook.noShows', { n: noShowsOf(a) })}</span>` : ''}</span>`

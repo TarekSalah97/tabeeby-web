@@ -412,6 +412,8 @@ details[open] > summary { margin-block-end: 12px; }
 .table td { padding: 12px; border-block-start: 1px solid #eef1ef; vertical-align: middle; }
 .table th:first-child, .table td:first-child { padding-inline-start: 20px; }
 .row-active { background: #f4faf8; }
+tr.row-just-done td { background: var(--primary-tint); }
+tr.row-just-done .chip { background: #fff; }
 
 @media (max-width: 720px) {
   .container { padding-inline: 16px; }

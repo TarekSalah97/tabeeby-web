@@ -4,6 +4,16 @@ import { normalizeDigits } from './phone.js';
 /** Visits that are over for the day: finished, cancelled or missed. */
 export const FINISHED: ReadonlySet<AppointmentStatus> = new Set(['completed', 'no_show', 'cancelled']);
 
+/** How long a just-finished visit stays at the top, so the clinic can book a follow-up. */
+export const JUST_FINISHED_MS = 3 * 60_000;
+
+/** Finished in the last few minutes (and not missed or cancelled)? */
+export function isJustFinished(a: { status: AppointmentStatus; completed_at?: Date | null }, now: Date): boolean {
+  if (a.status !== 'completed' || !a.completed_at) return false;
+  const age = now.getTime() - a.completed_at.getTime();
+  return age >= 0 && age < JUST_FINISHED_MS;
+}
+
 const RANK: Record<AppointmentStatus, number> = {
   in_consultation: 0, // with the doctor now
   arrived: 1, // waiting in the clinic
@@ -14,14 +24,15 @@ const RANK: Record<AppointmentStatus, number> = {
 };
 
 /**
- * The day's list in working order: whoever is with the doctor first, then everyone still to be
- * seen in booked-time order, and finished, missed and cancelled visits at the end. So when a
- * visit is finished, the next patient moves to the top. Stable for equal keys.
+ * The day's list in working order: a visit finished in the last 3 minutes first (time to book a
+ * follow-up), then whoever is with the doctor, then everyone still to be seen in booked-time order,
+ * and finished, missed and cancelled visits at the end. Stable for equal keys.
  */
-export function orderSchedule<T extends { status: AppointmentStatus; starts_at: Date }>(list: readonly T[]): T[] {
+export function orderSchedule<T extends { status: AppointmentStatus; starts_at: Date; completed_at?: Date | null }>(list: readonly T[], now?: Date): T[] {
+  const rank = (a: T) => (now && isJustFinished(a, now) ? -1 : RANK[a.status]);
   return list
-    .map((a, i) => ({ a, i }))
-    .sort((x, y) => RANK[x.a.status] - RANK[y.a.status] || x.a.starts_at.getTime() - y.a.starts_at.getTime() || x.i - y.i)
+    .map((a, i) => ({ a, i, r: rank(a) }))
+    .sort((x, y) => x.r - y.r || x.a.starts_at.getTime() - y.a.starts_at.getTime() || x.i - y.i)
     .map(({ a }) => a);
 }
 

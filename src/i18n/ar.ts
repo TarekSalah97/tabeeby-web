@@ -2056,4 +2056,5 @@ export const ar: Record<keyof typeof en, string> = {
   'teamswitch.switch': "غيّر العيادة",
   'visit.err.empty': "لسه مفيش حاجة تتحفظ: اكتب في أي خانة، أو ضيف دوا أو تحليل.",
   'med.noFrequency': "الدكتور ماحددش عدد المرات، فمفيش تذكير. اسأل دكتورك أو الصيدلي.",
+  'sched.justFinished': "خلص الكشف · تحجز متابعة؟",
 };

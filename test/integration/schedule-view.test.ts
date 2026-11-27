@@ -18,7 +18,7 @@ async function visit(d: { id: string; clinicId: string }, hhmm: string, name: st
      select $1, $2, 'doctor', $3, $4, t, t + interval '30 minutes', 'new', 300, $6,
             case when $6 in ('arrived', 'in_consultation', 'completed') then t end,
             case when $6 in ('in_consultation', 'completed') then t end,
-            case when $6 = 'completed' then t + interval '20 minutes' end
+            case when $6 = 'completed' then least(t + interval '20 minutes', now() - interval '1 hour') end
        from (select ((now() at time zone 'Africa/Cairo')::date + $5::time) at time zone 'Africa/Cairo' as t) x`,
     [d.id, d.clinicId, name, phone, hhmm, status],
   );
@@ -62,4 +62,34 @@ test('the schedule puts finished visits last, filters by the count boxes and sea
   assert.match((await c.get('/en/dashboard?q=Hoda')).body, /No one on this day/);
   // Bad view values fall back to everything.
   assert.equal((await c.get('/en/dashboard?show=<script>')).status, 200);
+});
+
+test('after Finish, the visit stays on top for 3 minutes with a follow-up button, then goes to the end', async () => {
+  const d = await createApprovedDoctor(h.db);
+  await visit(d, '00:00', 'Early Done', '+201011110011', 'completed');
+  await visit(d, '00:30', 'Rana Now', '+201011110012', 'in_consultation');
+  await visit(d, '01:00', 'Next Waiting', '+201011110013', 'arrived');
+  const id = (await h.db.query<{ id: string }>(`select id from appointments where walk_in_name = 'Rana Now'`)).rows[0]!.id;
+  const c = new Client(h.baseUrl);
+  await login(c, d.phone, d.password);
+  await c.get('/en/dashboard');
+  const fin = await c.post(`/en/dashboard/appointments/${id}/status`, { to: 'completed' });
+  assert.equal(fin.status, 303, fin.body.slice(0, 200));
+
+  const page = (await c.get('/en/dashboard')).body;
+  const order = ['Rana Now', 'Next Waiting', 'Early Done'].map((n) => page.indexOf(n));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'just finished on top');
+  assert.match(page, /data-testid="just-finished"/);
+  assert.match(page, /Just finished · book a follow-up\?/);
+  assert.match(page, new RegExp(`/en/dashboard/book\\?from=${id}`));
+  const secs = Number(/data-reorder-in="(\d+)"/.exec(page)![1]);
+  assert.ok(secs > 150 && secs <= 181, String(secs));
+
+  // Three minutes later it is just another finished visit at the end.
+  await h.db.query(`update appointments set completed_at = now() - interval '3 minutes 1 second' where id = $1`, [id]);
+  const later = (await c.get('/en/dashboard')).body;
+  assert.ok(later.indexOf('Next Waiting') < later.indexOf('Rana Now'));
+  assert.doesNotMatch(later, /just-finished|data-reorder-in/);
+    await h.db.query(`update appointments set completed_at = now() where id = $1`, [id]);
+  assert.match((await c.get('/dashboard')).body, /خلص الكشف · تحجز متابعة؟/);
 });

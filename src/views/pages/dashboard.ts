@@ -41,9 +41,9 @@ export function shell(ctx: Ctx, doctor: OwnDoctor, section: Section, content: Sa
         { key: 'today', path: '/dashboard', label: 'dash.nav.today' },
         ...(doctor.records_enabled ? [{ key: 'patients' as const, path: '/dashboard/patients', label: 'dash.nav.patients' as const }] : []),
         ...(doctor.records_enabled ? [{ key: 'results' as const, path: '/dashboard/results', label: 'res.title' as const }] : []),
+        { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
         { key: 'messages', path: '/dashboard/messages', label: 'msg.title' },
         ...(doctor.show_income ? [{ key: 'income' as const, path: '/dashboard/income', label: 'pay.incomeTitle' as const }] : []),
-        { key: 'insights', path: '/dashboard/insights', label: 'ins.title' },
         { key: 'team', path: '/dashboard/team', label: 'team.title' },
         { key: 'profile', path: '/dashboard/profile', label: 'dash.nav.profile' },
       ];

@@ -1,5 +1,5 @@
 import type { Frequency, Timing } from './clinical.js';
-import { addDays, isValidDate, isValidTime, toZoned, weekdayOf, zonedToUtc } from './time.js';
+import { addDays, isValidDate, isValidTime, normalizeTime, toZoned, weekdayOf, zonedToUtc } from './time.js';
 
 /*
  * Medicine reminders: the doctor's frequency gives suggested clock times; the patient may change
@@ -70,7 +70,7 @@ export function isOngoing(text: string | null): boolean {
 
 /** Cleans a list of "HH:MM" times: valid, unique, sorted; null if none are valid or too many. */
 export function cleanTimes(raw: readonly string[]): string[] | null {
-  const times = [...new Set(raw.map((t) => t.trim()).filter((t) => isValidTime(t)))].sort();
+  const times = [...new Set(raw.map((t) => normalizeTime(t)).filter((t) => isValidTime(t)))].sort();
   return times.length >= 1 && times.length <= MAX_TIMES ? times : null;
 }
 

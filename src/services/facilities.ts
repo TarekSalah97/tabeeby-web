@@ -5,6 +5,7 @@ import { isUniqueViolation } from '../db/db.js';
 import type { Locale } from '../i18n/index.js';
 import { translator } from '../i18n/index.js';
 import { normalizeEgyptMobile, normalizeDigits } from '../domain/phone.js';
+import { normalizeTime } from '../domain/time.js';
 import { checkPasswordPolicy, hashPassword } from '../auth/password.js';
 import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { destroyUserSessions } from '../auth/sessions.js';
@@ -253,8 +254,8 @@ export async function saveBranch(deps: Deps, facilityId: string, branchId: strin
   if (mapsUrl === 'invalid') errors['mapsUrl'] = 'fac.mapsInvalid';
   const days = [...new Set(input.days.map(Number))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort();
   if (!days.length) errors['days'] = 'msgset.daysRequired';
-  const opens = normalizeDigits(input.opens).trim();
-  const closes = normalizeDigits(input.closes).trim();
+  const opens = normalizeTime(input.opens);
+  const closes = normalizeTime(input.closes);
   if (!input.open24h) {
     if (!TIME_RE.test(opens)) errors['opens'] = 'msgset.timeInvalid';
     if (!TIME_RE.test(closes)) errors['closes'] = 'msgset.timeInvalid';

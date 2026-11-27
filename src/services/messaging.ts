@@ -3,7 +3,7 @@ import type { Queryable } from '../db/db.js';
 import type { SessionUser } from '../auth/sessions.js';
 import { hitRateLimit } from '../auth/rateLimit.js';
 import { isOpenNow, type MessagingHours } from '../domain/messagingHours.js';
-import { normalizeDigits } from '../domain/phone.js';
+import { normalizeTime } from '../domain/time.js';
 import { enqueueSms, enqueueEmail } from './outbox.js';
 import { audit } from './audit.js';
 import { translator, type Locale } from '../i18n/index.js';
@@ -48,8 +48,8 @@ export async function saveMessagingSettings(
 ): Promise<FieldErrors> {
   const errors: FieldErrors = {};
   const days = [...new Set(input.days.map((d) => Number(d)))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-  const start = normalizeDigits(input.start).trim();
-  const end = normalizeDigits(input.end).trim();
+  const start = normalizeTime(input.start);
+  const end = normalizeTime(input.end);
   if (input.enabled && !days.length) errors['days'] = 'msgset.daysRequired';
   if (!TIME_RE.test(start)) errors['start'] = 'msgset.timeInvalid';
   if (!TIME_RE.test(end)) errors['end'] = 'msgset.timeInvalid';

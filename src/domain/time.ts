@@ -60,6 +60,19 @@ export function isValidTime(time: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
 }
 
+/**
+ * A time typed into a time box, as "HH:MM". Browsers send "03:00:00" (or "03:00:00.000") when the
+ * computer's clock format shows seconds, and some send "3:00"; seconds are dropped. Arabic-Indic
+ * digits are accepted. Anything else is returned trimmed, so the normal check rejects it.
+ */
+export function normalizeTime(raw: string): string {
+  const s = raw.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0)).trim();
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?$/.exec(s);
+  if (!m) return s;
+  const hhmm = `${m[1]!.padStart(2, '0')}:${m[2]}`;
+  return isValidTime(hhmm) ? hhmm : s;
+}
+
 /** Wall-clock date+time in tz → the UTC instant. */
 export function zonedToUtc(date: string, time: string, tz: string): Date {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];

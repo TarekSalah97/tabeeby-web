@@ -180,6 +180,11 @@ test('working hours: several days, each with its own times, saved together or no
     )).rows.map((r) => `${r.weekday} ${r.start_time.slice(0, 5)}-${r.end_time.slice(0, 5)} ${r.slot_minutes}`);
   const base = { clinic: me.clinicId, slot: '20' };
 
+  // Times with seconds (some computers' clock format) save as plain times.
+  assert.equal((await doc.post('/en/dashboard/hours/rules', { ...base, days: ['6'], start_6: '08:00:00', end_6: '09:00:00' })).status, 303);
+  assert.deepEqual(await rules(), ['6 08:00-09:00 20']);
+  await h.db.query('delete from schedule_rules where clinic_id = $1', [me.clinicId]);
+
   // Nothing ticked.
   const none = await doc.post('/en/dashboard/hours/rules', { ...base, start_0: '10:00', end_0: '12:00' });
   assert.equal(none.status, 422);

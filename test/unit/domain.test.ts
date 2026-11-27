@@ -129,3 +129,13 @@ test('status: doctor flow and timing guards', () => {
   assert.equal(nextDoctorAction('confirmed'), 'arrived');
   assert.equal(nextDoctorAction('completed'), null);
 });
+
+test('typed times: seconds dropped, single-digit hours padded, nonsense left for the check to reject', async () => {
+  const { normalizeTime, isValidTime } = await import('../../src/domain/time.js');
+  assert.equal(normalizeTime('03:00:00'), '03:00');
+  assert.equal(normalizeTime(' 21:45:30.000 '), '21:45');
+  assert.equal(normalizeTime('9:05'), '09:05');
+  assert.equal(normalizeTime('٠٣:٠٠'), '03:00');
+  assert.equal(normalizeTime('18:00'), '18:00');
+  for (const bad of ['25:00', '12:60', '12:00:00:00', '1200', '', 'noon']) assert.equal(isValidTime(normalizeTime(bad)), false, bad);
+});

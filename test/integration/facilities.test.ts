@@ -97,6 +97,14 @@ test('a pharmacy signs up with its licence, prepares its page, and appears after
     name: 'Smouha branch', district: String(district), address: '14 Victor Emmanuel Square', phone: '', days: ['0', '1', '2', '3', '4', '5', '6'], opens: '10:00', closes: '02:00', active: 'yes',
   });
   assert.equal(branch.status, 303);
+  // Browsers on computers whose clock shows seconds send "03:00:00"; it saves as 3 AM.
+  const branchId = /branches\/([0-9a-f-]{36})/.exec(branch.location ?? '')?.[1]
+    ?? (await h.db.query<{ id: string }>('select id from facility_branches where name = $1', ['Smouha branch'])).rows[0]!.id;
+  const withSeconds = await c.post(`/en/facility/branches/${branchId}`, {
+    name: 'Smouha branch', district: String(district), address: '14 Victor Emmanuel Square', phone: '', days: ['0', '1', '2', '3', '4', '5', '6'], opens: '09:00', closes: '03:00:00', active: 'yes',
+  });
+  assert.equal(withSeconds.status, 303, withSeconds.body.slice(0, 300));
+  assert.deepEqual((await h.db.query('select opens::text, closes::text from facility_branches where id = $1', [branchId])).rows[0], { opens: '09:00:00', closes: '03:00:00' });
   // Pharmacies have no price list.
   assert.equal((await c.get('/en/facility/prices')).status, 404);
 
@@ -127,7 +135,7 @@ test('a pharmacy signs up with its licence, prepares its page, and appears after
   const pub = await new Client(h.baseUrl).get(`/en/pharmacies/${f.slug}`);
   assert.equal(pub.status, 200);
   assert.match(pub.body, /Delivery across Smouha/);
-  assert.match(pub.body, /Every day, ⁦?10:00\sAM–2:00\sAM \(next day\)/);
+  assert.match(pub.body, /Every day, ⁦?9:00\sAM–3:00\sAM \(next day\)/);
   assert.match(pub.body, /wa\.me\/201012345678/);
   assert.match(pub.body, /tel:\+2034251234/);
   assert.match((await new Client(h.baseUrl).get('/en/pharmacies?home=1')).body, /Nile Pharmacy/);

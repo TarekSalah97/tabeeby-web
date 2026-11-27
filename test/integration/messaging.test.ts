@@ -144,6 +144,7 @@ test('messaging off by default; settings validation; blocking a patient', async 
   const noDays = await dc.post('/en/dashboard/messages/settings', { enabled: 'yes', start: '10:00', end: '12:00' });
   assert.equal(noDays.status, 422);
   assert.match(noDays.body, /at least one day/);
+  assert.equal((await dc.post('/en/dashboard/messages/settings', { enabled: 'yes', days: ALL_DAYS, start: '09:00:00', end: '17:30:00.000' })).status, 303, 'times with seconds are accepted');
   const backwards = await dc.post('/en/dashboard/messages/settings', { enabled: 'yes', days: ALL_DAYS, start: '18:00', end: '09:00' });
   assert.match(backwards.body, /must be after the start/);
   assert.equal((await dc.post('/en/dashboard/messages/settings', { enabled: 'yes', days: ['9', ...ALL_DAYS], start: '00:00', end: '23:59' })).status, 303);

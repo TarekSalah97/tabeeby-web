@@ -12,7 +12,7 @@ import { checkPasswordPolicy, hashPassword } from '../auth/password.js';
 import { hitRateLimit, LIMITS } from '../auth/rateLimit.js';
 import { validatePosition, type PositionRange } from '../domain/experience.js';
 import { rulesOverlap } from '../domain/availability.js';
-import { isValidDate, isValidTime, zonedToUtc, addDays } from '../domain/time.js';
+import { isValidDate, isValidTime, normalizeTime, zonedToUtc, addDays } from '../domain/time.js';
 import { sniffDocumentType } from '../storage/files.js';
 import type { UploadedFile } from '../http/body.js';
 import { audit } from './audit.js';
@@ -351,6 +351,8 @@ export async function addRules(
   input: { clinicId: string; slotMinutes: number; days: DayHours[] },
 ): Promise<RuleProblem | null> {
   if (input.days.length === 0) return { key: 'hours.noDays' };
+  // Browsers may send "09:00:00"; keep "09:00".
+  input = { ...input, days: input.days.map((d) => ({ ...d, start: normalizeTime(d.start), end: normalizeTime(d.end) })) };
   if (!(SLOT_LENGTHS as readonly number[]).includes(input.slotMinutes)) return { key: 'hours.invalidTimes' };
   const seen = new Set<number>();
   for (const d of input.days) {

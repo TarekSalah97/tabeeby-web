@@ -1,4 +1,5 @@
 import { html, attrIf, type SafeHtml } from '../html.js';
+import { rxFormLabel, rxLineText } from './records.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
@@ -80,7 +81,7 @@ export function sendToPharmacyPage(
     <div><h1>${ctx.t('rxsend.title')}</h1><p class="muted">${ctx.t('rxsend.lead')}</p></div>
     <section class="panel stack-sm">
       <span class="muted small">${ctx.t('rxsend.prescribedBy')} <bdi>${rx.doctor_name}</bdi>${sep(ctx)}${formatFullDate(rx.issued_at, ctx.locale, ctx.deps.cfg.TIME_ZONE)}</span>
-      <ul class="hr-tests">${rx.items.map((it) => html`<li dir="auto"><strong>${it.medicine}</strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${it.form}`)})</span></li>`)}</ul>
+      <ul class="hr-tests">${rx.items.map((it) => html`<li dir="auto"><strong>${it.medicine}</strong>${rxFormLabel(ctx, it.form)}</li>`)}</ul>
     </section>
     ${o.error ? alert('error', ctx.t(o.error)) : ''}
     ${choices.length
@@ -139,8 +140,8 @@ export function pharmacyRequestPage(ctx: Ctx, f: OwnFacility, r: PharmacyInboxIt
     ${r.prescription_voided ? alert('warning', ctx.t('rxsend.voided')) : ''}
     <section class="panel stack">
       <h2>${ctx.t('rx.title')}</h2>
-      <ol class="rx-print-list">${r.items.map((it) => html`<li><strong><bdi>${it.medicine}</bdi></strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${it.form}`)})</span>
-        <div class="muted small"><bdi>${it.dose}</bdi>${sep(ctx)}${ctx.t.dynamic(`rx.freq.${it.frequency}`)}${it.duration ? html`${sep(ctx)}<bdi>${it.duration}</bdi>` : ''}</div></li>`)}</ol>
+      <ol class="rx-print-list">${r.items.map((it) => html`<li><strong><bdi>${it.medicine}</bdi></strong>${rxFormLabel(ctx, it.form)}
+        <div class="muted small">${rxLineText(ctx, { ...it, timing: null })}</div></li>`)}</ol>
       <p><span class="pill small">${ctx.t(r.delivery ? 'rxsend.wantsDelivery' : 'rxsend.wantsPickup')}</span></p>
       ${r.patient_note ? html`<p class="hr-note" dir="auto"><strong>${ctx.t('rxsend.patientNote')}:</strong> ${r.patient_note}</p>` : ''}
     </section>

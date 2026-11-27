@@ -18,9 +18,9 @@ import { validSubscription, type PushSender, type PushSubscriptionKeys } from '.
 export interface RxItem {
   position: number;
   medicine: string;
-  form: MedicineForm;
-  dose: string;
-  frequency: Frequency;
+  form: MedicineForm | null;
+  dose: string | null;
+  frequency: Frequency | null;
   timing: Timing | null;
   duration: string | null;
   instructions: string | null;
@@ -96,9 +96,9 @@ interface ReminderRow {
   is_active: boolean;
   doctor_name: string;
   medicine: string;
-  form: MedicineForm;
-  dose: string;
-  frequency: Frequency;
+  form: MedicineForm | null;
+  dose: string | null;
+  frequency: Frequency | null;
   timing: Timing | null;
   duration: string | null;
   instructions: string | null;
@@ -204,8 +204,8 @@ export interface Dose {
   reminderId: string;
   dueAt: Date;
   medicine: string;
-  dose: string;
-  form: MedicineForm;
+  dose: string | null;
+  form: MedicineForm | null;
   timing: Timing | null;
   takenAt: Date | null;
 }
@@ -331,7 +331,7 @@ export async function sendDueReminders(deps: Deps): Promise<number> {
       if (!claimed.rows.length) continue;
       const key = `${r.patient_id}|${dueAt.toISOString()}`;
       const g = groups.get(key) ?? { patientId: r.patient_id, locale: r.locale, showNames: r.show_names, dueAt, items: [] };
-      g.items.push(`${r.medicine} — ${r.dose}`);
+      g.items.push(r.dose ? `${r.medicine} — ${r.dose}` : r.medicine);
       groups.set(key, g);
     }
   }
@@ -387,7 +387,7 @@ export function reminderCalendar(reminders: MedicineReminder[], t: (k: MessageKe
       let start = r.startDate;
       if (r.weekday !== null) while (weekdayOf(start) !== r.weekday) start = addDays(start, 1);
       const rule = [`FREQ=${r.weekday === null ? 'DAILY' : 'WEEKLY'}`, ...(r.weekday === null ? [] : [`BYDAY=${DAY[r.weekday]}`]), ...(r.endDate ? [`UNTIL=${dt(r.endDate, '23:59')}`] : [])].join(';');
-      const summary = `${r.item.medicine} — ${r.item.dose}`;
+      const summary = r.item.dose ? `${r.item.medicine} — ${r.item.dose}` : r.item.medicine;
       const desc = [t('med.calendarFrom', { doctor: r.doctorName }), r.item.instructions ?? ''].filter(Boolean).join('\n');
       lines.push(
         'BEGIN:VEVENT',

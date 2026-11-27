@@ -10,7 +10,7 @@ export const MAX_TIMES = 8;
 export const MAX_DAYS = 365;
 
 /** Suggested times for a frequency, or null when the medicine is not taken on a schedule. */
-export function suggestedTimes(frequency: Frequency, timing: Timing | null): string[] | null {
+export function suggestedTimes(frequency: Frequency | null, timing: Timing | null): string[] | null {
   switch (frequency) {
     case 'once_daily':
       return [timing === 'bedtime' ? '22:00' : timing === 'morning' || timing === 'empty_stomach' ? '08:00' : '09:00'];
@@ -31,6 +31,7 @@ export function suggestedTimes(frequency: Frequency, timing: Timing | null): str
       return ['09:00'];
     case 'see_instructions':
       return ['09:00']; // the patient sets times from the doctor's instructions
+    case null: // not given by the doctor
     case 'as_needed':
     case 'single_dose':
       return null;

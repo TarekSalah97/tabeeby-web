@@ -1,4 +1,5 @@
 import { html, attrIf, type SafeHtml } from '../html.js';
+import { rxLineText } from './records.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
@@ -49,7 +50,7 @@ function doseRow(ctx: Ctx, d: Dose, now: Date): SafeHtml {
   return html`<li class="dose-row${d.takenAt ? ' taken' : late ? ' late' : ''}" data-testid="dose">
     <span class="dose-time">${formatTime(d.dueAt, ctx.locale, tz)}</span>
     <span class="stack-sm dose-what"><strong dir="auto">${d.medicine}</strong>
-      <span class="small muted" dir="auto">${d.dose}${d.timing ? html` · ${ctx.t(`rx.timing.${d.timing}` as MessageKey)}` : ''}</span></span>
+      <span class="small muted" dir="auto">${d.dose ?? ''}${d.dose && d.timing ? ' · ' : ''}${d.timing ? ctx.t(`rx.timing.${d.timing}` as MessageKey) : ''}</span></span>
     ${d.takenAt
       ? html`<form method="post" action="${href(ctx, '/medicines/doses')}" class="inline-form">${csrfField(ctx)}
           <input type="hidden" name="reminder" value="${d.reminderId}"><input type="hidden" name="due" value="${d.dueAt.toISOString()}"><input type="hidden" name="taken" value="no">
@@ -87,7 +88,7 @@ export function medicinesPage(
           <ul class="appt-list">${o.reminders.map(
             (r) => html`<li class="hr-card stack-sm" data-testid="reminder">
               <div class="row-between"><strong dir="auto">${r.item.medicine}</strong>
-                <span class="small muted" dir="auto">${r.item.dose}</span></div>
+                ${r.item.dose ? html`<span class="small muted" dir="auto">${r.item.dose}</span>` : ''}</div>
               <span class="small">${icon.clock}${r.times.map((t) => timeLabel(ctx, t)).join(' · ')}${r.weekday !== null ? html` · ${ctx.t(`weekday.${r.weekday}` as MessageKey)}` : ''}</span>
               <span class="small muted">${r.endDate
                 ? r.endDate < today ? ctx.t('med.ended') : ctx.t('med.until', { date: formatFullDate(new Date(`${r.endDate}T12:00:00Z`), ctx.locale, 'UTC') })
@@ -112,11 +113,11 @@ function itemFields(ctx: Ctx, it: SetupItem, first: boolean): SafeHtml {
   const p = it.position;
   const schedulable = suggestedTimes(it.frequency, it.timing) !== null;
   const head = html`<div class="stack-sm"><strong dir="auto">${it.medicine}</strong>
-    <span class="small muted" dir="auto">${it.dose} · ${ctx.t(`rx.freq.${it.frequency}` as MessageKey)}${it.timing ? html` · ${ctx.t(`rx.timing.${it.timing}` as MessageKey)}` : ''}${it.duration ? html` · ${it.duration}` : ''}</span>
+    <span class="small muted" dir="auto">${rxLineText(ctx, it)}</span>
     ${it.instructions ? html`<span class="small" dir="auto">${it.instructions}</span>` : ''}</div>`;
   if (!schedulable) {
     return html`<fieldset class="hr-card stack-sm"><legend class="sr-only">${it.medicine}</legend>${head}
-      <p class="small muted">${ctx.t(it.frequency === 'as_needed' ? 'med.asNeeded' : 'med.singleDose')}</p></fieldset>`;
+      <p class="small muted">${ctx.t(it.frequency === 'as_needed' ? 'med.asNeeded' : it.frequency === null ? 'med.noFrequency' : 'med.singleDose')}</p></fieldset>`;
   }
   const times = it.times ?? ['09:00'];
   const slots = Math.min(MAX_TIMES, times.length + 1);

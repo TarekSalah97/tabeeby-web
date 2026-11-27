@@ -21,7 +21,9 @@ test('prescription lines: blanks skipped, incomplete lines named, unknown codes 
   assert.ok(!('key' in ok));
   assert.deepEqual(ok.lines, [{ medicine: 'Augmentin 1 g', form: 'tablet', dose: '1 tablet', frequency: 'twice_daily', timing: null, duration: null, instructions: null }]);
   assert.deepEqual(validateRx({ lines: [line({ medicine: 'A', form: 'tablet', dose: '1', frequency: 'once_daily' }), line({ dose: '2' })], notes: '' }), { key: 'rx.err.line', line: 2 });
-  assert.deepEqual(validateRx({ lines: [line({ medicine: 'A', form: 'pill', dose: '1', frequency: 'once_daily' })], notes: '' }), { key: 'rx.err.line', line: 1 });
+  // Only the name is required; unknown codes from a tampered form are dropped, and an over-long dose is refused.
+  assert.deepEqual(validateRx({ lines: [line({ medicine: 'A', form: 'pill', dose: '1', frequency: 'bogus' })], notes: '' }), { lines: [{ medicine: 'A', form: null, dose: '1', frequency: null, timing: null, duration: null, instructions: null }], notes: null });
+  assert.deepEqual(validateRx({ lines: [line({ medicine: 'A', dose: 'x'.repeat(61) })], notes: '' }), { key: 'rx.err.line', line: 1 });
   assert.deepEqual(validateRx({ lines: Array.from({ length: 21 }, () => line({ medicine: 'A', form: 'tablet', dose: '1', frequency: 'once_daily' })), notes: '' }), { key: 'rx.err.tooMany' });
 });
 

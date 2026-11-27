@@ -296,7 +296,7 @@ export function recordPage(
         ? html`<ol class="visit-timeline">${visits.map(
             (v) => html`<li><a class="record-row" href="${href(ctx, `/dashboard/visits/${v.id}`)}">
               <span class="stack-sm"><strong>${formatDate(v.visit_at, ctx.locale, tz)}</strong>
-                <span>${v.chief_complaint}</span>
+                ${v.chief_complaint ? html`<span>${v.chief_complaint}</span>` : ''}
                 ${v.diagnosis ? html`<span class="muted">${ctx.t('visit.diagnosis')}: ${v.diagnosis}</span>` : ''}</span>
               <span class="row-wrap record-row-end">
                 ${v.clinic_name ? html`<span class="muted">${v.clinic_name}</span>` : ''}
@@ -422,7 +422,7 @@ function demoAssistantPanel(ctx: Ctx, recordId: string): SafeHtml {
 
 function notesFields(ctx: Ctx, v: Partial<NotesValues>, errors: FieldErrors | undefined, idPrefix = '', recordId?: string): SafeHtml {
   return html`
-    ${textArea(ctx, { idPrefix, name: 'complaint', label: ctx.t('visit.complaint'), value: v.complaint, rows: 2, maxlength: 500, required: true, errors, hint: ctx.t('visit.complaintHint') })}
+    ${textArea(ctx, { idPrefix, name: 'complaint', label: ctx.t('visit.complaint'), value: v.complaint, rows: 2, maxlength: 500, errors, hint: ctx.t('visit.complaintHint') })}
     ${textArea(ctx, { idPrefix, name: 'history', label: ctx.t('visit.historyField'), value: v.history, rows: 3, maxlength: 4000, hint: ctx.t('visit.historyHint') })}
     ${textArea(ctx, { idPrefix, name: 'examination', label: ctx.t('visit.examination'), value: v.examination, rows: 3, maxlength: 4000, hint: ctx.t('visit.examinationHint') })}
     ${recordId ? demoAssistantPanel(ctx, recordId) : ''}
@@ -481,8 +481,15 @@ export function newVisitPage(
 
 // ---------------------------------------------------------------- one visit
 
-function rxLineText(ctx: Ctx, l: PrescriptionView['items'][number]): SafeHtml {
-  const parts: HtmlValue[] = [html`<bdi>${l.dose}</bdi>`, ctx.t.dynamic(`rx.freq.${l.frequency}`)];
+/** "(Tablet)" after a medicine's name, or nothing when the doctor left the form empty. */
+export const rxFormLabel = (ctx: Ctx, form: string | null): SafeHtml =>
+  form ? html` <span class="muted">(${ctx.t.dynamic(`rx.form.${form}`)})</span>` : html``;
+
+/** Dose · how often · when · for how long — only the parts the doctor filled in. */
+export function rxLineText(ctx: Ctx, l: { dose: string | null; frequency: string | null; timing: string | null; duration: string | null }): SafeHtml {
+  const parts: HtmlValue[] = [];
+  if (l.dose) parts.push(html`<bdi>${l.dose}</bdi>`);
+  if (l.frequency) parts.push(ctx.t.dynamic(`rx.freq.${l.frequency}`));
   if (l.timing) parts.push(ctx.t.dynamic(`rx.timing.${l.timing}`));
   if (l.duration) {
     const [before, after] = ctx.t('rx.forDuration', { d: '\u0000' }).split('\u0000');
@@ -527,7 +534,7 @@ export function visitPage(
   },
 ): SafeHtml {
   const tz = ctx.deps.cfg.TIME_ZONE;
-  const notes: Partial<NotesValues> = o.notesValues ?? { complaint: v.chief_complaint, history: v.history ?? '', examination: v.examination ?? '', diagnosis: v.diagnosis ?? '', plan: v.plan ?? '' };
+  const notes: Partial<NotesValues> = o.notesValues ?? { complaint: v.chief_complaint ?? '', history: v.history ?? '', examination: v.examination ?? '', diagnosis: v.diagnosis ?? '', plan: v.plan ?? '' };
   const noteRow = (label: MessageKey, value: string | null) => html`<div><dt>${ctx.t(label)}</dt><dd>${multiline(value)}</dd></div>`;
   const content = html`
     <a href="${href(ctx, `/dashboard/patients/${r.id}`)}">← ${r.full_name}</a>
@@ -573,7 +580,7 @@ export function visitPage(
               ${p.status === 'active' ? voidForm(ctx, href(ctx, `/dashboard/prescriptions/${p.id}/void`), `rx${i}`, 'rx.void') : ''}
             </div></div>
           ${voidedNote(ctx, p)}
-          <ol class="rx-print-list">${p.items.map((l) => html`<li><strong><bdi>${l.medicine}</bdi></strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${l.form}`)})</span>
+          <ol class="rx-print-list">${p.items.map((l) => html`<li><strong><bdi>${l.medicine}</bdi></strong>${rxFormLabel(ctx, l.form)}
             <div>${rxLineText(ctx, l)}</div>${l.instructions ? html`<div class="muted" dir="auto">${l.instructions}</div>` : ''}</li>`)}</ol>
           ${p.notes ? html`<p class="prose">${p.notes}</p>` : ''}
         </article>`) : html`<p class="muted">${ctx.t('rx.none')}</p>`}
@@ -689,7 +696,7 @@ export function prescriptionPrintPage(ctx: Ctx, ref: ReferenceData, h: PrintHead
     ${sheetHeader(ctx, h, ref, 'rx.sheetTitle')}
     ${rx.status === 'voided' ? html`<p class="voided-stamp">${ctx.t('rx.voidedStamp')} — ${rx.void_reason ?? ''}</p>` : ''}
     <ol class="rx-print-list sheet-list">${rx.items.map(
-      (l) => html`<li><div><strong dir="auto">${l.medicine}</strong> <span class="muted">(${ctx.t.dynamic(`rx.form.${l.form}`)})</span></div>
+      (l) => html`<li><div><strong dir="auto">${l.medicine}</strong>${rxFormLabel(ctx, l.form)}</div>
         <div>${rxLineText(ctx, l)}</div>${l.instructions ? html`<div class="muted" dir="auto">${l.instructions}</div>` : ''}</li>`,
     )}</ol>
     ${rx.notes ? html`<p class="prose" dir="auto">${rx.notes}</p>` : ''}

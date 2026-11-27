@@ -86,17 +86,18 @@ test('walk-in file, visit with prescription and lab order, saved together or not
   assert.match(file.body, /Shisha/);
   assert.equal(await count(`audit_log where action = 'record.view' and entity_id = $1`, [recordId]), 1);
 
-  // A bad prescription line or a missing complaint saves nothing at all.
+  // A medicine line without a name, or a completely empty visit, saves nothing at all.
   await doc.c.get(`/en/dashboard/patients/${recordId}/visits/new`);
   const badLine = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, {
     complaint: 'Sore throat', diagnosis: 'Tonsillitis', lab_code: ['cbc'],
-    ...rxLines([{ medicine: 'Augmentin 1 g', form: 'tablet', dose: '1 tablet', frequency: 'twice_daily' }, { medicine: 'Brufen 400', form: 'tablet' }, {}]),
+    ...rxLines([{ medicine: 'Augmentin 1 g', form: 'tablet', dose: '1 tablet', frequency: 'twice_daily' }, { dose: '1 tablet' }, {}]),
   });
   assert.equal(badLine.status, 422);
-  assert.match(badLine.body, /Medicine 2: fill in the medicine, form, dose and how often/);
-  assert.match(badLine.body, /value="Brufen 400"/, 'typed lines are kept');
-  const noComplaint = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { complaint: '', ...rxLines([{ medicine: 'X', form: 'tablet', dose: '1', frequency: 'once_daily' }]) });
-  assert.equal(noComplaint.status, 422);
+  assert.match(badLine.body, /Medicine 2: write the medicine’s name/);
+  assert.match(badLine.body, /value="Augmentin 1 g"/, 'typed lines are kept');
+  const empty = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { complaint: '', ...rxLines([{}]) });
+  assert.equal(empty.status, 422);
+  assert.match(empty.body, /Nothing to save yet/);
   assert.equal(await count('encounters where record_id = $1', [recordId]), 0);
   assert.equal(await count('prescriptions where doctor_id = $1', [doc.id]), 0);
 
@@ -140,7 +141,7 @@ test('walk-in file, visit with prescription and lab order, saved together or not
   // Editing notes keeps the earlier version.
   assert.equal((await doc.c.post(`/en/dashboard/visits/${visitId}`, { complaint: 'Sore throat', diagnosis: 'Streptococcal tonsillitis' })).status, 303);
   assert.equal(await count(`record_revisions where entity_type = 'encounter' and entity_id = $1`, [visitId]), 1);
-  assert.equal((await doc.c.post(`/en/dashboard/visits/${visitId}`, { complaint: '' })).status, 422);
+  assert.equal((await doc.c.post(`/en/dashboard/visits/${visitId}`, { complaint: 'x'.repeat(501) })).status, 422);
   // Editing the file keeps the earlier version too.
   assert.equal((await doc.c.post(`/en/dashboard/patients/${recordId}`, { ...walkIn, occupation: 'Headteacher' })).status, 303);
   assert.equal(await count(`record_revisions where entity_type = 'patient_record' and entity_id = $1`, [recordId]), 1);
@@ -314,4 +315,44 @@ test('Arabic pages render', async () => {
   assert.match(form.body, /الشكوى الرئيسية/);
   assert.match(form.body, /مرتين يوميًا/);
   assert.match(form.body, /صورة دم كاملة/);
+});
+
+test('a visit saves with only some boxes filled; a medicine needs only its name; the patient sees what was given', async () => {
+  const doc = await signedInDoctor();
+  const patient = await createPatient(h.db);
+  const apptId = await appointment(doc, patient.id, 1);
+  await doc.c.get(`/en/dashboard/appointments/${apptId}/file`);
+  // The file itself needs only a name and the patient's consent.
+  const created = await doc.c.post('/en/dashboard/patients', { fullName: 'Partial Patient', consent: 'yes', appointment: apptId });
+  assert.equal(created.status, 303, created.body.slice(0, 300));
+  const recordId = (await h.db.query<{ id: string }>('select id from patient_records where patient_user_id = $1', [patient.id])).rows[0]!.id;
+
+  // Only a diagnosis.
+  await doc.c.get(`/en/dashboard/patients/${recordId}/visits/new`);
+  const diagOnly = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { complaint: '', diagnosis: 'Tension headache', ...rxLines([{}]) });
+  assert.equal(diagOnly.status, 303, diagOnly.body.slice(0, 300));
+  // Only a medicine name (no complaint, form, dose or frequency), for the booked visit.
+  const rxOnly = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { appointment: apptId, complaint: '', ...rxLines([{ medicine: 'Panadol Extra' }]) });
+  assert.equal(rxOnly.status, 303, rxOnly.body.slice(0, 300));
+  const visitId = /visits\/([0-9a-f-]{36})/.exec(rxOnly.location!)![1]!;
+  const item = (await h.db.query<{ form: string | null; dose: string | null; frequency: string | null }>(
+    'select form, dose, frequency from prescription_items i join prescriptions p on p.id = i.prescription_id where p.encounter_id = $1', [visitId])).rows[0]!;
+  assert.deepEqual(item, { form: null, dose: null, frequency: null });
+  const view = await doc.c.get(`/en/dashboard/visits/${visitId}`);
+  assert.equal(view.status, 200);
+  assert.match(view.body, /Panadol Extra/);
+  assert.doesNotMatch(view.body, /rx\.(form|freq)\.|null/);
+  const file = await doc.c.get(`/en/dashboard/patients/${recordId}`);
+  assert.match(file.body, /Tension headache/);
+  assert.doesNotMatch(file.body, />null</);
+
+  // The patient sees it in their record and on the reminders page (no reminder without a frequency).
+  const p = new Client(h.baseUrl);
+  await login(p, patient.phone, patient.password);
+  const hr = await p.get('/en/health-record');
+  assert.match(hr.body, /Panadol Extra/);
+  assert.doesNotMatch(hr.body, /rx\.(form|freq)\.|>null</);
+  const meds = await p.get('/en/medicines');
+  assert.equal(meds.status, 200);
+  assert.doesNotMatch(meds.body, /rx\.(form|freq)\.|>null</);
 });

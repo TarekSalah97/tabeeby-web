@@ -527,7 +527,7 @@ export const ar: Record<keyof typeof en, string> = {
   'visit.edited': 'آخر تعديل للملاحظات {date}. النسخ السابقة محفوظة.',
   'visit.rxCount': 'روشتة {n}',
   'visit.labCount': 'تحاليل {n}',
-  'visit.err.complaint': 'اكتب الشكوى الرئيسية.',
+  'visit.err.complaint': "الشكوى الرئيسية طويلة (٥٠٠ حرف بحد أقصى).",
   'visit.err.appointmentUsed': 'هذا الموعد له زيارة بالفعل. افتحها من ملف المريض.',
   'visit.err.nothingSaved': 'لم يُحفظ شيء بعد. صحّح المشاكل بالأسفل ثم احفظ مرة أخرى.',
 
@@ -604,7 +604,7 @@ export const ar: Record<keyof typeof en, string> = {
   'rx.date': 'التاريخ',
   'rx.signature': 'التوقيع',
   'rx.issuedVia': 'صادرة عبر طبيبي · رقم {ref}',
-  'rx.err.line': 'الدواء رقم {n}: اكتب اسم الدواء والشكل والجرعة وعدد المرات.',
+  'rx.err.line': 'الدواء رقم {n}: اكتب اسم الدواء (الجرعة لحد ٦٠ حرف).',
   'rx.err.tooMany': 'الروشتة يمكن أن تحتوي حتى ٢٠ دواء.',
   'rx.err.empty': 'أضف دواءً واحدًا على الأقل.',
   'rx.err.voidReason': 'اكتب سبب الإلغاء (٣ أحرف على الأقل).',
@@ -2054,4 +2054,6 @@ export const ar: Record<keyof typeof en, string> = {
   'teamswitch.clinic': "العيادة",
   'teamswitch.backShort': "حسابي",
   'teamswitch.switch': "غيّر العيادة",
+  'visit.err.empty': "لسه مفيش حاجة تتحفظ: اكتب في أي خانة، أو ضيف دوا أو تحليل.",
+  'med.noFrequency': "الدكتور ماحددش عدد المرات، فمفيش تذكير. اسأل دكتورك أو الصيدلي.",
 };

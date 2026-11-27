@@ -524,7 +524,7 @@ export const en = {
   'visit.edited': 'Notes last edited {date}. Earlier versions are kept.',
   'visit.rxCount': 'Rx {n}',
   'visit.labCount': 'Lab {n}',
-  'visit.err.complaint': 'Enter the chief complaint.',
+  'visit.err.complaint': "The chief complaint is too long (500 characters at most).",
   'visit.err.appointmentUsed': 'This appointment already has a visit. Open it from the patient file.',
   'visit.err.nothingSaved': 'Nothing was saved yet. Fix the problems below and save again.',
 
@@ -601,7 +601,7 @@ export const en = {
   'rx.date': 'Date',
   'rx.signature': 'Signature',
   'rx.issuedVia': 'Issued through Tabeeby · Ref. {ref}',
-  'rx.err.line': 'Medicine {n}: fill in the medicine, form, dose and how often.',
+  'rx.err.line': 'Medicine {n}: write the medicine’s name (the dose can be up to 60 characters).',
   'rx.err.tooMany': 'A prescription can have up to 20 medicines.',
   'rx.err.empty': 'Add at least one medicine.',
   'rx.err.voidReason': 'Write the reason for cancelling (at least 3 characters).',
@@ -2051,4 +2051,6 @@ export const en = {
   'teamswitch.clinic': "Clinic",
   'teamswitch.backShort': "My account",
   'teamswitch.switch': "Switch clinic",
+  'visit.err.empty': "Nothing to save yet: write something in any box, or add a medicine or a test.",
+  'med.noFrequency': "Your doctor didn't set how often, so no reminder is set. Ask your doctor or pharmacist.",
 } as const;

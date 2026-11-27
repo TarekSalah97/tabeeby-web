@@ -365,9 +365,10 @@ export interface RxLineInput {
 
 export interface RxLine {
   medicine: string;
-  form: MedicineForm;
-  dose: string;
-  frequency: Frequency;
+  /** Optional: a doctor may write just the medicine's name. */
+  form: MedicineForm | null;
+  dose: string | null;
+  frequency: Frequency | null;
   timing: Timing | null;
   duration: string | null;
   instructions: string | null;
@@ -405,12 +406,13 @@ export function validateRx(input: RxInput): { lines: RxLine[]; notes: string | n
     const frequency = oneOf(FREQUENCIES, l.frequency);
     const medicine = l.medicine.trim().replace(/\s+/g, ' ');
     const dose = l.dose.trim();
-    if (!medicine || medicine.length > 160 || !form || !dose || dose.length > 60 || !frequency) return { key: 'rx.err.line', line: i + 1 };
+    // Only the medicine's name is needed; form, dose and frequency are optional.
+    if (!medicine || medicine.length > 160 || dose.length > 60) return { key: 'rx.err.line', line: i + 1 };
     lines.push({
       medicine,
-      form,
-      dose,
-      frequency,
+      form: form ?? null,
+      dose: dose || null,
+      frequency: frequency ?? null,
       timing: oneOf(TIMINGS, l.timing),
       duration: trimOrNull(l.duration, 60),
       instructions: trimOrNull(l.instructions, 200),
@@ -440,8 +442,8 @@ async function insertPrescription(tx: Queryable, doctorId: string, encounterId: 
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [id, i + 1, l.medicine, l.form, l.dose, l.frequency, l.timing, l.duration, l.instructions],
     );
-    // Learn the doctor's own medicine list for suggestions next time.
-    await tx.query(
+    // Learn the doctor's own medicine list for suggestions next time (with its form, when given).
+    if (l.form) await tx.query(
       `insert into doctor_medicines (doctor_id, name, form) values ($1, $2, $3)
        on conflict (doctor_id, name_key, form) do update set use_count = doctor_medicines.use_count + 1, last_used_at = now(), name = excluded.name`,
       [doctorId, l.medicine, l.form],
@@ -476,13 +478,14 @@ export interface VisitErrors {
   lab?: OrderProblem;
 }
 
-function cleanNotes(n: VisitNotesInput): { errors: FieldErrors; notes: { complaint: string; history: string | null; examination: string | null; diagnosis: string | null; plan: string | null } } {
+function cleanNotes(n: VisitNotesInput): { errors: FieldErrors; notes: { complaint: string | null; history: string | null; examination: string | null; diagnosis: string | null; plan: string | null } } {
   const errors: FieldErrors = {};
+  // Every box is optional; only over-long text is refused.
   const complaint = n.complaint.trim();
-  if (!complaint || complaint.length > 500) errors['complaint'] = 'visit.err.complaint';
+  if (complaint.length > 500) errors['complaint'] = 'visit.err.complaint';
   return {
     errors,
-    notes: { complaint: complaint.slice(0, 500), history: trimOrNull(n.history, 4000), examination: trimOrNull(n.examination, 4000), diagnosis: trimOrNull(n.diagnosis, 1000), plan: trimOrNull(n.plan, 4000) },
+    notes: { complaint: complaint ? complaint.slice(0, 500) : null, history: trimOrNull(n.history, 4000), examination: trimOrNull(n.examination, 4000), diagnosis: trimOrNull(n.diagnosis, 1000), plan: trimOrNull(n.plan, 4000) },
   };
 }
 
@@ -502,6 +505,8 @@ export async function createVisit(
   if (isProblem(rx)) errors.rx = rx;
   if (isProblem(lab)) errors.lab = lab;
   if (errors.fields || errors.rx || errors.lab || isProblem(rx) || isProblem(lab)) return { errors };
+  // Any part is enough (a diagnosis alone, a prescription alone…), but not a completely empty visit.
+  if (!Object.values(notes).some(Boolean) && !rx.lines.length && !lab.items.length) return { errors: { general: 'visit.err.empty' } };
   return deps.db.transaction(async (tx) => {
     const rec = await tx.query<{ patient_user_id: string | null }>('select patient_user_id from patient_records where id = $1 and doctor_id = $2', [recordId, doctorId]);
     if (!rec.rows[0]) throw notFound();
@@ -657,7 +662,7 @@ async function labOrdersFor(db: Queryable, where: string, params: unknown[]): Pr
 export interface VisitSummary {
   id: string;
   visit_at: Date;
-  chief_complaint: string;
+  chief_complaint: string | null;
   diagnosis: string | null;
   clinic_name: string | null;
   prescriptions: number;
@@ -683,7 +688,7 @@ export interface VisitDetail {
   appointment_id: string | null;
   visit_at: Date;
   clinic_name: string | null;
-  chief_complaint: string;
+  chief_complaint: string | null;
   history: string | null;
   examination: string | null;
   diagnosis: string | null;

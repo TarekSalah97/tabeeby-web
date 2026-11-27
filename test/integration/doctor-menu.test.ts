@@ -10,13 +10,13 @@ after(async () => {
   await h.close();
 });
 
-test('menu order: Schedule, Patients, Messages, Income, Profile; clinics and hours sit under Profile', async () => {
+test('menu order: Schedule, Patients, Results, Insights, Messages, Income, Team, Profile; clinics and hours sit under Profile', async () => {
   const d = await createApprovedDoctor(h.db);
   await h.db.query('update doctors set records_enabled = true where user_id = $1', [d.id]);
   const c = new Client(h.baseUrl);
   await login(c, d.phone, d.password);
   const nav = /<nav class="dash-nav"[\s\S]*?<\/ul>/.exec((await c.get('/en/dashboard')).body)![0];
-  const order = ['/en/dashboard"', '/en/dashboard/patients"', '/en/dashboard/messages"', '/en/dashboard/income"', '/en/dashboard/profile"'].map((p) => nav.indexOf(p));
+  const order = ['/en/dashboard"', '/en/dashboard/patients"', '/en/dashboard/results"', '/en/dashboard/insights"', '/en/dashboard/messages"', '/en/dashboard/income"', '/en/dashboard/team"', '/en/dashboard/profile"'].map((p) => nav.indexOf(p));
   assert.ok(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]!)), `order ${order.join(',')}`);
   assert.ok(!nav.includes('/en/dashboard/clinics"') && !nav.includes('/en/dashboard/hours"'), 'not in the side menu');
   for (const path of ['/en/dashboard/profile', '/en/dashboard/clinics', '/en/dashboard/hours']) {

@@ -2019,4 +2019,12 @@ export const en = {
   'fee.atClinic': "Price at the clinic",
   'clinics.feeOptionalHint': "Optional. Leave empty if you prefer not to show prices; patients will see “Price at the clinic”.",
   'pay.amountRequired': "Enter the amount paid (this visit has no set price).",
+  'sched.searchLabel': "Search this day's schedule",
+  'sched.searchPlaceholder': "Search by name or number",
+  'sched.noMatch': "No one on this day's schedule matches.",
+  'sched.completedTitle': "Completed ({n})",
+  'sched.waitingTitle': "Waiting now ({n})",
+  'sched.showAll': "Show the whole schedule",
+  'sched.noneCompleted': "No one has finished yet on this day.",
+  'sched.noneWaiting': "No one is waiting right now.",
 } as const;

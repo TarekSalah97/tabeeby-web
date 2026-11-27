@@ -145,7 +145,10 @@ export function dashboardRoutes(r: Router): void {
     ]);
     const strikes = { active: strikeCounts.get(user.id) ?? 0, limit: ctx.deps.cfg.STRIKE_LIMIT };
     const rating = ratings.get(user.id) ?? null;
-    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, payments, strikes, confirmedToday, resultsToReview, notice: ok(ctx) }));
+    const showParam = ctx.query.get('show');
+    const show = showParam === 'completed' || showParam === 'waiting' ? showParam : 'all';
+    const q = (ctx.query.get('q') ?? '').slice(0, 60);
+    sendHtml(ctx, 200, todayPage(ctx, doctor, { date, appointments, weekCount, clinics, rules, rating, noShows, payments, strikes, confirmedToday, resultsToReview, show, q, notice: ok(ctx) }));
   });
 
   r.post('/dashboard/day-off', async (ctx) => {

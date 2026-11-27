@@ -1151,3 +1151,12 @@ a.med-link { text-decoration: none; color: inherit; }
 .error-text { color: var(--danger, #b42318); }
 .forgot-link { margin: -6px 0 0; text-align: end; font-size: .92rem; }
 .copy-field { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem; }
+
+/* ---- Schedule: search, clickable counts, finished rows ---- */
+.sched-search { display: flex; gap: 6px; align-items: center; flex: 1 1 260px; max-width: 360px; }
+.sched-search input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font: inherit; }
+a.kpi.kpi-link:hover { border-color: var(--primary); }
+.kpi.kpi-active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint) inset; }
+tr.row-done td { opacity: .72; }
+tr.row-done td.cell-actions { opacity: 1; }
+tr[hidden] { display: none !important; }

@@ -1,4 +1,7 @@
 import { serviceName, type ClinicService } from '../../services/clinicServices.js';
+import { orderSchedule, matchesSchedule, foldName, FINISHED } from '../../domain/schedule.js';
+
+export type ScheduleView = 'all' | 'completed' | 'waiting';
 import { SOCIAL_KINDS, type SocialKind } from '../../domain/social.js';
 import { suggestionsFor } from '../../domain/serviceSuggestions.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
@@ -102,6 +105,9 @@ export function todayPage(
     confirmedToday?: number;
     /** Released lab / scan results of this doctor's orders not yet reviewed (doctor only). */
     resultsToReview?: number;
+    /** Show only finished (completed) or waiting visits; and a search within this day's list. */
+    show?: ScheduleView;
+    q?: string;
     notice?: { kind: 'success' | 'error'; key: MessageKey };
   },
 ): SafeHtml {
@@ -117,6 +123,16 @@ export function todayPage(
   const isToday = o.date === todayIn(tz, ctx.deps.now());
   const dayLabel = formatDate(new Date(`${o.date}T12:00:00Z`), ctx.locale, 'UTC');
   const n = (x: number) => formatNumber(x, ctx.locale);
+  const show: ScheduleView = o.show ?? 'all';
+  const q = (o.q ?? '').trim().slice(0, 60);
+  // Working order: with the doctor, then still to come, then finished at the end.
+  const rows = orderSchedule(o.appointments)
+    .filter((a) => (show === 'completed' ? a.status === 'completed' : show === 'waiting' ? a.status === 'arrived' : true))
+    .filter((a) => matchesSchedule(q, a.patient_name, a.patient_phone));
+  const viewHref = (v: ScheduleView) => href(ctx, '/dashboard', { date: isToday ? undefined : o.date, show: v === 'all' ? undefined : v });
+  const kpiLink = (v: ScheduleView, label: MessageKey, value: number) =>
+    html`<a class="kpi kpi-link${show === v ? ' kpi-active' : ''}" href="${viewHref(v)}"${attrIf(show === v, 'aria-current="true"')} data-testid="kpi-${v}"><span>${ctx.t(label)}</span><strong>${n(value)}</strong></a>`;
+  const searchSpace = (a: DoctorDayAppointment) => `${foldName(a.patient_name)} 0${a.patient_phone.replace(/^\+20/, '')}`;
 
   const setup =
     !o.clinics.length || !o.rules.length
@@ -172,30 +188,38 @@ export function todayPage(
           <a class="btn btn-primary btn-sm" href="${href(ctx, '/dashboard/results')}">${ctx.t('res.reviewNow')}</a></div>`
       : ''}
     <div class="kpis">
-      <div class="kpi"><span>${ctx.t('dash.kpiToday')}</span><strong>${n(live.length)}</strong></div>
-      <div class="kpi"><span>${ctx.t('dash.kpiCompleted')}</span><strong>${n(done)}</strong></div>
-      <div class="kpi"><span>${ctx.t('dash.kpiWaiting')}</span><strong>${n(waiting)}</strong></div>
+      ${kpiLink('all', 'dash.kpiToday', live.length)}
+      ${kpiLink('completed', 'dash.kpiCompleted', done)}
+      ${kpiLink('waiting', 'dash.kpiWaiting', waiting)}
       ${doctor.show_income ? html`<div class="kpi"><span>${ctx.t('dash.kpiCollected')}</span><strong>${money(ctx, collected)}</strong></div>` : ''}
       <div class="kpi"><span>${ctx.t('dash.kpiWeek')}</span><strong>${n(o.weekCount)}</strong></div>
       <div class="kpi"><span>${ctx.t('dash.kpiRating')}</span>${o.rating ? html`<strong>${ratingBadge(ctx, o.rating)}</strong>` : html`<span class="muted">${ctx.t('dash.noRatingYet')}</span>`}</div>
     </div>
     <section class="panel flush">
       <div class="panel-head row-between">
-        <h2>${ctx.t('dash.scheduleFor')}</h2>
+        <h2>${show === 'completed' ? ctx.t('sched.completedTitle', { n: n(done) }) : show === 'waiting' ? ctx.t('sched.waitingTitle', { n: n(waiting) }) : ctx.t('dash.scheduleFor')}
+          ${show !== 'all' ? html` <a class="small" href="${viewHref('all')}">${ctx.t('sched.showAll')}</a>` : ''}</h2>
+        <form method="get" action="${href(ctx, '/dashboard')}" role="search" class="sched-search" data-sched-search>
+          ${isToday ? '' : html`<input type="hidden" name="date" value="${o.date}">`}
+          ${show !== 'all' ? html`<input type="hidden" name="show" value="${show}">` : ''}
+          <label class="sr-only" for="sched-q">${ctx.t('sched.searchLabel')}</label>
+          <input id="sched-q" type="search" name="q" value="${q}" maxlength="60" placeholder="${ctx.t('sched.searchPlaceholder')}" autocomplete="off" enterkeyhint="search">
+          <button class="btn btn-outline btn-sm" type="submit">${icon.search}<span class="sr-only">${ctx.t('sched.searchLabel')}</span></button>
+        </form>
         <nav class="row-wrap" aria-label="${ctx.t('dash.scheduleFor')}">
           <a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard', { date: addDays(o.date, -1) })}">${icon.chevronStart}<span class="sr-only">${ctx.t('dash.prevDay')}</span></a>
           ${isToday ? '' : html`<a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard')}">${ctx.t('common.today')}</a>`}
           <a class="btn btn-outline btn-sm" href="${href(ctx, '/dashboard', { date: addDays(o.date, 1) })}">${icon.chevronEnd}<span class="sr-only">${ctx.t('dash.nextDay')}</span></a>
         </nav>
       </div>
-      ${o.appointments.length
+      ${rows.length
         ? html`<div class="table-scroll"><table class="table cards-on-phone">
             <thead><tr><th scope="col">${ctx.t('dash.time')}</th><th scope="col">${ctx.t('dash.patient')}</th><th scope="col">${ctx.t('dash.clinic')}</th>
               <th scope="col">${ctx.t('dash.type')}</th><th scope="col">${ctx.t('dash.reason')}</th><th scope="col">${ctx.t('dash.status')}</th><th scope="col">${ctx.t('dash.action')}</th></tr></thead>
-            <tbody>${o.appointments.map((a) => {
+            <tbody>${rows.map((a) => {
               const next = nextDoctorAction(a.status);
               const started = ctx.deps.now().getTime() >= a.starts_at.getTime();
-              return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : ''}">
+              return html`<tr class="${a.status === 'in_consultation' ? 'row-active' : FINISHED.has(a.status) ? 'row-done' : ''}" data-search="${searchSpace(a)}">
                 <td class="nowrap cell-time" data-label="${ctx.t('dash.time')}"><strong>${formatTime(a.starts_at, ctx.locale, tz)}</strong></td>
                 <td class="cell-patient" data-label="${ctx.t('dash.patient')}"><span class="stack-sm"><strong dir="auto">${a.patient_name}</strong>${
                   a.booked_by === 'doctor' || noShowsOf(a)
@@ -224,8 +248,11 @@ export function todayPage(
                   ${doctor.records_enabled && a.status !== 'cancelled' && (!secretary || secretary.access === 'files') ? html`<a class="btn btn-outline btn-sm" href="${href(ctx, `/dashboard/appointments/${a.id}/file`)}">${ctx.t('records.openFile')}</a>` : ''}
                 </div></td>
               </tr>`;
-            })}</tbody></table></div>`
-        : html`<p class="empty">${ctx.t('dash.noAppointments')}</p>`}
+            })}</tbody></table></div>
+            <p class="empty" data-sched-nomatch hidden>${ctx.t('sched.noMatch')}</p>`
+        : q || show !== 'all'
+          ? html`<p class="empty">${ctx.t(q ? 'sched.noMatch' : show === 'completed' ? 'sched.noneCompleted' : 'sched.noneWaiting')} <a href="${viewHref('all')}">${ctx.t('sched.showAll')}</a></p>`
+          : html`<p class="empty">${ctx.t('dash.noAppointments')}</p>`}
     </section>
     ${dayOff}`;
   return shell(ctx, doctor, 'today', content, o.notice);

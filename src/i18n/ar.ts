@@ -2022,4 +2022,12 @@ export const ar: Record<keyof typeof en, string> = {
   'fee.atClinic': "السعر في العيادة",
   'clinics.feeOptionalHint': "اختياري. سيبه فاضي لو مش عايز تعرض الأسعار؛ المرضى هيشوفوا «السعر في العيادة».",
   'pay.amountRequired': "اكتب المبلغ المدفوع (الزيارة دي ملهاش سعر محدد).",
+  'sched.searchLabel': "دوّر في جدول اليوم",
+  'sched.searchPlaceholder': "دوّر بالاسم أو الرقم",
+  'sched.noMatch': "مفيش حد في جدول اليوم بالاسم أو الرقم ده.",
+  'sched.completedTitle': "اتكشف عليهم ({n})",
+  'sched.waitingTitle': "مستنيين دلوقتي ({n})",
+  'sched.showAll': "اعرض الجدول كله",
+  'sched.noneCompleted': "لسه محدش خلص كشف في اليوم ده.",
+  'sched.noneWaiting': "مفيش حد مستني دلوقتي.",
 };

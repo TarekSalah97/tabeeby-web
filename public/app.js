@@ -602,3 +602,30 @@ document.addEventListener('click', function (e) {
     sync();
   });
 })();
+
+// Schedule search: filters this day's list while typing (the form also works without JavaScript).
+(function () {
+  var form = document.querySelector('[data-sched-search]');
+  if (!form) return;
+  var box = form.querySelector('input[name=q]');
+  var rows = document.querySelectorAll('tr[data-search]');
+  var none = document.querySelector('[data-sched-nomatch]');
+  function fold(s) {
+    return String(s).replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); })
+      .toLowerCase().replace(/[ً-ْـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي')
+      .replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/\s+/g, ' ').trim();
+  }
+  function apply() {
+    var q = fold(box.value);
+    var digits = /^[\d\s+]+$/.test(q) ? q.replace(/\D/g, '').replace(/^(0020|20)/, '0') : '';
+    var shown = 0;
+    Array.prototype.forEach.call(rows, function (tr) {
+      var hay = tr.getAttribute('data-search');
+      var ok = !q || (digits ? digits.length >= 3 && hay.indexOf(digits) !== -1 : hay.indexOf(q) !== -1);
+      tr.hidden = !ok;
+      if (ok) shown++;
+    });
+    if (none) none.hidden = shown !== 0 || !rows.length;
+  }
+  box.addEventListener('input', apply);
+})();

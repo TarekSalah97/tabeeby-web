@@ -20,6 +20,15 @@ const UPCOMING_DAYS = 2;
 const HALF_HOUR = 30 * 60_000;
 
 /**
+ * Days the owner asked to show as empty in Dr. Ahmed's demo schedule: bookings that existed before
+ * `before` are removed, and Yasmin's automatic booking skips the day. Bookings made later (for example
+ * live in a demo) stay.
+ */
+export const EMPTY_DEMO_DAYS: readonly { date: string; before: Date }[] = [
+  { date: '2026-11-28', before: new Date('2026-11-27T11:30:00Z') },
+];
+
+/**
  * Rebuilds today's queue around `now`: two visits done, one with the doctor, then two waiting
  * (patient index 7, then Yasmin, 3rd in line) and one more booked.
  */
@@ -99,6 +108,7 @@ async function ensureUpcoming(tx: Queryable, doctor: { userId: string; clinicId:
     );
     if ((active.rows[0]?.n ?? 0) >= maxActive - 2) break;
     const date = addDays(today, offset);
+    if (EMPTY_DEMO_DAYS.some((d) => d.date === date)) continue;
     const [from, to] = [zonedToUtc(date, '00:00', tz), zonedToUtc(addDays(date, 1), '00:00', tz)];
     const has = await tx.query(
       `select 1 from appointments where doctor_id = $1 and patient_id = $2 and status <> 'cancelled' and starts_at >= $3 and starts_at < $4 limit 1`,
@@ -123,6 +133,22 @@ async function ensureUpcoming(tx: Queryable, doctor: { userId: string; clinicId:
     }
   }
   return added;
+}
+
+/** Empties the owner's chosen days (only bookings from before the request, with nothing attached). */
+async function clearEmptyDays(tx: Queryable, doctorId: string, tz: string): Promise<void> {
+  for (const d of EMPTY_DEMO_DAYS) {
+    await tx.query(
+      `delete from appointments a
+        where a.doctor_id = $1 and a.starts_at >= $2 and a.starts_at < $3 and a.created_at < $4
+          and not exists (select 1 from encounters e where e.appointment_id = a.id)
+          and not exists (select 1 from payments p where p.appointment_id = a.id)
+          and not exists (select 1 from reviews r where r.appointment_id = a.id)
+          and not exists (select 1 from doctor_strikes s where s.appointment_id = a.id)
+          and not exists (select 1 from visit_issues v where v.appointment_id = a.id)`,
+      [doctorId, zonedToUtc(d.date, '00:00', tz), zonedToUtc(addDays(d.date, 1), '00:00', tz), d.before],
+    );
+  }
 }
 
 /**
@@ -163,6 +189,7 @@ export async function keepDemoQueue(deps: Deps): Promise<'off' | 'missing' | 'ok
         [doctor.userId, yasmin, UPCOMING_REASON, dayStart, dayEnd]);
       rebuilt = (await refreshTodayQueue(tx, doctor, patientIds as string[], now, tz)) > 0;
     }
+    await clearEmptyDays(tx, doctor.userId, tz);
     await ensureUpcoming(tx, doctor, yasmin, now, tz, deps.cfg.MAX_ACTIVE_APPOINTMENTS_PER_PATIENT);
   });
   return rebuilt ? 'rebuilt' : 'ok';

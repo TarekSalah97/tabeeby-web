@@ -18,6 +18,19 @@ export interface PageOpts {
   jsonLd?: Record<string, unknown>;
 }
 
+/**
+ * For an account on a doctor's team that also has its own role (a patient), or on several teams:
+ * a link to choose where to work. Shows "Back to my account" while working in a clinic.
+ */
+function clinicSwitchLink(ctx: Ctx, cls: string): SafeHtml {
+  const u = ctx.user;
+  if (!u?.clinics?.length) return html``;
+  const many = u.clinics.length > 1;
+  if (u.baseRole === 'assistant' && !many) return html``;
+  const label = u.role === 'assistant' ? (u.baseRole === 'assistant' ? ctx.t('teamswitch.switch') : ctx.t('teamswitch.backShort')) : ctx.t('teamswitch.clinic');
+  return html`<a class="${cls}" href="${href(ctx, '/team/clinics')}" data-testid="clinic-switch">${label}</a>`;
+}
+
 function userMenu(ctx: Ctx): SafeHtml {
   const u = ctx.user;
   if (!u) {
@@ -32,7 +45,7 @@ function userMenu(ctx: Ctx): SafeHtml {
         : u.role === 'facility'
           ? html`<a class="btn btn-ghost" href="${href(ctx, '/facility')}">${ctx.t('nav.dashboard')}</a>`
         : html`<a class="btn btn-ghost" href="${href(ctx, '/appointments')}">${ctx.t('nav.myAppointments')}</a>`;
-  return html`${home}
+  return html`${home}${clinicSwitchLink(ctx, 'btn btn-ghost')}
     <form method="post" action="${href(ctx, '/logout')}" class="inline-form">${csrfField(ctx)}
       <button type="submit" class="btn btn-outline">${ctx.t('nav.signOut')}</button></form>`;
 }
@@ -50,6 +63,7 @@ function mobileMenu(ctx: Ctx, variant: string): SafeHtml {
     : html`${u.role === 'doctor' || u.role === 'assistant' || u.role === 'facility'
           ? link(u.role === 'doctor' || u.role === 'assistant' ? '/dashboard' : '/facility', ctx.t('nav.dashboard'))
           : u.role === 'admin' ? link('/admin', ctx.t('nav.admin')) : html`${link('/appointments', ctx.t('nav.myAppointments'))}${link('/medicines', ctx.t('med.title'))}`}
+        ${clinicSwitchLink(ctx, '')}
         <form method="post" action="${href(ctx, '/logout')}">${csrfField(ctx)}
           <button type="submit" class="btn btn-outline btn-block">${ctx.t('nav.signOut')}</button></form>`;
   return html`${!u ? html`<a class="btn btn-primary btn-sm mnav-signin" href="${href(ctx, '/login')}">${ctx.t('nav.signIn')}</a>` : ''}

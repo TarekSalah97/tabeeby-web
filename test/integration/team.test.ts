@@ -109,18 +109,87 @@ test('secretary (files): creates and edits patient files, never sees visits; doc
   void d;
 });
 
-test('a secretary cannot be added with a number that already has an account, and patients cannot reach team pages', async () => {
-  const d = await createApprovedDoctor(h.db);
+test("an existing patient account joins a doctor's team as itself, switches between clinic and own account, and keeps its account when removed", async () => {
+  const d = await createApprovedDoctor(h.db, { name: 'Dr. Linked Owner' });
   const p = await createPatient(h.db);
   const dc = new Client(h.baseUrl);
   await login(dc, d.phone, d.password);
   await dc.get('/en/dashboard/team');
-  const res = await dc.post('/en/dashboard/team', { fullName: 'Taken Number', phone: '0' + p.phone.slice(3), access: 'schedule' });
+  const added = await dc.post('/en/dashboard/team', { fullName: 'Any Name', phone: '0' + p.phone.slice(3), access: 'schedule' });
+  assert.equal(added.status, 200, added.body.slice(0, 300));
+  assert.match(added.body, /already has a Tabeeby account/);
+  const path = new URL(/value="(http[^"]+\/team\/join\/[A-Za-z0-9_-]+)"/.exec(added.body)![1]!).pathname;
+  // Adding the same person twice is refused.
+  assert.match((await dc.post('/en/dashboard/team', { fullName: 'Again', phone: '0' + p.phone.slice(3), access: 'schedule' })).body, /already on your team/);
+
+  // Before joining, the patient has no access to the clinic.
+  const pc = new Client(h.baseUrl);
+  await login(pc, p.phone, p.password);
+  assert.equal((await pc.get('/en/dashboard')).status, 403);
+  // They prove it's their account with their own password (a wrong one is refused).
+  const anon = new Client(h.baseUrl);
+  const page = await anon.get(path);
+  assert.match(page.body, /Your Tabeeby password/);
+  assert.equal((await anon.post(path, { password: 'not-the-password-1' })).status, 422);
+  const joined = await anon.post(path, { password: p.password });
+  assert.equal(joined.status, 303);
+  assert.equal(joined.location, '/en/dashboard');
+  assert.match((await anon.get('/en/dashboard')).body, /Dr\. Linked Owner|Linked Owner/);
+  // Their account is still a patient account; no second account was made.
+  const u = (await h.db.query<{ n: number; role: string }>("select count(*)::int as n, min(role) as role from users where phone_e164 = $1", [p.phone])).rows[0]!;
+  assert.deepEqual([u.n, u.role], [1, 'patient']);
+
+  // The already signed-in patient session works as a patient until it chooses the clinic.
+  assert.equal((await pc.get('/en/appointments')).status, 200);
+  const sw = await pc.get('/en/team/clinics');
+  assert.match(sw.body, /Dr\. Dr\. Linked Owner|Linked Owner/);
+  assert.equal((await pc.post('/en/team/clinics', { to: d.id })).location, '/en/dashboard');
+  assert.equal((await pc.get('/en/dashboard')).status, 200);
+  assert.equal((await pc.get('/en/dashboard/income')).status, 403, 'still a secretary, not the doctor');
+  assert.equal((await pc.post('/en/team/clinics', { to: 'own' })).status, 303);
+  assert.equal((await pc.get('/en/dashboard')).status, 403);
+  // Can't pick a clinic it isn't on.
+  const other = await createApprovedDoctor(h.db);
+  assert.equal((await pc.post('/en/team/clinics', { to: other.id })).status, 403);
+
+  // The doctor sees "Own account"; removing ends clinic access but keeps the patient account.
+  assert.match((await dc.get('/en/dashboard/team')).body, /Own account/);
+  await pc.post('/en/team/clinics', { to: d.id });
+  assert.equal((await dc.post(`/en/dashboard/team/${p.id}/remove`, {})).status, 303);
+  assert.equal((await pc.get('/en/dashboard')).status, 403);
+  assert.equal((await pc.get('/en/appointments')).status, 200);
+  assert.equal((await h.db.query<{ status: string }>('select status from users where id = $1', [p.id])).rows[0]!.status, 'active');
+});
+
+test("one secretary on two doctors' teams; doctor/admin numbers can't join; patients can't reach team pages", async () => {
+  const { d, sc, phone, sid } = await doctorWithSecretary('schedule');
+  const d2 = await createApprovedDoctor(h.db, { name: 'Dr. Second Clinic' });
+  const dc2 = new Client(h.baseUrl);
+  await login(dc2, d2.phone, d2.password);
+  await dc2.get('/en/dashboard/team');
+  const added = await dc2.post('/en/dashboard/team', { fullName: 'Mona', phone: '0' + phone.slice(3), access: 'files' });
+  assert.equal(added.status, 200);
+  const path = new URL(/value="(http[^"]+\/team\/join\/[A-Za-z0-9_-]+)"/.exec(added.body)![1]!).pathname;
+  // Signed in as herself: just press Join.
+  assert.doesNotMatch((await sc.get(path)).body, /name="password"/);
+  assert.equal((await sc.post(path, {})).location, '/en/dashboard');
+  assert.match((await sc.get('/en/dashboard')).body, /Second Clinic/);
+  assert.equal((await sc.post('/en/team/clinics', { to: d.id })).location, '/en/dashboard');
+  assert.match((await sc.get('/en/dashboard')).body, /Team Owner/);
+  // Removed by the second doctor: still works for the first.
+  await dc2.post(`/en/dashboard/team/${sid}/remove`, {});
+  assert.equal((await h.db.query<{ status: string }>('select status from users where id = $1', [sid])).rows[0]!.status, 'active');
+  assert.equal((await sc.get('/en/dashboard')).status, 200);
+
+  // A doctor's number can't join a team.
+  const res = await dc2.post('/en/dashboard/team', { fullName: 'Another Doctor', phone: '0' + d.phone.slice(3), access: 'schedule' });
   assert.equal(res.status, 422);
-  assert.match(res.body, /already has a Tabeeby account/);
+  assert.match(res.body, /belongs to a doctor, pharmacy, lab or admin account/);
+  const p = await createPatient(h.db);
   const pc = new Client(h.baseUrl);
   await login(pc, p.phone, p.password);
   assert.equal((await pc.get('/en/dashboard/team')).status, 403);
+  assert.notEqual((await pc.get('/en/team/clinics')).status, 200);
 });
 
 test('pages share well: canonical link, preview card, and search-engine data on doctor profiles', async () => {

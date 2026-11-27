@@ -1,5 +1,5 @@
-import { teamPage, teamJoinPage } from '../views/pages/team.js';
-import { listTeam, addTeamMember, setTeamAccess, reinviteTeamMember, removeTeamMember, findInvite, acceptInvite } from '../services/team.js';
+import { teamPage, teamJoinPage, clinicSwitchPage } from '../views/pages/team.js';
+import { listTeam, addTeamMember, setTeamAccess, reinviteTeamMember, removeTeamMember, findInvite, acceptInvite, type InviteInfo } from '../services/team.js';
 import { forbidden } from '../http/errors.js';
 import { markActingAssistant } from '../http/actor.js';
 import type { Router } from '../http/router.js';
@@ -9,7 +9,7 @@ import { href, requireUser } from '../http/context.js';
 import { smsEnabled } from '../config.js';
 import { sendHtml, redirect } from '../http/respond.js';
 import { fieldAll } from '../http/body.js';
-import { destroySession, type SessionUser } from '../auth/sessions.js';
+import { destroySession, setSessionClinic, type SessionUser, type Role } from '../auth/sessions.js';
 import { getReference } from '../services/reference.js';
 import {
   getOwnDoctor, listOwnClinics, saveClinic, listOwnRules, addRules, deleteRule, listOwnBlocks, addBlock, deleteBlock,
@@ -35,7 +35,7 @@ import { countResultsToReview } from '../services/orderResults.js';
 import { isUuid } from '../http/router.js';
 import { isMessageKey, type MessageKey } from '../i18n/index.js';
 import type { AppointmentStatus } from '../domain/appointmentStatus.js';
-import { formValue, noticeFrom, errorFrom, uuidParam, startSession } from './helpers.js';
+import { formValue, noticeFrom, errorFrom, uuidParam, startSession, homeFor } from './helpers.js';
 
 /** Doctors must have verified their phone before using the dashboard. */
 /**
@@ -242,7 +242,7 @@ export function dashboardRoutes(r: Router): void {
     const result = await addTeamMember(ctx.deps, user.id, values, ctx.ip);
     if ('errors' in result) return renderTeam(ctx, user, { values, errors: result.errors }, 422);
     // The link is shown once, on this page (never put in an address or stored readable).
-    await renderTeam(ctx, user, { invite: { link: inviteLink(ctx, result.token), name: result.name } });
+    await renderTeam(ctx, user, { invite: { link: inviteLink(ctx, result.token), name: result.name, linked: result.linked } });
   });
 
   r.post('/dashboard/team/:id/access', async (ctx) => {
@@ -266,22 +266,48 @@ export function dashboardRoutes(r: Router): void {
     redirect(ctx, href(ctx, '/dashboard/team', { ok: 'teamRemoved' }));
   });
 
-  // The secretary opens the doctor's invite link and chooses a password.
+  // The invite link: a new secretary chooses a password; an existing account signs in to accept.
+  const joinView = (ctx: Ctx, token: string, invite: InviteInfo, error?: MessageKey) => ({
+    token, name: invite.full_name, doctor: invite.doctor_name, phone: invite.phone_e164, existing: invite.existing, error,
+    signedInAsThem: ctx.user?.id === invite.user_id,
+    signedInAsOther: !!ctx.user && ctx.user.id !== invite.user_id && invite.existing,
+  });
   r.get('/team/join/:token', async (ctx) => {
     const token = ctx.params['token'] ?? '';
     const invite = await findInvite(ctx.deps.db, token);
-    sendHtml(ctx, invite ? 200 : 410, teamJoinPage(ctx, invite ? { token, name: invite.full_name, doctor: invite.doctor_name, phone: invite.phone_e164 } : null));
+    sendHtml(ctx, invite ? 200 : 410, teamJoinPage(ctx, invite ? joinView(ctx, token, invite) : null));
   });
 
   r.post('/team/join/:token', async (ctx) => {
     const token = ctx.params['token'] ?? '';
-    const result = await acceptInvite(ctx.deps, token, formValue(ctx, 'password'), ctx.ip);
+    const result = await acceptInvite(ctx.deps, token, ctx.form['password']?.[0] ?? '', ctx.ip, ctx.user?.id ?? null);
     if ('error' in result) {
       const invite = await findInvite(ctx.deps.db, token);
-      return sendHtml(ctx, 422, teamJoinPage(ctx, invite ? { token, name: invite.full_name, doctor: invite.doctor_name, phone: invite.phone_e164, error: result.error } : null));
+      return sendHtml(ctx, 422, teamJoinPage(ctx, invite ? joinView(ctx, token, invite, result.error) : null));
     }
+    // Start working in the clinic right away (a patient account can switch back from the menu).
     if (ctx.session) await destroySession(ctx.deps.db, ctx.session.id);
-    await startSession(ctx, result.userId, 'assistant');
+    const base = (await ctx.deps.db.query<{ role: Role }>('select role from users where id = $1', [result.userId])).rows[0]!.role;
+    await startSession(ctx, result.userId, base, result.doctorId);
+    redirect(ctx, href(ctx, '/dashboard'));
+  });
+
+  // Choose where to work: a clinic this account joined, or its own side.
+  r.get('/team/clinics', async (ctx) => {
+    const u = requireUser(ctx);
+    if (!u.clinics?.length) return redirect(ctx, homeFor(ctx, u.role));
+    sendHtml(ctx, 200, clinicSwitchPage(ctx));
+  });
+
+  r.post('/team/clinics', async (ctx) => {
+    const u = requireUser(ctx);
+    const to = formValue(ctx, 'to');
+    if (to === 'own') {
+      if (u.baseRole === 'assistant') return redirect(ctx, href(ctx, '/team/clinics'));
+      await setSessionClinic(ctx.deps.db, ctx.session!.id, u.id, null);
+      return redirect(ctx, homeFor(ctx, u.baseRole ?? u.role));
+    }
+    if (!/^[0-9a-f-]{36}$/.test(to) || !(await setSessionClinic(ctx.deps.db, ctx.session!.id, u.id, to))) throw forbidden('not on this team');
     redirect(ctx, href(ctx, '/dashboard'));
   });
 

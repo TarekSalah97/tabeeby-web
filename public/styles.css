@@ -1160,3 +1160,4 @@ a.kpi.kpi-link:hover { border-color: var(--primary); }
 tr.row-done td { opacity: .72; }
 tr.row-done td.cell-actions { opacity: 1; }
 tr[hidden] { display: none !important; }
+.switch-option { justify-content: flex-start; text-align: start; padding-block: 14px; }

@@ -107,9 +107,9 @@ export function uuidParam(ctx: Ctx, name: string): string {
   return v;
 }
 
-export async function startSession(ctx: Ctx, userId: string, role: Role): Promise<void> {
-  const token = await createSession(ctx.deps.db, userId, role);
-  setCookie(ctx, SESSION_COOKIE, token, { httpOnly: true, sameSite: 'Lax', maxAgeSeconds: sessionMaxAgeSeconds(role) });
+export async function startSession(ctx: Ctx, userId: string, role: Role, staffDoctorId: string | null = null): Promise<void> {
+  const token = await createSession(ctx.deps.db, userId, role, staffDoctorId);
+  setCookie(ctx, SESSION_COOKIE, token, { httpOnly: true, sameSite: 'Lax', maxAgeSeconds: sessionMaxAgeSeconds(staffDoctorId ? 'assistant' : role) });
 }
 
 export function homeFor(ctx: Ctx, role: Role): string {

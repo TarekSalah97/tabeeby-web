@@ -3,7 +3,8 @@ import type { Deps } from '../http/context.js';
 import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import { normalizeEgyptMobile } from '../domain/phone.js';
-import { hashPassword, checkPasswordPolicy } from '../auth/password.js';
+import { hashPassword, checkPasswordPolicy, verifyPassword } from '../auth/password.js';
+import { hitRateLimit } from '../auth/rateLimit.js';
 import { randomToken, sha256 } from '../auth/tokens.js';
 import { destroyUserSessions, type StaffAccess } from '../auth/sessions.js';
 import type { MessageKey } from '../i18n/index.js';
@@ -12,8 +13,10 @@ import { validateName, type FieldErrors } from './accounts.js';
 import { audit } from './audit.js';
 
 /**
- * A doctor's secretaries/assistants. Each has their own account (role 'assistant') linked to one
- * doctor. The doctor creates it and sends a one-time invite link; the secretary chooses a password.
+ * A doctor's secretaries/assistants. A new number gets its own account (role 'assistant'); a number
+ * that already has a patient or secretary account joins as that same account (one person can be on
+ * several doctors' teams and keep using Tabeeby as a patient). The doctor sends a one-time invite
+ * link: a new secretary chooses a password, an existing account signs in with its own password.
  */
 export const MAX_TEAM = 5;
 export const INVITE_DAYS = 7;
@@ -25,13 +28,15 @@ export interface TeamMember {
   phone_e164: string;
   access: StaffAccess;
   invited: boolean;
+  /** Joined with an account they already had (removing them keeps that account). */
+  linked: boolean;
   last_seen: Date | null;
 }
 
 export async function listTeam(db: Queryable, doctorId: string): Promise<TeamMember[]> {
   return (
     await db.query<TeamMember>(
-      `select a.user_id, u.full_name, u.phone_e164, a.access, a.invite_hash is not null as invited,
+      `select a.user_id, u.full_name, u.phone_e164, a.access, a.joined_at is null as invited, u.role <> 'assistant' as linked,
               (select max(s.last_seen_at) from sessions s where s.user_id = u.id) as last_seen
          from doctor_assistants a join users u on u.id = a.user_id
         where a.doctor_id = $1 and u.status = 'active' order by a.created_at`,
@@ -40,22 +45,26 @@ export async function listTeam(db: Queryable, doctorId: string): Promise<TeamMem
   ).rows;
 }
 
-async function newInvite(tx: Queryable, userId: string): Promise<string> {
+async function newInvite(tx: Queryable, userId: string, doctorId: string): Promise<string> {
   const token = randomToken();
   await tx.query(
-    `update doctor_assistants set invite_hash = $2, invite_expires_at = now() + make_interval(days => $3) where user_id = $1`,
-    [userId, sha256(token), INVITE_DAYS],
+    `update doctor_assistants set invite_hash = $3, invite_expires_at = now() + make_interval(days => $4) where user_id = $1 and doctor_id = $2`,
+    [userId, doctorId, sha256(token), INVITE_DAYS],
   );
   return token;
 }
 
-/** Creates the secretary's account and returns the one-time invite token (shown to the doctor once). */
+/**
+ * Adds a team member and returns the one-time invite token (shown to the doctor once). A new number
+ * gets a new secretary account; a number with a patient or secretary account joins as that account
+ * (`linked`). Doctor, pharmacy/lab and admin numbers can't be added.
+ */
 export async function addTeamMember(
   deps: Deps,
   doctorId: string,
   input: { fullName: string; phone: string; access: string },
   ip: string,
-): Promise<{ token: string; name: string } | { errors: FieldErrors }> {
+): Promise<{ token: string; name: string; linked: boolean } | { errors: FieldErrors }> {
   const errors: FieldErrors = {};
   const fullName = input.fullName.trim().replace(/\s+/g, ' ');
   const nameErr = validateName(fullName);
@@ -73,6 +82,21 @@ export async function addTeamMember(
         [doctorId],
       );
       if ((n.rows[0]?.n ?? 0) >= MAX_TEAM) return { errors: { fullName: 'team.err.tooMany' as MessageKey } };
+      const existing = (await tx.query<{ id: string; role: string; status: string; full_name: string }>(
+        'select id, role, status, full_name from users where phone_e164 = $1 for update', [phone],
+      )).rows[0];
+      if (existing) {
+        if (existing.id === doctorId) return { errors: { phone: 'team.err.self' as MessageKey } };
+        if (existing.status !== 'active') return { errors: { phone: 'team.err.phoneTaken' as MessageKey } };
+        if (existing.role !== 'patient' && existing.role !== 'assistant') return { errors: { phone: 'team.err.phoneOtherKind' as MessageKey } };
+        const already = await tx.query('select 1 from doctor_assistants where user_id = $1 and doctor_id = $2', [existing.id, doctorId]);
+        if (already.rows[0]) return { errors: { phone: 'team.err.already' as MessageKey } };
+        await tx.query('insert into doctor_assistants (user_id, doctor_id, access) values ($1, $2, $3)', [existing.id, doctorId, input.access]);
+        const token = await newInvite(tx, existing.id, doctorId);
+        await audit(tx, { actorId: doctorId, action: 'team.add', entityType: 'user', entityId: existing.id, metadata: { access: input.access, linked: true }, ip });
+        // The account keeps its own name; the doctor sees it in the team list.
+        return { token, name: existing.full_name, linked: true };
+      }
       const { rows } = await tx.query<{ id: string }>(
         `insert into users (role, full_name, phone_e164, password_hash, has_password, preferred_locale)
          values ('assistant', $1, $2, $3, false, 'ar') returning id`,
@@ -80,9 +104,9 @@ export async function addTeamMember(
       );
       const id = rows[0]!.id;
       await tx.query('insert into doctor_assistants (user_id, doctor_id, access) values ($1, $2, $3)', [id, doctorId, input.access]);
-      const token = await newInvite(tx, id);
+      const token = await newInvite(tx, id, doctorId);
       await audit(tx, { actorId: doctorId, action: 'team.add', entityType: 'user', entityId: id, metadata: { access: input.access }, ip });
-      return { token, name: fullName };
+      return { token, name: fullName, linked: false };
     });
   } catch (e) {
     if (isUniqueViolation(e, 'users_phone_e164_key')) return { errors: { phone: 'team.err.phoneTaken' } };
@@ -90,9 +114,9 @@ export async function addTeamMember(
   }
 }
 
-async function ownMember(tx: Queryable, doctorId: string, userId: string): Promise<{ full_name: string }> {
-  const { rows } = await tx.query<{ full_name: string }>(
-    `select u.full_name from doctor_assistants a join users u on u.id = a.user_id
+async function ownMember(tx: Queryable, doctorId: string, userId: string): Promise<{ full_name: string; role: string }> {
+  const { rows } = await tx.query<{ full_name: string; role: string }>(
+    `select u.full_name, u.role from doctor_assistants a join users u on u.id = a.user_id
       where a.user_id = $1 and a.doctor_id = $2 and u.status = 'active' for update of a`,
     [userId, doctorId],
   );
@@ -104,7 +128,7 @@ export async function setTeamAccess(deps: Deps, doctorId: string, userId: string
   if (!isStaffAccess(access)) return 'team.err.access';
   await deps.db.transaction(async (tx) => {
     await ownMember(tx, doctorId, userId);
-    await tx.query('update doctor_assistants set access = $2 where user_id = $1', [userId, access]);
+    await tx.query('update doctor_assistants set access = $3 where user_id = $1 and doctor_id = $2', [userId, doctorId, access]);
     await audit(tx, { actorId: doctorId, action: 'team.access', entityType: 'user', entityId: userId, metadata: { access }, ip });
   });
   return null;
@@ -114,38 +138,52 @@ export async function setTeamAccess(deps: Deps, doctorId: string, userId: string
 export async function reinviteTeamMember(deps: Deps, doctorId: string, userId: string, ip: string): Promise<{ token: string; name: string }> {
   return deps.db.transaction(async (tx) => {
     const m = await ownMember(tx, doctorId, userId);
-    const token = await newInvite(tx, userId);
+    const token = await newInvite(tx, userId, doctorId);
     await audit(tx, { actorId: doctorId, action: 'team.reinvite', entityType: 'user', entityId: userId, ip });
     return { token, name: m.full_name };
   });
 }
 
-/** Removes a secretary: signed out at once, the account closed, the mobile free again. */
+/**
+ * Removes someone from this doctor's team: their access to this clinic ends at once. A secretary
+ * account made for this clinic only is closed (the mobile becomes free again); an account they
+ * had before, or one still on another doctor's team, stays.
+ */
 export async function removeTeamMember(deps: Deps, doctorId: string, userId: string, ip: string): Promise<void> {
   await deps.db.transaction(async (tx) => {
-    await ownMember(tx, doctorId, userId);
-    await tx.query(
-      `update users set status = 'removed', full_name = 'Removed account', phone_e164 = 'removed:' || id::text, email = null,
-              password_hash = 'removed', updated_at = now() where id = $1`,
-      [userId],
-    );
-    await tx.query('update doctor_assistants set invite_hash = null, invite_expires_at = null where user_id = $1', [userId]);
-    await destroyUserSessions(tx, userId);
+    const m = await ownMember(tx, doctorId, userId);
+    await tx.query('delete from doctor_assistants where user_id = $1 and doctor_id = $2', [userId, doctorId]);
+    const others = await tx.query('select 1 from doctor_assistants where user_id = $1 limit 1', [userId]);
+    if (m.role === 'assistant' && !others.rows[0]) {
+      await tx.query(
+        `update users set status = 'removed', full_name = 'Removed account', phone_e164 = 'removed:' || id::text, email = null,
+                password_hash = 'removed', updated_at = now() where id = $1`,
+        [userId],
+      );
+      await destroyUserSessions(tx, userId);
+    } else {
+      // Sign them out of this clinic only.
+      await tx.query('update sessions set staff_doctor_id = null where user_id = $1 and staff_doctor_id = $2', [userId, doctorId]);
+      if (m.role === 'assistant') await tx.query('delete from sessions where user_id = $1 and staff_doctor_id is null', [userId]);
+    }
     await audit(tx, { actorId: doctorId, action: 'team.remove', entityType: 'user', entityId: userId, ip });
   });
 }
 
 export interface InviteInfo {
   user_id: string;
+  doctor_id: string;
   full_name: string;
   phone_e164: string;
   doctor_name: string;
+  /** The account already exists with its own password: they sign in to accept. */
+  existing: boolean;
 }
 
 export async function findInvite(db: Queryable, token: string): Promise<InviteInfo | null> {
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
   const { rows } = await db.query<InviteInfo>(
-    `select a.user_id, u.full_name, u.phone_e164, du.full_name as doctor_name
+    `select a.user_id, a.doctor_id, u.full_name, u.phone_e164, du.full_name as doctor_name, u.has_password as existing
        from doctor_assistants a join users u on u.id = a.user_id join users du on du.id = a.doctor_id
       where a.invite_hash = $1 and a.invite_expires_at > now() and u.status = 'active' and du.status = 'active'`,
     [sha256(token)],
@@ -153,21 +191,42 @@ export async function findInvite(db: Queryable, token: string): Promise<InviteIn
   return rows[0] ?? null;
 }
 
-/** The secretary chooses a password; the link stops working. Returns their user id. */
-export async function acceptInvite(deps: Deps, token: string, password: string, ip: string): Promise<{ userId: string } | { error: MessageKey }> {
+/**
+ * Accepting an invite. A new secretary chooses a password. An existing account proves it is theirs
+ * with its own password (or is already signed in as that account). The link then stops working.
+ */
+export async function acceptInvite(
+  deps: Deps,
+  token: string,
+  password: string,
+  ip: string,
+  signedInUserId: string | null = null,
+): Promise<{ userId: string; doctorId: string } | { error: MessageKey }> {
   const invite = await findInvite(deps.db, token);
   if (!invite) return { error: 'team.joinExpired' };
-  const pwErr = checkPasswordPolicy(password, [invite.full_name]);
-  if (pwErr) return { error: pwErr };
-  const hash = await hashPassword(password);
+  let newHash: string | null = null;
+  if (invite.existing) {
+    if (signedInUserId !== invite.user_id) {
+      if (!(await hitRateLimit(deps.db, `team-join:${ip}`, 10, 15 * 60))) return { error: 'error.tooMany' };
+      const { rows } = await deps.db.query<{ password_hash: string }>('select password_hash from users where id = $1', [invite.user_id]);
+      if (!rows[0] || !(await verifyPassword(password, rows[0].password_hash))) return { error: 'team.join.wrongPassword' };
+    }
+  } else {
+    const pwErr = checkPasswordPolicy(password, [invite.full_name]);
+    if (pwErr) return { error: pwErr };
+    newHash = await hashPassword(password);
+  }
   return deps.db.transaction(async (tx) => {
     const r = await tx.query(
-      `update doctor_assistants set invite_hash = null, invite_expires_at = null where user_id = $1 and invite_hash = $2 and invite_expires_at > now()`,
-      [invite.user_id, sha256(token)],
+      `update doctor_assistants set invite_hash = null, invite_expires_at = null, joined_at = coalesce(joined_at, now())
+        where user_id = $1 and doctor_id = $2 and invite_hash = $3 and invite_expires_at > now()`,
+      [invite.user_id, invite.doctor_id, sha256(token)],
     );
     if (!r.rowCount) return { error: 'team.joinExpired' as MessageKey };
-    await tx.query('update users set password_hash = $2, has_password = true, phone_verified_at = coalesce(phone_verified_at, now()), updated_at = now() where id = $1', [invite.user_id, hash]);
-    await audit(tx, { actorId: invite.user_id, action: 'team.joined', entityType: 'user', entityId: invite.user_id, ip });
-    return { userId: invite.user_id };
+    if (newHash) {
+      await tx.query('update users set password_hash = $2, has_password = true, phone_verified_at = coalesce(phone_verified_at, now()), updated_at = now() where id = $1', [invite.user_id, newHash]);
+    }
+    await audit(tx, { actorId: invite.user_id, action: 'team.joined', entityType: 'user', entityId: invite.user_id, metadata: { doctorId: invite.doctor_id }, ip });
+    return { userId: invite.user_id, doctorId: invite.doctor_id };
   });
 }

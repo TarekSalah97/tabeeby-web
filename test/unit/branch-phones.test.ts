@@ -10,7 +10,7 @@ test('several phone numbers separated by dashes (or commas, slashes, new lines)'
   assert.deepEqual(parseBranchPhones('(03) 4567890\n+20 10 1234 5678'), ['+2034567890', '+201012345678']);
   assert.equal(parseBranchPhones('01012345678 - 123'), 'invalid');
   assert.equal(parseBranchPhones('call us'), 'invalid');
-  assert.equal(parseBranchPhones('034567891-034567892-034567893-034567894-034567895-034567896'), 'invalid');
+  assert.equal(parseBranchPhones(Array.from({ length: 11 }, (_, i) => '0345678' + String(90 + i)).join(' - ')), 'invalid');
 });
 
 test('phones and times read naturally', () => {

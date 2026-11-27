@@ -216,6 +216,8 @@ export interface PatientAppointment {
   clinic_name: string;
   clinic_address: string;
   clinic_phone: string | null;
+  /** All the clinic's numbers, main first. */
+  clinic_phones: string[];
   district_en: string;
   district_ar: string;
   doctor_name: string;
@@ -235,7 +237,7 @@ export async function listPatientAppointments(db: Queryable, patientId: string):
   return (
     await db.query<PatientAppointment>(
       `select a.id, a.starts_at, a.status, a.visit_type, a.service_name, a.service_name_ar, a.fee_egp, a.clinic_id, c.name as clinic_name, c.address as clinic_address,
-              c.phone_e164 as clinic_phone, dist.name_en as district_en, dist.name_ar as district_ar,
+              c.phone_e164 as clinic_phone, array_remove(array[c.phone_e164] || c.extra_phones, null) as clinic_phones, dist.name_en as district_en, dist.name_ar as district_ar,
               u.full_name as doctor_name, d.slug as doctor_slug, r.rating as my_rating,
               pay.amount_egp as paid_amount, pay.method as paid_method, a.cancelled_by,
               a.pay_choice, a.pay_ref, d.instapay_address

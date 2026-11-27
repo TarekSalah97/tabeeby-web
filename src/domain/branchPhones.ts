@@ -1,14 +1,14 @@
 import { normalizeDigits } from './phone.js';
 
-/** Most numbers one branch can list. */
-export const MAX_BRANCH_PHONES = 5;
+/** Most contact numbers one field can hold (a clinic, a place, a branch, a patient file). */
+export const MAX_PHONES = 10;
 
 /**
- * Several phone numbers typed in one box, separated by dashes (as people write them), commas,
+ * Several contact numbers typed in one box, separated by dashes (as people write them), commas,
  * slashes or new lines: "01012345678 - 034567890". Mobiles and landlines; Arabic digits work.
  * Returns the numbers in order without repeats, or 'invalid' if any part isn't a phone number.
  */
-export function parseBranchPhones(raw: string): string[] | 'invalid' {
+export function parsePhoneList(raw: string): string[] | 'invalid' {
   const parts = normalizeDigits(raw)
     .split(/[-–—,،/;|\n]+/)
     .map((p) => p.replace(/[\s()]/g, ''))
@@ -20,7 +20,7 @@ export function parseBranchPhones(raw: string): string[] | 'invalid' {
     const e164 = `+20${digits}`;
     if (!out.includes(e164)) out.push(e164);
   }
-  return out.length > MAX_BRANCH_PHONES ? 'invalid' : out;
+  return out.length > MAX_PHONES ? 'invalid' : out;
 }
 
 /** 010 1234 5678 for mobiles, 03 4567890 for landlines. */
@@ -36,4 +36,21 @@ export function format12h(hhmm: string, locale: 'ar' | 'en'): string {
   const [h, m] = hhmm.split(':').map(Number);
   return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' })
     .format(new Date(Date.UTC(2000, 0, 1, h ?? 0, m ?? 0)));
+}
+
+export const parseBranchPhones = parsePhoneList;
+
+/** All of a record's numbers, main first. */
+export const allPhones = (main: string | null, extra: readonly string[] | null | undefined): string[] =>
+  [main, ...(extra ?? [])].filter((x): x is string => !!x);
+
+/** As typed back into a form: "01012345678 - 034567890". */
+export const phonesForForm = (main: string | null, extra: readonly string[] | null | undefined): string =>
+  allPhones(main, extra).map((x) => '0' + x.replace(/^\+20/, '')).join(' - ');
+
+/** A patient file needs a mobile as its main number (it links to the patient's account). */
+export function mobileFirst(list: string[]): { main: string | null; extra: string[] } {
+  const i = list.findIndex((x) => /^\+201[0125]\d{8}$/.test(x));
+  if (i < 0) return { main: null, extra: list };
+  return { main: list[i]!, extra: list.filter((_, k) => k !== i) };
 }

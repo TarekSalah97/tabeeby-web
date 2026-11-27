@@ -1,4 +1,5 @@
 import { smsEnabled } from '../../config.js';
+import { callButtons } from '../components.js';
 import { html, attrIf, type SafeHtml } from '../html.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
@@ -137,7 +138,7 @@ export function appointmentsPage(
     </div>
     <div class="appt-actions">
       <a class="btn btn-primary" href="${directionsHref(a.clinic_address, a.district_en)}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
-      ${a.clinic_phone ? html`<a class="btn btn-outline" href="tel:${a.clinic_phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+      ${callButtons(ctx, a.clinic_phones)}
       ${a.status === 'confirmed'
         ? html`<form method="post" action="${href(ctx, `/appointments/${a.id}/cancel`)}" class="inline-form">${csrfField(ctx)}
             <button class="btn btn-ghost" type="submit">${ctx.t('appts.cancel')}</button></form>`

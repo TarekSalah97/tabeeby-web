@@ -1,5 +1,6 @@
 import { html, attrIf, type SafeHtml } from '../html.js';
-import { format12h, formatEgyptPhone } from '../../domain/branchPhones.js';
+import { format12h, formatEgyptPhone, allPhones, phonesForForm } from '../../domain/branchPhones.js';
+import { callButtons } from '../components.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
@@ -258,7 +259,7 @@ export function facilityProfilePage(
   const v = o.values ?? {
     name: f.name,
     description: f.description,
-    phone: f.phone_e164 ? formatEgyptMobile(f.phone_e164).replace(/\s/g, '') : '',
+    phone: phonesForForm(f.phone_e164, f.extra_phones),
     whatsapp: f.whatsapp_e164 ? formatEgyptMobile(f.whatsapp_e164).replace(/\s/g, '') : '',
     homeService: f.home_service ? 'yes' : '',
   };
@@ -277,7 +278,7 @@ export function facilityProfilePage(
       ${csrfField(ctx)}
       <div class="form-grid">
         ${input(ctx, { name: 'name', label: ctx.t('facjoin.name'), value: v['name'], maxlength: 120, errors: o.errors, required: true })}
-        ${input(ctx, { name: 'phone', label: ctx.t('facdash.phone'), type: 'tel', value: v['phone'], inputmode: 'tel', hint: ctx.t('facdash.phoneHint'), errors: o.errors })}
+        ${input(ctx, { name: 'phone', label: ctx.t('facdash.phone'), type: 'tel', value: v['phone'], inputmode: 'tel', hint: ctx.t('facdash.phoneHint'), maxlength: 240, errors: o.errors })}
         ${input(ctx, { name: 'whatsapp', label: ctx.t('facdash.whatsapp'), type: 'tel', value: v['whatsapp'], inputmode: 'tel', errors: o.errors })}
       </div>
       <div class="field">
@@ -435,10 +436,11 @@ export function facilityPricesPage(
 // ---------------------------------------------------------------------------
 
 function contactButtons(ctx: Ctx, p: PublicFacility, branch: PublicBranch | undefined, ref: ReferenceData): SafeHtml {
-  const phone = branch?.phone_e164 ?? p.phone;
+  // The branch's own numbers, or the place's public numbers.
+  const phones = branch?.phone_e164 ? allPhones(branch.phone_e164, branch.extra_phones) : p.phones;
   const dist = branch ? ref.districtById.get(branch.district_id) : undefined;
   return html`<div class="row-wrap">
-    ${phone ? html`<a class="btn btn-primary" href="tel:${phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+    ${callButtons(ctx, phones, 'btn-primary')}
     ${p.whatsapp ? html`<a class="btn btn-outline" href="https://wa.me/${p.whatsapp.replace('+', '')}" target="_blank" rel="noopener noreferrer">${icon.chat}${ctx.t('fac.whatsapp')}</a>` : ''}
     ${branch ? html`<a class="btn btn-outline" href="${branch.maps_url ?? directionsHref(branch.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>` : ''}
   </div>`;

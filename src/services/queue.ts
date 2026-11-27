@@ -18,6 +18,7 @@ export interface LiveVisit {
   doctorSlug: string;
   clinicName: string;
   clinicPhone: string | null;
+  clinicPhones: string[];
   /** Null when the visit is not today (tracking starts on the day). */
   estimate: QueueEstimate | null;
   isToday: boolean;
@@ -38,10 +39,11 @@ interface OwnRow {
   doctor_slug: string;
   clinic_name: string;
   clinic_phone: string | null;
+  clinic_phones: string[];
 }
 
 const OWN_SELECT = `select a.id, a.starts_at, a.status, a.doctor_id, a.clinic_id, u.full_name as doctor_name, d.slug as doctor_slug,
-        c.name as clinic_name, c.phone_e164 as clinic_phone
+        c.name as clinic_name, c.phone_e164 as clinic_phone, array_remove(array[c.phone_e164] || c.extra_phones, null) as clinic_phones
    from appointments a join doctors d on d.user_id = a.doctor_id join users u on u.id = a.doctor_id join clinics c on c.id = a.clinic_id`;
 
 async function withEstimate(deps: Deps, own: OwnRow): Promise<LiveVisit> {
@@ -84,6 +86,7 @@ async function withEstimate(deps: Deps, own: OwnRow): Promise<LiveVisit> {
     doctorSlug: own.doctor_slug,
     clinicName: own.clinic_name,
     clinicPhone: own.clinic_phone,
+    clinicPhones: own.clinic_phones,
     estimate,
     isToday,
   };

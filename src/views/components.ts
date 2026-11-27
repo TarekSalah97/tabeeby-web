@@ -6,6 +6,7 @@ import { CSRF_FIELD } from '../auth/csrf.js';
 import type { FieldErrors } from '../services/accounts.js';
 import type { District, ReferenceData } from '../services/reference.js';
 import { displayYears } from '../domain/experience.js';
+import { formatEgyptPhone } from '../domain/branchPhones.js';
 import { docField, type DocKind } from '../domain/documents.js';
 
 export const icon = {
@@ -430,4 +431,14 @@ export function monthCalendar(
     </div>
     ${o.openWeekdays ? html`<p class="small muted cal-legend"><span class="cal-dot"></span>${ctx.t('cal.closedLegend')}</p>` : ''}
   </div>`;
+}
+
+/**
+ * Call buttons for a clinic or place: one number shows "Call"; several numbers each get a button
+ * with the number on it, so the patient can pick.
+ */
+export function callButtons(ctx: Ctx, phones: readonly string[], cls = 'btn-outline'): SafeHtml {
+  if (!phones.length) return html``;
+  if (phones.length === 1) return html`<a class="btn ${cls}" href="tel:${phones[0]!}">${icon.phone}${ctx.t('doctor.call')}</a>`;
+  return html`${phones.map((p) => html`<a class="btn ${cls}" href="tel:${p}" dir="ltr">${icon.phone}${formatEgyptPhone(p)}</a>`)}`;
 }

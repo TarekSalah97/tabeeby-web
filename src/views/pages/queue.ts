@@ -1,4 +1,5 @@
 import { html, type SafeHtml } from '../html.js';
+import { callButtons } from '../components.js';
 import type { Ctx } from '../../http/context.js';
 import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
@@ -69,7 +70,7 @@ export function queueCard(ctx: Ctx, v: LiveVisit, o: { full?: boolean } = {}): S
     ${o.full
       ? html`<p class="small muted">${ctx.t('queue.disclaimer')}</p>
           <div class="appt-actions">
-            ${v.clinicPhone ? html`<a class="btn btn-outline" href="tel:${v.clinicPhone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+            ${callButtons(ctx, v.clinicPhones)}
             <a class="btn btn-ghost" href="${href(ctx, '/appointments')}">${ctx.t('queue.back')}</a>
           </div>`
       : html`<a class="btn btn-primary btn-sm" href="${href(ctx, `/appointments/${v.id}/wait`)}">${ctx.t('queue.trackLive')}</a>`}

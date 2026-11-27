@@ -1,4 +1,5 @@
 import { serviceName, type ClinicService } from '../../services/clinicServices.js';
+import { phonesForForm } from '../../domain/branchPhones.js';
 import { orderSchedule, matchesSchedule, foldName, FINISHED } from '../../domain/schedule.js';
 
 export type ScheduleView = 'all' | 'completed' | 'waiting';
@@ -335,7 +336,7 @@ export function clinicsPage(
   };
   const form = (c: ClinicRow | null) => {
     const isTarget = (o.editing ?? null) === (c?.id ?? null);
-    const v = isTarget && o.values ? o.values : c ? { name: c.name, district: String(c.district_id), address: c.address, phone: c.phone_e164 ? c.phone_e164.replace(/^\+20/, '0') : '', fee: c.fee_egp === null ? '' : String(c.fee_egp), followUpFee: c.follow_up_fee_egp === null ? '' : String(c.follow_up_fee_egp), followUpDays: String(c.follow_up_days), active: c.is_active ? 'yes' : '' } : { active: 'yes', followUpDays: '14' };
+    const v = isTarget && o.values ? o.values : c ? { name: c.name, district: String(c.district_id), address: c.address, phone: phonesForForm(c.phone_e164, c.extra_phones), fee: c.fee_egp === null ? '' : String(c.fee_egp), followUpFee: c.follow_up_fee_egp === null ? '' : String(c.follow_up_fee_egp), followUpDays: String(c.follow_up_days), active: c.is_active ? 'yes' : '' } : { active: 'yes', followUpDays: '14' };
     const errors = isTarget ? o.errors : undefined;
     const idPrefix = c ? `c${c.id.slice(0, 8)}-` : 'new-';
     return html`<form method="post" action="${href(ctx, c ? `/dashboard/clinics/${c.id}` : '/dashboard/clinics')}" class="stack">
@@ -350,7 +351,7 @@ export function clinicsPage(
         ${input(ctx, { idPrefix, name: 'fee', label: ctx.t('clinics.fee'), value: v['fee'], inputmode: 'numeric', hint: ctx.t('clinics.feeOptionalHint'), errors })}
         ${input(ctx, { idPrefix, name: 'followUpFee', label: ctx.t('clinics.followUpFee'), value: v['followUpFee'], inputmode: 'numeric', hint: ctx.t('clinics.followUpFeeHint'), errors })}
         ${input(ctx, { idPrefix, name: 'followUpDays', label: ctx.t('clinics.followUpDays'), value: v['followUpDays'], inputmode: 'numeric', hint: ctx.t('clinics.followUpDaysHint'), errors })}
-        ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('clinics.phone'), type: 'tel', value: v['phone'], inputmode: 'tel', errors })}
+        ${input(ctx, { idPrefix, name: 'phone', label: ctx.t('clinics.phone'), type: 'tel', value: v['phone'], inputmode: 'tel', hint: ctx.t('phones.hint'), maxlength: 240, errors })}
         <div class="field"><label class="check"><input type="checkbox" name="active" value="yes"${attrIf(v['active'] === 'yes', 'checked')}><span>${ctx.t('clinics.active')}</span></label></div>
       </div>
       <div><button type="submit" class="btn btn-primary">${c ? ctx.t('clinics.update') : ctx.t('clinics.add')}</button></div>

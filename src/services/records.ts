@@ -7,6 +7,7 @@ import type { FieldErrors } from './accounts.js';
 import { audit } from './audit.js';
 import { notFound } from '../http/errors.js';
 import { normalizeEgyptMobile } from '../domain/phone.js';
+import { parsePhoneList, mobileFirst } from '../domain/branchPhones.js';
 import { isValidDate, todayIn } from '../domain/time.js';
 import {
   SEXES, MARITAL_STATUSES, HABITS, MEDICINE_FORMS, FREQUENCIES, TIMINGS, labTest,
@@ -53,7 +54,10 @@ export interface RecordInput {
 
 interface CleanRecord {
   full_name: string;
+  /** The patient's mobile: it links the file to their account. */
   phone_e164: string | null;
+  /** Other numbers (a relative's mobile, a landline). */
+  extra_phones: string[];
   date_of_birth: string | null;
   sex: string | null;
   occupation: string | null;
@@ -71,11 +75,10 @@ export function validateRecord(input: RecordInput, today: string): { errors: Fie
   const errors: FieldErrors = {};
   const name = input.fullName.trim().replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 120) errors['fullName'] = 'records.err.name';
-  let phone: string | null = null;
-  if (input.phone.trim()) {
-    phone = normalizeEgyptMobile(input.phone);
-    if (!phone) errors['phone'] = 'phone.invalid';
-  }
+  // Several numbers may be written with dashes; the first mobile becomes the main number.
+  const list = parsePhoneList(input.phone);
+  if (list === 'invalid') errors['phone'] = 'fac.phonesInvalid';
+  const { main: phone, extra: extraPhones } = mobileFirst(list === 'invalid' ? [] : list);
   let dob: string | null = null;
   if (input.dateOfBirth.trim()) {
     dob = input.dateOfBirth.trim();
@@ -84,6 +87,7 @@ export function validateRecord(input: RecordInput, today: string): { errors: Fie
   const clean: CleanRecord = {
     full_name: name,
     phone_e164: phone,
+    extra_phones: extraPhones,
     date_of_birth: dob,
     sex: oneOf(SEXES, input.sex),
     occupation: trimOrNull(input.occupation, 120),
@@ -106,7 +110,7 @@ export interface PatientRecord extends CleanRecord {
   updated_at: Date;
 }
 
-const RECORD_COLUMNS = `r.id, r.patient_user_id, r.full_name, r.phone_e164, r.date_of_birth::text as date_of_birth, r.sex, r.occupation,
+const RECORD_COLUMNS = `r.id, r.patient_user_id, r.full_name, r.phone_e164, r.extra_phones, r.date_of_birth::text as date_of_birth, r.sex, r.occupation,
   r.marital_status, r.habits, r.habits_note, r.allergies, r.chronic_conditions, r.past_history, r.current_medications,
   r.family_history, r.created_at, r.updated_at`;
 
@@ -291,10 +295,10 @@ export async function createRecord(
     }
     const { rows } = await tx.query<{ id: string }>(
       `insert into patient_records (doctor_id, patient_user_id, full_name, phone_e164, date_of_birth, sex, occupation, marital_status,
-         habits, habits_note, allergies, chronic_conditions, past_history, current_medications, family_history, consent_at)
-       values ($1, $2, $3, $4, $5::date, $6, $7, $8, $9::text[], $10, $11, $12, $13, $14, $15, now()) returning id`,
+         habits, habits_note, allergies, chronic_conditions, past_history, current_medications, family_history, consent_at, extra_phones)
+       values ($1, $2, $3, $4, $5::date, $6, $7, $8, $9::text[], $10, $11, $12, $13, $14, $15, now(), $16::text[]) returning id`,
       [doctorId, patientUserId, clean.full_name, clean.phone_e164, clean.date_of_birth, clean.sex, clean.occupation, clean.marital_status,
-        clean.habits, clean.habits_note, clean.allergies, clean.chronic_conditions, clean.past_history, clean.current_medications, clean.family_history],
+        clean.habits, clean.habits_note, clean.allergies, clean.chronic_conditions, clean.past_history, clean.current_medications, clean.family_history, clean.extra_phones],
     );
     const id = rows[0]!.id;
     await audit(tx, { actorId: doctorId, action: 'record.create', entityType: 'patient_record', entityId: id, metadata: { linked: !!patientUserId }, ip });
@@ -312,10 +316,10 @@ export async function updateRecord(deps: Deps, doctorId: string, id: string, inp
     await tx.query(
       `update patient_records set full_name = $3, phone_e164 = $4, date_of_birth = $5::date, sex = $6, occupation = $7, marital_status = $8,
               habits = $9::text[], habits_note = $10, allergies = $11, chronic_conditions = $12, past_history = $13,
-              current_medications = $14, family_history = $15, updated_at = now()
+              current_medications = $14, family_history = $15, extra_phones = $16::text[], updated_at = now()
         where id = $1 and doctor_id = $2`,
       [id, doctorId, clean.full_name, clean.phone_e164, clean.date_of_birth, clean.sex, clean.occupation, clean.marital_status, clean.habits,
-        clean.habits_note, clean.allergies, clean.chronic_conditions, clean.past_history, clean.current_medications, clean.family_history],
+        clean.habits_note, clean.allergies, clean.chronic_conditions, clean.past_history, clean.current_medications, clean.family_history, clean.extra_phones],
     );
     await audit(tx, { actorId: doctorId, action: 'record.update', entityType: 'patient_record', entityId: id, ip });
   });
@@ -714,6 +718,7 @@ export interface PrintHeader {
   clinic_name: string | null;
   clinic_address: string | null;
   clinic_phone: string | null;
+  clinic_phones: string[];
   patient_name: string;
   date_of_birth: string | null;
   sex: string | null;
@@ -721,7 +726,7 @@ export interface PrintHeader {
 }
 
 const PRINT_HEADER = `select u.full_name as doctor_name, d.title_en as doctor_title_en, d.title_ar as doctor_title_ar, d.specialty_id,
-    c.name as clinic_name, c.address as clinic_address, c.phone_e164 as clinic_phone,
+    c.name as clinic_name, c.address as clinic_address, c.phone_e164 as clinic_phone, array_remove(array[c.phone_e164] || c.extra_phones, null) as clinic_phones,
     r.full_name as patient_name, r.date_of_birth::text as date_of_birth, r.sex, e.visit_at
   from encounters e
   join patient_records r on r.id = e.record_id

@@ -14,7 +14,7 @@ import { facilityDocs, type FacilityDocKind } from '../domain/documents.js';
 import { attachSignupFiles, keepFiles, keptAsList, loadKept, takeFiles, type KeptFile } from './facilityDocuments.js';
 import type { UploadedFile } from '../http/body.js';
 import { normalizeMapsUrl } from '../domain/mapsLink.js';
-import { parseBranchPhones } from '../domain/branchPhones.js';
+import { parseBranchPhones, parsePhoneList, allPhones } from '../domain/branchPhones.js';
 import { publicPhotos, listFacilityPhotos, type FacilityPhoto } from './facilityPhotos.js';
 import { audit } from './audit.js';
 import { enqueueSms } from './outbox.js';
@@ -148,6 +148,8 @@ export interface OwnFacility {
   description: string;
   licence_number: string;
   phone_e164: string | null;
+  /** More public numbers after phone_e164. */
+  extra_phones: string[];
   whatsapp_e164: string | null;
   home_service: boolean;
   verification_status: 'pending' | 'approved' | 'rejected' | 'suspended';
@@ -160,7 +162,7 @@ export interface OwnFacility {
 
 export async function getOwnFacility(db: Queryable, userId: string): Promise<OwnFacility> {
   const { rows } = await db.query<OwnFacility>(
-    `select f.user_id, f.kind, f.slug, f.name, f.description, f.licence_number, f.phone_e164, f.whatsapp_e164, f.home_service,
+    `select f.user_id, f.kind, f.slug, f.name, f.description, f.licence_number, f.phone_e164, f.extra_phones, f.whatsapp_e164, f.home_service,
             f.verification_status, f.verification_note, u.full_name as contact_name, f.docs_request_note,
             (select count(*)::int from facility_documents d where d.facility_id = f.user_id) as doc_count
        from facilities f join users u on u.id = f.user_id where f.user_id = $1`,
@@ -184,15 +186,15 @@ export async function updateFacilityProfile(deps: Deps, userId: string, input: F
   const description = input.description.trim();
   if (name.length < 2 || name.length > 120) errors['name'] = 'fac.nameInvalid';
   if (description.length > 1000) errors['description'] = 'fac.descriptionTooLong';
-  const phone = optionalPhone(input.phone);
+  const phones = parsePhoneList(input.phone);
   const whatsapp = optionalPhone(input.whatsapp);
-  if (!phone.ok) errors['phone'] = 'phone.invalid';
+  if (phones === 'invalid') errors['phone'] = 'fac.phonesInvalid';
   if (!whatsapp.ok) errors['whatsapp'] = 'phone.invalid';
   if (Object.keys(errors).length) return errors;
   await deps.db.transaction(async (tx) => {
     await tx.query(
-      `update facilities set name = $2, description = $3, phone_e164 = $4, whatsapp_e164 = $5, home_service = $6, updated_at = now() where user_id = $1`,
-      [userId, name, description, phone.value, whatsapp.value, input.homeService],
+      `update facilities set name = $2, description = $3, phone_e164 = $4, whatsapp_e164 = $5, home_service = $6, extra_phones = $7::text[], updated_at = now() where user_id = $1`,
+      [userId, name, description, phones === 'invalid' ? null : (phones[0] ?? null), whatsapp.value, input.homeService, phones === 'invalid' ? [] : phones.slice(1)],
     );
     await audit(tx, { actorId: userId, action: 'facility.profile', entityType: 'facility', entityId: userId, ip });
   });
@@ -421,6 +423,8 @@ export interface PublicFacility {
   name: string;
   description: string;
   phone: string | null;
+  /** All public numbers, main first. */
+  phones: string[];
   whatsapp: string | null;
   homeService: boolean;
   branches: PublicBranch[];
@@ -474,8 +478,8 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
   if (!ids.length) return [];
   const db = deps.db;
   const [facilities, branches, tests, extras, pics] = await Promise.all([
-    db.query<{ user_id: string; kind: FacilityKind; slug: string; name: string; description: string; phone_e164: string | null; whatsapp_e164: string | null; home_service: boolean }>(
-      `select user_id, kind, slug, name, description, phone_e164, whatsapp_e164, home_service from facilities where user_id = any($1::uuid[])`,
+    db.query<{ user_id: string; kind: FacilityKind; slug: string; name: string; description: string; phone_e164: string | null; extra_phones: string[]; whatsapp_e164: string | null; home_service: boolean }>(
+      `select user_id, kind, slug, name, description, phone_e164, extra_phones, whatsapp_e164, home_service from facilities where user_id = any($1::uuid[])`,
       [ids],
     ),
     db.query<BranchRow & { facility_id: string }>(
@@ -509,6 +513,7 @@ async function loadPublic(deps: Deps, ids: string[], askedTests: string[] = []):
         name: f.name,
         description: f.description,
         phone: f.phone_e164,
+        phones: allPhones(f.phone_e164, f.extra_phones),
         whatsapp: f.whatsapp_e164,
         homeService: f.home_service,
         logo: pics.get(f.user_id)?.logo ?? null,

@@ -1,4 +1,5 @@
 import type { OrderPart } from '../../services/orderResults.js';
+import { formatEgyptPhone, allPhones, phonesForForm } from '../../domain/branchPhones.js';
 import type { DoctorLabSet } from '../../services/labSets.js';
 import { BUILT_IN_LAB_SETS } from '../../domain/labPrep.js';
 import { PHOTOS_PER_UPLOAD, type VisitPhoto } from '../../services/visitPhotos.js';
@@ -107,7 +108,7 @@ function recordFields(ctx: Ctx, v: Record<string, string>, habits: string[], err
     <fieldset class="form-grid">
       <legend>${ctx.t('records.personal')}</legend>
       ${input(ctx, { name: 'fullName', label: ctx.t('records.fullName'), value: v['fullName'], errors, maxlength: 120, required: true, autocomplete: 'off' })}
-      ${input(ctx, { name: 'phone', label: ctx.t('records.phone'), type: 'tel', inputmode: 'tel', value: v['phone'], errors, hint: ctx.t('common.optional') })}
+      ${input(ctx, { name: 'phone', label: ctx.t('records.phones'), type: 'tel', inputmode: 'tel', value: v['phone'], errors, maxlength: 240, hint: ctx.t('records.phonesHint') })}
       ${input(ctx, { name: 'dateOfBirth', label: ctx.t('records.dob'), type: 'date', value: v['dateOfBirth'], errors, hint: ctx.t('records.dobHint') })}
       ${select(ctx, { name: 'sex', label: ctx.t('records.sex'), value: v['sex'] ?? '', options: opt('records.sex', SEXES) })}
       ${input(ctx, { name: 'occupation', label: ctx.t('records.occupation'), value: v['occupation'], maxlength: 120 })}
@@ -133,7 +134,7 @@ function recordFields(ctx: Ctx, v: Record<string, string>, habits: string[], err
 export function recordValuesFrom(r: PatientRecord): Record<string, string> {
   return {
     fullName: r.full_name,
-    phone: r.phone_e164 ? '0' + r.phone_e164.slice(3) : '',
+    phone: phonesForForm(r.phone_e164, r.extra_phones),
     dateOfBirth: r.date_of_birth ?? '',
     sex: r.sex ?? '',
     occupation: r.occupation ?? '',
@@ -257,7 +258,7 @@ export function recordPage(
     <a href="${href(ctx, '/dashboard/patients')}">← ${ctx.t('records.title')}</a>
     <div class="row-between align-start">
       <div class="stack-sm"><h1>${r.full_name}</h1>
-        <p class="muted">${[patientFacts(ctx, r), phone ? formatEgyptMobile(phone) : ''].filter(Boolean).join(sep(ctx))}</p>
+        <p class="muted">${[patientFacts(ctx, r), allPhones(phone, r.extra_phones).map(formatEgyptPhone).join(' · ')].filter(Boolean).join(sep(ctx))}</p>
         <p class="hint">${ctx.t(r.patient_user_id ? 'records.linkedNote' : 'records.walkInNote')}</p></div>
       <div class="row-wrap">
         ${isSecretary(ctx) ? '' : html`<a class="btn btn-primary" href="${href(ctx, `/dashboard/patients/${r.id}/visits/new`)}">${ctx.t('visit.new')}</a>`}
@@ -665,7 +666,7 @@ function sheetHeader(ctx: Ctx, h: PrintHeader, ref: ReferenceData, kind: Message
     <div class="stack-sm sheet-clinic">
       ${h.clinic_name ? html`<strong dir="auto">${h.clinic_name}</strong>` : ''}
       ${h.clinic_address ? html`<span dir="auto">${h.clinic_address}</span>` : ''}
-      ${h.clinic_phone ? html`<span dir="ltr">${formatEgyptMobile(h.clinic_phone)}</span>` : ''}
+      ${h.clinic_phones.length ? html`<span dir="ltr">${h.clinic_phones.map(formatEgyptPhone).join(' · ')}</span>` : ''}
     </div>
   </header>
   <div class="sheet-patient">

@@ -5,6 +5,7 @@ import type { Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import type { Locale, MessageKey } from '../i18n/index.js';
 import { normalizeEgyptMobile, normalizeDigits } from '../domain/phone.js';
+import { parsePhoneList } from '../domain/branchPhones.js';
 import { DOCTOR_DOCS } from '../domain/documents.js';
 import { checkDocuments, storeDocuments, removeDocuments, insertDocuments } from './documents.js';
 import { checkPasswordPolicy, hashPassword } from '../auth/password.js';
@@ -223,6 +224,8 @@ export interface ClinicRow {
   district_id: number;
   address: string;
   phone_e164: string | null;
+  /** More contact numbers after phone_e164. */
+  extra_phones: string[];
   fee_egp: number | null;
   follow_up_fee_egp: number | null;
   follow_up_days: number;
@@ -232,7 +235,7 @@ export interface ClinicRow {
 export async function listOwnClinics(db: Queryable, doctorId: string): Promise<ClinicRow[]> {
   return (
     await db.query<ClinicRow>(
-      'select id, name, district_id, address, phone_e164, fee_egp, follow_up_fee_egp, follow_up_days, is_active from clinics where doctor_id = $1 order by created_at',
+      'select id, name, district_id, address, phone_e164, extra_phones, fee_egp, follow_up_fee_egp, follow_up_days, is_active from clinics where doctor_id = $1 order by created_at',
       [doctorId],
     )
   ).rows;
@@ -259,7 +262,7 @@ export const parseFee = (raw: string): number => {
 export async function validateClinic(
   db: Queryable,
   input: ClinicInput,
-): Promise<{ errors: FieldErrors; phone: string | null; fee: number | null; followUpFee: number | null; followUpDays: number }> {
+): Promise<{ errors: FieldErrors; phones: string[]; fee: number | null; followUpFee: number | null; followUpDays: number }> {
   const errors: FieldErrors = {};
   const ref = await getReference(db);
   if (input.name.trim().length < 2 || input.name.trim().length > 120) errors['name'] = 'clinics.nameInvalid';
@@ -277,31 +280,28 @@ export async function validateClinic(
   const daysDigits = normalizeDigits(input.followUpDays).trim();
   const followUpDays = daysDigits === '' ? 14 : /^\d{1,2}$/.test(daysDigits) ? Number(daysDigits) : NaN;
   if (!Number.isInteger(followUpDays) || followUpDays < 1 || followUpDays > 90) errors['followUpDays'] = 'clinics.followUpDaysInvalid';
-  let phone: string | null = null;
-  if (input.phone.trim()) {
-    const digits = normalizeDigits(input.phone).replace(/[\s\-()]/g, '').replace(/^(\+20|0020|0)/, '');
-    if (/^\d{8,10}$/.test(digits)) phone = `+20${digits}`;
-    else errors['phone'] = 'phone.invalid';
-  }
-  return { errors, phone, fee, followUpFee, followUpDays };
+  // One or more numbers, separated by dashes; the first is the main one.
+  const parsed = parsePhoneList(input.phone);
+  if (parsed === 'invalid') errors['phone'] = 'fac.phonesInvalid';
+  return { errors, phones: parsed === 'invalid' ? [] : parsed, fee, followUpFee, followUpDays };
 }
 
 export async function saveClinic(deps: Deps, doctorId: string, clinicId: string | null, input: ClinicInput): Promise<FieldErrors> {
-  const { errors, phone, fee, followUpFee, followUpDays } = await validateClinic(deps.db, input);
+  const { errors, phones, fee, followUpFee, followUpDays } = await validateClinic(deps.db, input);
   if (Object.keys(errors).length) return errors;
-  const values = [doctorId, input.name.trim(), input.districtId, input.address.trim(), phone, fee, input.isActive, followUpFee, followUpDays];
+  const values = [doctorId, input.name.trim(), input.districtId, input.address.trim(), phones[0] ?? null, fee, input.isActive, followUpFee, followUpDays, phones.slice(1)];
   if (clinicId) {
     const r = await deps.db.query(
       `update clinics set name = $2, district_id = $3, address = $4, phone_e164 = $5, fee_egp = $6, is_active = $7,
-              follow_up_fee_egp = $8, follow_up_days = $9, updated_at = now()
-        where id = $10 and doctor_id = $1`,
+              follow_up_fee_egp = $8, follow_up_days = $9, extra_phones = $10::text[], updated_at = now()
+        where id = $11 and doctor_id = $1`,
       [...values, clinicId],
     );
     if (r.rowCount === 0) throw notFound();
   } else {
     await deps.db.query(
-      `insert into clinics (doctor_id, name, district_id, address, phone_e164, fee_egp, is_active, follow_up_fee_egp, follow_up_days)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `insert into clinics (doctor_id, name, district_id, address, phone_e164, fee_egp, is_active, follow_up_fee_egp, follow_up_days, extra_phones)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[])`,
       values,
     );
   }

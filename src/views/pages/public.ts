@@ -7,6 +7,7 @@ import { href } from '../../http/context.js';
 import { layout } from '../layout.js';
 import { DESCRIPTION_MIN, DESCRIPTION_MAX } from '../../services/symptomChecker.js';
 import { alert, csrfField, directionsHref, districtOptionGroups, cityOptions, placeName, placeForMaps, icon, initials, ratingBadge, select, starRow, yearsLabel, doctorAvatar, subMap, searchTabs } from '../components.js';
+import { callButtons } from '../components.js';
 import { pick, formatShortDate, formatTime, formatNumber, formatFullDate, type MessageKey } from '../../i18n/index.js';
 import type { ReferenceData } from '../../services/reference.js';
 import type { DoctorCard, PublicProfile, SearchFilters } from '../../services/search.js';
@@ -395,7 +396,7 @@ function stickyActions(ctx: Ctx, d: PublicProfile, clinicId: string, ref: Refere
   const dist = ref.districtById.get(clinic.districtId);
   return html`<nav class="sticky-actions" aria-label="${ctx.t('doctor.quickActions')}">
     <a class="btn btn-primary btn-lg" href="#book-title">${icon.calendar}${ctx.t('doctor.bookShort')}</a>
-    ${clinic.phone ? html`<a class="btn btn-outline btn-lg" href="tel:${clinic.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+    ${/* The floating bar has room for one: the main number; all numbers are listed with the clinic. */ ''}${callButtons(ctx, clinic.phones.slice(0, 1), 'btn-outline btn-lg')}
     <a class="btn btn-outline btn-lg" href="${directionsHref(clinic.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
   </nav>`;
 }
@@ -464,7 +465,7 @@ export function profilePage(ctx: Ctx, ref: ReferenceData, d: PublicProfile, book
               <span class="fee">${money(ctx, c.fee)}</span>
               <ul class="hours">${rules.map((r) => html`<li><span>${ctx.t.dynamic(`weekday.${r.weekday}`)}</span><span dir="ltr">${r.start}–${r.end}</span></li>`)}</ul>
               <div class="row-wrap">
-                ${c.phone ? html`<a class="btn btn-outline btn-sm" href="tel:${c.phone}">${icon.phone}${ctx.t('doctor.call')}</a>` : ''}
+                ${callButtons(ctx, c.phones, 'btn-outline btn-sm')}
                 <a class="btn btn-outline btn-sm" href="${directionsHref(c.address, placeForMaps(dist))}" target="_blank" rel="noopener noreferrer">${icon.directions}${ctx.t('doctor.directions')}</a>
               </div>
             </div>`;

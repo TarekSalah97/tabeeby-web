@@ -73,8 +73,26 @@ export function normalizeTime(raw: string): string {
   return isValidTime(hhmm) ? hhmm : s;
 }
 
+/**
+ * zonedToUtc is a pure function called thousands of times per page (every candidate slot of every
+ * doctor in the search results). Remembering answers is exact, including on daylight-saving days,
+ * and cut the server's CPU per search by more than half. Capped so it can't grow without limit.
+ */
+const zonedCache = new Map<string, number>();
+const ZONED_CACHE_MAX = 20_000;
+
 /** Wall-clock date+time in tz → the UTC instant. */
 export function zonedToUtc(date: string, time: string, tz: string): Date {
+  const key = `${tz}|${date}|${time}`;
+  const hit = zonedCache.get(key);
+  if (hit !== undefined) return new Date(hit);
+  const result = zonedToUtcUncached(date, time, tz);
+  if (zonedCache.size >= ZONED_CACHE_MAX) zonedCache.clear();
+  zonedCache.set(key, result.getTime());
+  return result;
+}
+
+function zonedToUtcUncached(date: string, time: string, tz: string): Date {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
   const [hh, mm] = time.split(':').map(Number) as [number, number];
   const naive = Date.UTC(y, m - 1, d, hh, mm);

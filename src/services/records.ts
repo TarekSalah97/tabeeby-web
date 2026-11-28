@@ -275,6 +275,8 @@ export async function createRecord(
       const appt = await ownAppointment(tx, doctorId, o.appointmentId);
       patientUserId = appt.patient_id;
       if (patientUserId) {
+        // Serialise per doctor + patient account so a double-click opens the file the first click made.
+        await tx.query('select pg_advisory_xact_lock(hashtext($1))', [`record-account:${doctorId}:${patientUserId}`]);
         const existing = await tx.query<{ id: string }>('select id from patient_records where doctor_id = $1 and patient_user_id = $2', [doctorId, patientUserId]);
         if (existing.rows[0]) return { id: existing.rows[0].id };
       }
@@ -490,6 +492,9 @@ function cleanNotes(n: VisitNotesInput): { errors: FieldErrors; notes: { complai
 }
 
 /** One visit with, optionally, a prescription and a lab order — all saved together or not at all. */
+/** A repeat of the same save within this window is treated as a double-click. */
+const DOUBLE_SUBMIT_SECONDS = 120;
+
 export async function createVisit(
   deps: Deps,
   doctorId: string,
@@ -513,16 +518,31 @@ export async function createVisit(
     let clinicId: string | null = null;
     let visitAt: Date | null = null;
     if (input.appointmentId) {
+      // Lock the booked visit so two quick submits cannot both save a visit for it.
       const appt = await tx.query<{ clinic_id: string; starts_at: Date; patient_id: string }>(
-        'select clinic_id, starts_at, patient_id from appointments where id = $1 and doctor_id = $2',
+        'select clinic_id, starts_at, patient_id from appointments where id = $1 and doctor_id = $2 for update',
         [input.appointmentId, doctorId],
       );
       // The appointment must be this doctor's and for the patient this file belongs to.
       if (!appt.rows[0] || appt.rows[0].patient_id !== rec.rows[0].patient_user_id) throw notFound();
       clinicId = appt.rows[0].clinic_id;
       visitAt = appt.rows[0].starts_at;
-      const taken = await tx.query('select 1 from encounters where appointment_id = $1', [input.appointmentId]);
-      if (taken.rows[0]) return { errors: { general: 'visit.err.appointmentUsed' } };
+      const taken = await tx.query<{ id: string; fresh: boolean; fingerprint: string }>(
+        `select e.id, e.created_at > now() - make_interval(secs => $2) as fresh,
+                concat_ws('|', e.chief_complaint, e.history, e.examination, e.diagnosis, e.plan) || '#' ||
+                coalesce((select string_agg(i.medicine, ',' order by i.medicine collate "C") from prescriptions p
+                            join prescription_items i on i.prescription_id = p.id where p.encounter_id = e.id), '') as fingerprint
+           from encounters e where e.appointment_id = $1`,
+        [input.appointmentId, DOUBLE_SUBMIT_SECONDS],
+      );
+      const prev = taken.rows[0];
+      if (prev) {
+        // A double-click (same content, seconds apart): open the visit the first click saved.
+        const mine = [notes.complaint, notes.history, notes.examination, notes.diagnosis, notes.plan].filter((x) => x !== null).join('|') +
+          '#' + rx.lines.map((l) => l.medicine).sort().join(',');
+        if (prev.fresh && prev.fingerprint === mine) return { id: prev.id };
+        return { errors: { general: 'visit.err.appointmentUsed' } };
+      }
     }
     const { rows } = await tx.query<{ id: string }>(
       `insert into encounters (record_id, doctor_id, appointment_id, clinic_id, visit_at, chief_complaint, history, examination, diagnosis, plan)

@@ -1,4 +1,5 @@
 import { normalizeDigits } from './phone.js';
+import { dateFormatter } from '../i18n/intlCache.js';
 
 /** Most contact numbers one field can hold (a clinic, a place, a branch, a patient file). */
 export const MAX_PHONES = 10;
@@ -34,7 +35,7 @@ export function formatEgyptPhone(e164: string): string {
 /** "9:00 AM" / "٩:٠٠ ص" from "09:00". */
 export function format12h(hhmm: string, locale: 'ar' | 'en'): string {
   const [h, m] = hhmm.split(':').map(Number);
-  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' })
+  return dateFormatter(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' })
     .format(new Date(Date.UTC(2000, 0, 1, h ?? 0, m ?? 0)));
 }
 

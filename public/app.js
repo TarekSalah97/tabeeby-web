@@ -233,6 +233,23 @@
   setInterval(function () { if (document.visibilityState === 'visible') location.reload(); }, secs * 1000);
 })();
 
+// Double-click guard: a POST form is sent once; extra clicks while it is on its way are ignored.
+// Buttons are not disabled (some carry their own name/value). Unlocks when the page is shown again
+// (back button) or after 10 seconds, in case the connection dropped.
+(function () {
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || (form.getAttribute('method') || '').toLowerCase() !== 'post' || form.target) return;
+    if (e.defaultPrevented) return;
+    if (form.dataset.sending === '1') { e.preventDefault(); return; }
+    form.dataset.sending = '1';
+    setTimeout(function () { form.dataset.sending = ''; }, 10000);
+  });
+  window.addEventListener('pageshow', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('form[data-sending]'), function (f) { f.dataset.sending = ''; });
+  });
+})();
+
 // Schedule: when a just-finished visit's 3 minutes are up, reload so it moves to the end.
 // Waits while someone is typing in a box or the tab is hidden, so nothing typed is lost.
 (function () {

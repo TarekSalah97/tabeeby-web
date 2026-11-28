@@ -1,5 +1,6 @@
 import { en } from './en.js';
 import { ar } from './ar.js';
+import { dateFormatter, numberFormatter } from './intlCache.js';
 
 export type Locale = 'ar' | 'en';
 export type MessageKey = keyof typeof en;
@@ -29,20 +30,20 @@ export function translator(locale: Locale): Translator {
 const intlLocale = (l: Locale) => (l === 'ar' ? 'ar-EG' : 'en-GB');
 
 export function formatDate(d: Date, locale: Locale, tz: string): string {
-  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+  return dateFormatter(intlLocale(locale), { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' }).format(d);
 }
 
 export function formatShortDate(d: Date, locale: Locale, tz: string): string {
-  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+  return dateFormatter(intlLocale(locale), { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
 }
 
 export function formatTime(d: Date, locale: Locale, tz: string): string {
-  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d);
+  return dateFormatter(intlLocale(locale), { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d);
 }
 
 /** Date with the year, for records: "20 November 2026". */
 export function formatFullDate(d: Date, locale: Locale, tz: string): string {
-  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+  return dateFormatter(intlLocale(locale), { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' }).format(d);
 }
 
 export function formatFullDateTime(d: Date, locale: Locale, tz: string): string {
@@ -54,7 +55,7 @@ export function formatDateTime(d: Date, locale: Locale, tz: string): string {
 }
 
 export function formatNumber(n: number, locale: Locale): string {
-  return new Intl.NumberFormat(intlLocale(locale)).format(n);
+  return numberFormatter(intlLocale(locale)).format(n);
 }
 
 /** Pick the right column for bilingual reference data. */

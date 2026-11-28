@@ -32,7 +32,17 @@ export interface SlotQuery {
   minLeadMinutes: number;
 }
 
-const overlaps = (a: Interval, b: Interval) => a.start < b.end && b.start < a.end;
+/**
+ * Does [start, end) overlap any busy interval? `busy` is sorted by start, so the scan stops at the
+ * first interval starting at or after `end` (later ones can't overlap).
+ */
+function overlapsAny(busy: readonly Interval[], start: number, end: number): boolean {
+  for (const b of busy) {
+    if (b.start.getTime() >= end) return false;
+    if (b.end.getTime() > start) return true;
+  }
+  return false;
+}
 
 /**
  * Bookable slots generated from weekly rules, minus anything busy or too soon.
@@ -55,8 +65,7 @@ export function computeSlots(q: SlotQuery): Slot[] {
         const startsAt = zonedToUtc(date, time, q.tz);
         if (startsAt.getTime() < earliest) continue;
         const endsAt = new Date(startsAt.getTime() + rule.slotMinutes * 60000);
-        const candidate = { start: startsAt, end: endsAt };
-        if (busy.some((b) => overlaps(b, candidate))) continue;
+        if (overlapsAny(busy, startsAt.getTime(), endsAt.getTime())) continue;
         slots.push({ clinicId: rule.clinicId, date, time, startsAt, endsAt });
       }
     }

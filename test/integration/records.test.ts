@@ -356,3 +356,26 @@ test('a visit saves with only some boxes filled; a medicine needs only its name;
   assert.equal(meds.status, 200);
   assert.doesNotMatch(meds.body, /rx\.(form|freq)\.|>null</);
 });
+
+test('double-clicks: "Save patient file" and "Save visit" sent several times at once save once, with no error page', async () => {
+  const doc = await signedInDoctor();
+  const patient = await createPatient(h.db);
+  const apptId = await appointment(doc, patient.id, 1);
+  await doc.c.get(`/en/dashboard/appointments/${apptId}/file`);
+  const files = await Promise.all(Array.from({ length: 5 }, () => doc.c.post('/en/dashboard/patients', { fullName: 'Double Click', consent: 'yes', appointment: apptId })));
+  assert.deepEqual(files.map((r) => r.status), [303, 303, 303, 303, 303], files.map((r) => r.body.slice(0, 120)).join('\n'));
+  assert.equal(await count('patient_records where patient_user_id = $1', [patient.id]), 1);
+  const recordId = (await h.db.query<{ id: string }>('select id from patient_records where patient_user_id = $1', [patient.id])).rows[0]!.id;
+
+  await doc.c.get(`/en/dashboard/patients/${recordId}/visits/new?appointment=${apptId}`);
+  const visits = await Promise.all(Array.from({ length: 5 }, () => doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { appointment: apptId, complaint: 'Cough', ...rxLines([{}]) })));
+  assert.deepEqual(visits.map((r) => r.status), [303, 303, 303, 303, 303], visits.map((r) => r.body.slice(0, 120)).join('\n'));
+  assert.equal(new Set(visits.map((r) => r.location)).size, 1, 'every click lands on the same saved visit');
+  assert.equal(await count('encounters where appointment_id = $1', [apptId]), 1);
+
+  // Much later, a second visit for the same booking is still refused with a clear message.
+  await h.db.query(`update encounters set created_at = now() - interval '10 minutes' where appointment_id = $1`, [apptId]);
+  const later = await doc.c.post(`/en/dashboard/patients/${recordId}/visits`, { appointment: apptId, complaint: 'Again', ...rxLines([{}]) });
+  assert.equal(later.status, 422);
+  assert.match(later.body, /already has a visit/);
+});

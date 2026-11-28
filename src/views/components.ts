@@ -8,6 +8,7 @@ import type { District, ReferenceData } from '../services/reference.js';
 import { displayYears } from '../domain/experience.js';
 import { formatEgyptPhone } from '../domain/branchPhones.js';
 import { docField, type DocKind } from '../domain/documents.js';
+import { numberFormatter, collator } from '../i18n/intlCache.js';
 
 export const icon = {
   link: trusted(
@@ -288,8 +289,8 @@ export function t(ctx: Ctx, key: MessageKey, vars?: Record<string, string | numb
 /** "★ 4.6 (12 reviews)" — the stars are decorative; the text carries the meaning for screen readers. */
 export function ratingBadge(ctx: Ctx, r: { avg: number; count: number } | null, opts: { compact?: boolean } = {}): SafeHtml {
   if (!r || r.count === 0) return html``;
-  const avg = new Intl.NumberFormat(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(r.avg);
-  const count = new Intl.NumberFormat(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB').format(r.count);
+  const avg = numberFormatter(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(r.avg);
+  const count = numberFormatter(ctx.locale === 'ar' ? 'ar-EG' : 'en-GB').format(r.count);
   const label = r.count === 1 ? ctx.t('reviews.countOne', { avg }) : ctx.t('reviews.count', { avg, n: count });
   return html`<span class="rating${opts.compact ? ' compact' : ''}" title="${label}">${icon.star}<strong>${avg}</strong><span class="muted">(${count})</span><span class="sr-only">${label}</span></span>`;
 }
@@ -317,7 +318,7 @@ export function districtOptionGroups(ctx: Ctx, ref: ReferenceData, by: 'id' | 's
     group: ar ? g.name_ar : g.name_en,
     options: g.districts
       .map((d) => ({ value: by === 'id' ? String(d.id) : d.slug, label: ar ? d.name_ar : d.name_en }))
-      .sort((a, b) => a.label.localeCompare(b.label, ar ? 'ar' : 'en')),
+      .sort((a, b) => collator(ar ? 'ar' : 'en').compare(a.label, b.label)),
   }));
 }
 

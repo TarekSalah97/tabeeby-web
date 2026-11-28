@@ -29,8 +29,11 @@ export async function slotsForDoctors(
       [doctorIds, opts.clinicId ?? null],
     ),
     db.query<{ doctor_id: string; starts_at: Date; ends_at: Date }>(
+      // Written to match the no-overlap index (doctor, time range) so only the window is read,
+      // not the doctor's whole history (same result as starts_at < $3 and ends_at > $2).
       `select doctor_id, starts_at, ends_at from appointments
-        where doctor_id = any($1::uuid[]) and status <> 'cancelled' and starts_at < $3 and ends_at > $2`,
+        where doctor_id = any($1::uuid[]) and status <> 'cancelled'
+          and tstzrange(starts_at, ends_at, '[)') && tstzrange($2::timestamptz, $3::timestamptz, '[)')`,
       [doctorIds, windowStart, windowEnd],
     ),
     db.query<{ doctor_id: string; starts_at: Date; ends_at: Date }>(

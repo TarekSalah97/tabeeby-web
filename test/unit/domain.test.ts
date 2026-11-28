@@ -139,3 +139,14 @@ test('typed times: seconds dropped, single-digit hours padded, nonsense left for
   assert.equal(normalizeTime('18:00'), '18:00');
   for (const bad of ['25:00', '12:60', '12:00:00:00', '1200', '', 'noon']) assert.equal(isValidTime(normalizeTime(bad)), false, bad);
 });
+
+test('time conversion answers are remembered without sharing Date objects, and stay right across DST', async () => {
+  const { zonedToUtc } = await import('../../src/domain/time.js');
+  const a = zonedToUtc('2026-07-01', '10:00', 'Africa/Cairo');
+  const b = zonedToUtc('2026-07-01', '10:00', 'Africa/Cairo');
+  assert.equal(a.getTime(), b.getTime());
+  assert.notEqual(a, b, 'each caller gets its own Date');
+  a.setTime(0);
+  assert.equal(zonedToUtc('2026-07-01', '10:00', 'Africa/Cairo').toISOString(), '2026-07-01T07:00:00.000Z', 'summer: UTC+3');
+  assert.equal(zonedToUtc('2026-12-01', '10:00', 'Africa/Cairo').toISOString(), '2026-12-01T08:00:00.000Z', 'winter: UTC+2');
+});

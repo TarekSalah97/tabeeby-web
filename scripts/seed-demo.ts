@@ -178,7 +178,8 @@ async function ensureDemoSecretary(tx: Queryable, doctorId: string, hash: string
     [hash],
   );
   await tx.query(
-    `insert into doctor_assistants (user_id, doctor_id, access) values ($1, $2, 'files') on conflict (user_id) do nothing`,
+    `insert into doctor_assistants (user_id, doctor_id, access, joined_at) values ($1, $2, 'files', now())
+     on conflict (user_id, doctor_id) do update set joined_at = coalesce(doctor_assistants.joined_at, now())`,
     [rows[0]!.id, doctorId],
   );
 }
